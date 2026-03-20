@@ -13,7 +13,7 @@ export interface FilmDataResponse {
 
 const PLACEHOLDER = 'empty-poster-150'
 
-function scrapeFilms(): FilmData[] {
+export function scrapeFilms(): FilmData[] {
   const items = Array.from(
     document.querySelectorAll('section#recent-activity li.griditem')
   ).slice(0, 4)
