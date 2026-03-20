@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "Boxd Card",
+  "version": "0.1.0",
+  "description": "Generate a shareable Last Four Watched image card from your Letterboxd profile.",
+  "permissions": ["clipboardWrite"],
+  "host_permissions": [
+    "https://letterboxd.com/*",
+    "https://a.ltrbxd.com/*",
+    "https://s.ltrbxd.com/*"
+  ],
+  "action": {
+    "default_popup": "src/popup/index.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "src/background/service-worker.ts",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://letterboxd.com/*/"],
+      "js": ["src/content/index.ts"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
