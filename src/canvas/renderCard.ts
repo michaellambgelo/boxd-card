@@ -1,4 +1,5 @@
 import type { CardType, ListCount } from '../types'
+import logoUrl from '../assets/letterboxd-logo-h-neg-rgb.svg?url'
 
 export interface FilmEntry {
   title: string
@@ -82,28 +83,13 @@ const TEXT_COLOR    = '#ffffff'
 const SUBTEXT_COLOR = '#99aabb'
 const DIM_COLOR     = '#666677'
 
-const DOTS = [
-  { color: '#FF8000' }, // orange
-  { color: '#00C030' }, // green
-  { color: '#40BCF4' }, // teal
-]
-const DOT_R   = 9
-const DOT_GAP = 4
+// SVG viewBox is 500×110; draw at a height that fits the 60px header
+const LOGO_H = 44
+const LOGO_W = Math.round(LOGO_H * 500 / 110)  // ≈ 200
 
-function drawLogo(ctx: CanvasRenderingContext2D, x: number, y: number) {
-  let cx = x + DOT_R
-  for (const { color } of DOTS) {
-    ctx.beginPath()
-    ctx.arc(cx, y, DOT_R, 0, Math.PI * 2)
-    ctx.fillStyle = color
-    ctx.fill()
-    cx += DOT_R * 2 + DOT_GAP
-  }
-  ctx.fillStyle = TEXT_COLOR
-  ctx.font = 'bold 18px sans-serif'
-  ctx.textAlign = 'left'
-  ctx.textBaseline = 'middle'
-  ctx.fillText('Letterboxd', cx + 4, y)
+async function drawLogo(ctx: CanvasRenderingContext2D, x: number, centerY: number) {
+  const img = await loadImage(logoUrl)
+  ctx.drawImage(img, x, centerY - LOGO_H / 2, LOGO_W, LOGO_H)
 }
 
 function truncate(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
@@ -135,7 +121,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
   // ── Header ────────────────────────────────────────────────
   const headerMidY = HEADER_H / 2
 
-  drawLogo(ctx, 40, headerMidY)
+  await drawLogo(ctx, 40, headerMidY)
 
   // Date in header: all types except recent-diary (which shows per-film dates instead)
   if (showDate && cardType !== 'recent-diary') {
