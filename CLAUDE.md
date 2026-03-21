@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Boxd Card** is a Chrome browser extension that generates a shareable "Last Four Watched" image card from a user's Letterboxd profile. It works by reading poster images and film metadata directly from the Letterboxd profile page DOM — no backend, no API, no CORS issues.
+**Boxd Card** is a Chrome MV3 extension that generates shareable PNG image cards from a user's Letterboxd profile. Four card types are supported: Last Four Watched, Favorites, Recent Diary, and List. It works by reading metadata and poster images directly from the Letterboxd page DOM — no backend, no API, no CORS issues.
 
-The extension only activates meaningfully when the user is on a Letterboxd profile page (`letterboxd.com/<username>`). Custom posters (a Letterboxd premium feature) are supported for free because they are already rendered in the DOM.
+The extension icon is only shown on `letterboxd.com` pages (via `declarativeContent`). The popup validates the current tab URL against the selected card type and disables the Generate button with a navigation hint when the page doesn't match.
 
 ## Tech Stack
 
@@ -18,100 +18,119 @@ The extension only activates meaningfully when the user is on a Letterboxd profi
 ## Extension Architecture
 
 ```
-Letterboxd profile page (DOM)
+Letterboxd page DOM
         │
-        │  chrome.runtime.sendMessage
+        │  chrome.runtime.sendMessage (GET_FILM_DATA)
         ▼
-  Content Script          ← injected into letterboxd.com/* pages
-  content/index.ts        ← reads poster <img> srcs, film titles, ratings, username
+  Content Script                ← injected into letterboxd.com/* pages
+  content/index.ts              ← scrapes films, username, dates, list metadata
         │
-        │  message response
+        │  FilmDataResponse
         ▼
-  Popup UI                ← React app in the extension popup
-  popup/Popup.tsx         ← requests data from content script, drives canvas render
+  Popup UI
+  popup/Popup.tsx               ← validates URL, drives canvas render, manages UI state
+        │
+        ├─► Background Service Worker (FETCH_IMAGE)
+        │   background/service-worker.ts  ← cross-origin poster image fetching
         │
         ▼
   Canvas Renderer
-  canvas/renderCard.ts    ← draws the card; no React, pure Canvas 2D API
+  canvas/renderCard.ts          ← pure Canvas 2D, no React; exports renderCard, computeLayout, loadImage
         │
         ▼
   Copy to clipboard / Download PNG
 ```
 
-The **background service worker** fetches poster images cross-origin (from `a.ltrbxd.com` and `letterboxd.com`) on behalf of the popup, since Canvas `drawImage()` taints the canvas with cross-origin images unless fetched via the extension context. The content script reads only metadata from the DOM; the background worker fetches the actual image blobs.
+## Card Types and URL Patterns
 
-## DOM Selectors (confirmed from live profile HTML)
+Defined in `src/types.ts`:
 
-The content script targets `letterboxd.com/<username>/` (the profile page, not diary/films/etc.).
+| CardType | Label | Required URL |
+|----------|-------|-------------|
+| `last-four-watched` | Last Four Watched | `letterboxd.com/<username>/` |
+| `favorites` | Favorites | `letterboxd.com/<username>/` |
+| `recent-diary` | Recent Diary | `letterboxd.com/<username>/diary/` or `.../films/diary/` |
+| `list` | List | `letterboxd.com/<username>/list/<slug>/` |
 
+`ListCount` = `4 | 10 | 20` — applies to Recent Diary and List types.
+
+## DOM Selectors (verified against live Letterboxd HTML)
+
+### Profile page (`letterboxd.com/<username>/`)
+
+**Recent Activity (Last Four Watched):**
 ```
-section#recent-activity
-  ul.grid.-p150
-    li.griditem                                     ← one per film (take first 4)
-      .viewing-poster-container
-        .react-component[data-component-class="LazyPoster"]
-          @data-item-name       "Dune (2021)"       ← title with year
-          @data-item-slug       "dune-2021"          ← used to build poster fetch URL
-          @data-film-id         "371378"
-          @data-poster-url      "/film/dune-2021/image-150/"  ← relative poster endpoint
-          @data-resolvable-poster-path  JSON:
-            { "preferredAlternativePosterId": "11095",  ← present if custom poster
-              "postered": { "uid": "film:371378", ... }, ... }
-          .poster.film-poster
-            img.image           ← src starts as empty placeholder; React updates it
-        p.poster-viewingdata[data-item-uid="film:371378"]
-          .rating               ← text content = "★★" / "★★★½" / "★★★★★" etc.
-```
-
-**Username:** `document.body.dataset.owner` (e.g. `"michaellamb"`)
-
-**Custom poster detection:** `window.person.getCustomPoster("film:371378")` returns the alternative poster ID string if set, or `null`. This function is injected by Letterboxd's own page script. `data-resolvable-poster-path` contains the same `preferredAlternativePosterId` value in JSON form.
-
-**Poster fetch strategy:** The poster `img.src` is initially the empty placeholder (`empty-poster-150-DtnLDE3k.png`) in server-rendered HTML and is updated by Letterboxd's React `LazyPoster` component after the page loads. Two approaches to get the real poster URL:
-1. *(Preferred)* Wait for `img.src` to differ from the placeholder (use `MutationObserver` or check on `document_idle`), then read the resolved `src` — this captures custom posters automatically.
-2. *(Fallback)* Fetch `https://letterboxd.com` + `data-poster-url` from the background service worker, which redirects to the actual CDN image.
-
-**Date availability:** Per-film watch dates are **not** present in the `#recent-activity` poster grid and are not used. The optional date on the card is the card's generation date (`new Date()`), not a diary date.
-
-## Letterboxd Logo
-
-The three-dot wordmark visible in the masthead header is rendered via CSS image replacement on `h1.site-logo a.logo`. The SVG decal (the standalone "L" lettermark) is at:
-```
-https://s.ltrbxd.com/static/img/letterboxd-decal-l-16px-DorUFlWn.svg
-```
-The three colored dots logo (orange `#FF8000`, green `#00C030`, teal `#40BCF4`) + wordmark is a separate asset loaded via CSS. To get its URL, inspect `window.getComputedStyle(document.querySelector('.site-logo .logo')).backgroundImage` on the live page. The background service worker can then fetch it as a blob for use in the Canvas renderer.
-
-## Card Specification
-
-**Dimensions:** 1200 × 560 px
-
-**Layout constants:**
-```
-POSTER_W = 200   POSTER_H = 300   (2:3 ratio)
-PADDING_X = 40   HEADER_H = 60    FOOTER_H = 60
-4 posters + 3×20px gaps = 860px; left offset = (1200−860)/2 = 170px
-Poster top y=80, Title y=390, Rating y=414, Footer y=496
+section#recent-activity li.griditem   (take first 4)
+  .react-component[data-component-class="LazyPoster"]
+    @data-item-name    "Dune (2021)"   ← title + year
+    @data-film-id      "371378"
+    @data-poster-url   "/film/dune-2021/image-150/"
+  img.image                            ← src = resolved poster or placeholder
+  p.poster-viewingdata .rating         ← star text e.g. "★★★★"
 ```
 
-**Drawing order:**
-1. Background fill `#1a1a1a`
-2. Header row: three Letterboxd brand dots (orange `#FF8000`, green `#00C030`, teal `#40BCF4`) + "Letterboxd" text at left; date at right *(if enabled)*
-3. Four poster images at computed x positions
-4. Film title under each poster *(if enabled; year stripped if showYear=false)*
-5. Star rating under each poster *(if enabled)*
-6. Footer row: `letterboxd.com/<username>` at left; `generated by Boxd Card` at right
+**Favorites:**
+```
+section#favourites li.griditem   (take first 4)
+  .react-component[data-component-class="LazyPoster"]
+    @data-item-name / @data-film-id / @data-poster-url   (same as above)
+  img.image
+  (no rating element — favorites have no ratings)
+```
 
-**Toggleable elements (all default on):** `showTitle`, `showYear` (requires showTitle), `showRating`, `showDate`
+**Username:** `document.body.dataset.owner`
 
-**Image output:** PNG via `canvas.toBlob()`. Export: copy to clipboard (`navigator.clipboard.write`) + download (`<a download>`).
+### Diary page (`letterboxd.com/<username>/diary/`)
 
-## Key Constraints & Decisions
+```
+table#diary-table tbody tr.diary-entry-row
+  td.col-film .react-component[data-component-class="LazyPoster"]
+    @data-item-name / @data-film-id / @data-poster-url
+  img.image
+  td.col-rating .hide-for-owner .rating   ← plain star text (not interactive input)
+  td.col-monthdate .monthdate a.month     ← "Mar" (only on first row of each month)
+  td.col-monthdate .monthdate a.year      ← "2026" (carry forward for subsequent rows)
+  td.col-daydate a.daydate                ← "20"
+```
 
-- **DOM-only data source.** No Letterboxd API, no RSS feed. The extension must be used while on `letterboxd.com/<username>` (the profile page).
-- **Chrome / Chromium only** for v1.
-- **No backend.** No Cloudflare Worker, no GitHub Actions.
-- **Canvas cross-origin:** Poster images from `a.ltrbxd.com` must be fetched via the background service worker (which has cross-origin fetch permission) and passed to the popup as object URLs or data URLs before drawing to Canvas. Fetching them directly in the popup or content script context will taint the canvas and block `toBlob()`.
-- **Content script scope:** Read-only. No DOM mutations.
+### List page (`letterboxd.com/<username>/list/<slug>/`)
+
+```
+ul.js-list-entries li.posteritem
+  .react-component[data-component-class="LazyPoster"]
+    @data-item-name / @data-film-id / @data-poster-url
+  img.image
+  (no rating — list entries have no ratings)
+
+.list-title-intro h1.title-1             ← list title
+.list-title-intro .body-text p           ← description paragraphs
+  (filter out paragraphs starting with "Updated")
+```
+
+### Poster URL strategy
+
+`img.src` starts as a placeholder (`empty-poster-*.png`) and is updated by Letterboxd's LazyPoster React component after load. The scraper checks if `img.src` contains `"empty-poster"` and falls back to `https://letterboxd.com` + `data-poster-url` if so. The background worker then fetches that URL, which redirects to the actual CDN image.
+
+## Card Layout
+
+`computeLayout(filmCount, titleAreaH = 0)` in `renderCard.ts` returns a `CardLayout` object:
+
+| filmCount | cols | posterW | posterH | base cardHeight |
+|-----------|------|---------|---------|----------------|
+| ≤ 4 | 4 | 200 | 300 | 560 |
+| 5–20 | 5 | 208 | 312 | dynamic (POSTER_TOP + rows×372 + 56 + 64) |
+
+5-column math: `posterLeft=40`, `gap=20` → `5×208 + 4×20 = 1120 = 1200 − 2×40`
+
+`titleAreaH` shifts `posterTop`, `footerY`, and `cardHeight` uniformly to make room for optional text above the poster grid. Used for:
+- **List type:** list title (32px) and/or description (24px) + padding
+- **Non-list types:** card type label (32px) + padding
+
+**Drawing order:** background → logo → header date → title area text → poster grid (image + title + rating + diary date) → footer
+
+**`showDate` behavior:**
+- All types except `recent-diary`: today's date in header (right-aligned)
+- `recent-diary`: per-film watch date below rating for each poster
 
 ## Project Structure
 
@@ -119,28 +138,26 @@ Poster top y=80, Title y=390, Rating y=414, Footer y=496
 boxd-card/
 ├── manifest.json
 ├── src/
+│   ├── types.ts               # CardType, ListCount, CardTypeConfig, CARD_TYPE_CONFIGS
+│   ├── assets/
+│   │   └── letterboxd-logo-h-neg-rgb.svg   # official horizontal logo (white on transparent)
 │   ├── popup/
 │   │   ├── index.html
 │   │   ├── main.tsx
-│   │   └── Popup.tsx          # React UI — drives full generation pipeline
+│   │   └── Popup.tsx          # full UI + generation pipeline
 │   ├── content/
-│   │   └── index.ts           # DOM scraper — runs on letterboxd.com/*
+│   │   └── index.ts           # DOM scrapers: scrapeRecentActivity, scrapeFavorites,
+│   │                          #   scrapeDiary, scrapeList, scrapeListMeta
 │   ├── background/
-│   │   └── service-worker.ts  # FETCH_IMAGE handler (cross-origin image blobs)
+│   │   └── service-worker.ts  # FETCH_IMAGE handler + declarativeContent setup
 │   └── canvas/
-│       └── renderCard.ts      # Pure Canvas 2D renderer; exports FilmEntry, CardOptions, renderCard, loadImage
+│       └── renderCard.ts      # Canvas renderer; exports renderCard, computeLayout, loadImage
+├── src/content/index.test.ts
+├── src/canvas/renderCard.test.ts
 ├── test/
-│   ├── setup.ts               # Vitest global mocks (chrome.*, HTMLCanvasElement)
-│   └── src/canvas/renderCard.test.ts
-├── docs/
-│   └── privacy.html           # Privacy policy (served at blog.michaellamb.dev/boxd-card/privacy.html)
-├── public/
-│   └── icons/                 # icon16/48/128.png — three-dot + film strip design
-├── .claude/
-│   ├── settings.json          # PostToolUse hook config
-│   └── hooks/run-tests.sh     # Auto-runs vitest after editing src/*.ts files
+│   └── setup.ts               # Vitest global mocks (chrome.*, HTMLCanvasElement)
 ├── vite.config.ts
-├── tsconfig.json
+├── vitest.config.ts
 └── package.json
 ```
 
@@ -154,6 +171,13 @@ npm run test:run # single test run (CI)
 npm run coverage # Vitest with v8 coverage
 ```
 
-**Loading the extension in Chrome:** `npm run build` → `chrome://extensions` → Enable Developer mode → Load unpacked → select `dist/`. After subsequent builds, click the ↺ reload button on the extension card. For content script changes, also refresh the Letterboxd tab.
+**Loading in Chrome:** `npm run build` → `chrome://extensions` → Enable Developer mode → Load unpacked → select `dist/`. After subsequent builds, click ↺ reload. For content script changes, also refresh the Letterboxd tab.
 
-**PostToolUse hook:** After any Edit/Write to `src/*.ts` files, `.claude/hooks/run-tests.sh` auto-runs `npm run test:run`. Hook exits 0 silently on pass; exits 2 with stderr on failure.
+**PostToolUse hook:** After any Edit/Write to `src/*.ts` files, `.claude/hooks/run-tests.sh` auto-runs `npm run test:run`. Exits 0 silently on pass; exits 2 with stderr on failure.
+
+## Known Gaps
+
+- Version not bumped since v0.1.1 despite significant new features
+- Favorites have no star ratings by design (not present in the DOM)
+- No graceful handling when page has fewer films than the requested count
+- Popup UI is functional but unstyled
