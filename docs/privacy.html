@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Boxd Card — Privacy Policy</title>
+  <style>
+    body { max-width: 680px; margin: 48px auto; padding: 0 24px; font-family: system-ui, sans-serif; line-height: 1.6; color: #222; }
+    h1 { font-size: 1.6rem; }
+    h2 { font-size: 1.1rem; margin-top: 2em; }
+    p, li { font-size: 0.97rem; }
+  </style>
+</head>
+<body>
+  <h1>Boxd Card — Privacy Policy</h1>
+  <p><em>Last updated: March 2026</em></p>
+
+  <h2>What this extension does</h2>
+  <p>
+    Boxd Card is a Chrome browser extension that reads your Letterboxd profile page and generates
+    a shareable image card showing your last four watched films. All processing happens locally
+    in your browser.
+  </p>
+
+  <h2>Data we collect</h2>
+  <p><strong>None.</strong> Boxd Card does not collect, store, transmit, or share any personal data.</p>
+  <ul>
+    <li>No account is required.</li>
+    <li>No analytics or tracking of any kind.</li>
+    <li>No data is ever sent to any server operated by this extension.</li>
+  </ul>
+
+  <h2>How the extension works</h2>
+  <p>
+    When you click <em>Generate Card</em> on a Letterboxd profile page, the extension:
+  </p>
+  <ol>
+    <li>Reads film titles, ratings, and poster image URLs directly from the page you are already viewing.</li>
+    <li>Fetches poster images from Letterboxd's CDN (<code>a.ltrbxd.com</code>) using your browser's built-in fetch capability — the same images your browser would load anyway.</li>
+    <li>Draws those images onto an HTML5 Canvas element entirely within your browser tab to produce the card PNG.</li>
+  </ol>
+  <p>
+    The generated image exists only in your browser's memory until you choose to download or copy it.
+    It is never uploaded anywhere.
+  </p>
+
+  <h2>Permissions</h2>
+  <p>The extension requests the following Chrome permissions:</p>
+  <ul>
+    <li><strong>activeTab</strong> — to read the URL of the tab you are on and confirm it is a Letterboxd profile page.</li>
+    <li><strong>clipboardWrite</strong> — to copy the generated card image to your clipboard when you click <em>Copy</em>.</li>
+    <li><strong>Host access to letterboxd.com, a.ltrbxd.com, s.ltrbxd.com</strong> — to fetch poster images and static assets that are already publicly visible on the page.</li>
+  </ul>
+
+  <h2>Third-party services</h2>
+  <p>
+    Boxd Card accesses Letterboxd's publicly available web pages and CDN assets on your behalf,
+    the same way a normal browser visit does. It is subject to
+    <a href="https://letterboxd.com/legal/privacy-policy/">Letterboxd's own Privacy Policy</a>.
+    This extension is not affiliated with or endorsed by Letterboxd.
+  </p>
+
+  <h2>Changes to this policy</h2>
+  <p>
+    If this policy changes, the updated version will be posted at this URL with a revised date.
+  </p>
+
+  <h2>Contact</h2>
+  <p>
+    Questions? Open an issue at
+    <a href="https://github.com/michaellambgelo/boxd-card">github.com/michaellambgelo/boxd-card</a>.
+  </p>
+</body>
+</html>

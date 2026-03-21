@@ -3,6 +3,7 @@
   "name": "Boxd Card",
   "version": "0.1.0",
   "description": "Generate a shareable Last Four Watched image card from your Letterboxd profile.",
+  "homepage_url": "https://github.com/michaellambgelo/boxd-card",
   "permissions": ["clipboardWrite", "activeTab"],
   "host_permissions": [
     "https://letterboxd.com/*",
