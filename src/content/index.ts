@@ -12,6 +12,8 @@ export interface FilmData {
 export interface FilmDataResponse {
   films: FilmData[]
   username: string
+  listTitle?: string
+  listDescription?: string
 }
 
 export interface GetFilmDataRequest {
@@ -54,41 +56,35 @@ export function scrapeRecentActivity(): FilmData[] {
   })
 }
 
-// ── Shared poster-list helper ─────────────────────────────────────────────────
-// Used by Favorites, Top Rated, and List scrapers which all use a similar
-// .film-poster / .poster-list DOM pattern.
-// TODO: Verify all attribute names and selectors against live Letterboxd DOM.
-
-function extractPosterListItem(item: Element): FilmData {
-  const posterEl = item.querySelector('.film-poster') as HTMLElement | null
-  const img = item.querySelector('img.image') as HTMLImageElement | null
-  const ratingEl = item.querySelector('.rating')
-
-  const rawTitle = posterEl?.getAttribute('data-film-name') ?? ''
-  const titleMatch = rawTitle.match(/^(.+?)(?:\s*\((\d{4})\))?$/)
-  const title = titleMatch?.[1]?.trim() ?? rawTitle
-  const year = titleMatch?.[2] ?? ''
-  const filmId = posterEl?.getAttribute('data-film-id') ?? ''
-  const dataPosterUrl = posterEl?.getAttribute('data-poster-url') ?? ''
-  const rating = ratingEl?.textContent?.trim() ?? ''
-
-  const resolvedSrc = img?.src ?? ''
-  const posterUrl = resolvedSrc && !resolvedSrc.includes(PLACEHOLDER)
-    ? resolvedSrc
-    : dataPosterUrl
-      ? `https://letterboxd.com${dataPosterUrl}`
-      : ''
-
-  return { title, year, rating, posterUrl, filmId }
-}
-
 // ── Favorites ────────────────────────────────────────────────────────────────
-// TODO: Verify selector against live DOM.
+// Scrapes section#favourites on letterboxd.com/<username>/
+// Selectors verified against live Letterboxd profile DOM.
 
 export function scrapeFavorites(): FilmData[] {
   return Array.from(
-    document.querySelectorAll('section#favourites ul.poster-list li')
-  ).slice(0, 4).map(extractPosterListItem)
+    document.querySelectorAll('section#favourites li.griditem')
+  ).slice(0, 4).map(item => {
+    const lazyPoster = item.querySelector(
+      '.react-component[data-component-class="LazyPoster"]'
+    )
+    const img = item.querySelector('img.image') as HTMLImageElement | null
+
+    const rawTitle = lazyPoster?.getAttribute('data-item-name') ?? ''
+    const titleMatch = rawTitle.match(/^(.+?)(?:\s*\((\d{4})\))?$/)
+    const title = titleMatch?.[1]?.trim() ?? rawTitle
+    const year = titleMatch?.[2] ?? ''
+    const filmId = lazyPoster?.getAttribute('data-film-id') ?? ''
+
+    const resolvedSrc = img?.src ?? ''
+    const dataPosterUrl = lazyPoster?.getAttribute('data-poster-url') ?? ''
+    const posterUrl = resolvedSrc && !resolvedSrc.includes(PLACEHOLDER)
+      ? resolvedSrc
+      : dataPosterUrl
+        ? `https://letterboxd.com${dataPosterUrl}`
+        : ''
+
+    return { title, year, rating: '', posterUrl, filmId }
+  })
 }
 
 // ── Recent Diary ──────────────────────────────────────────────────────────────
@@ -153,12 +149,43 @@ export function scrapeDiary(count = 4): FilmData[] {
 // ── List ──────────────────────────────────────────────────────────────────────
 // Scrapes letterboxd.com/<username>/list/<slug>/
 // count: 4 | 10 | 20
-// TODO: Verify selector against live DOM.
+// Selectors verified against live Letterboxd list DOM.
+
+export function scrapeListMeta(): { listTitle: string; listDescription: string } {
+  const listTitle = document.querySelector('.list-title-intro h1.title-1')?.textContent?.trim() ?? ''
+  const paragraphs = Array.from(document.querySelectorAll('.list-title-intro .body-text p'))
+  const listDescription = paragraphs
+    .map(p => p.textContent?.trim() ?? '')
+    .filter(text => text && !text.startsWith('Updated'))
+    .join(' ')
+  return { listTitle, listDescription }
+}
 
 export function scrapeList(count: number): FilmData[] {
   return Array.from(
-    document.querySelectorAll('ul.film-list li.poster-container')
-  ).slice(0, count).map(extractPosterListItem)
+    document.querySelectorAll('ul.js-list-entries li.posteritem')
+  ).slice(0, count).map(item => {
+    const lazyPoster = item.querySelector(
+      '.react-component[data-component-class="LazyPoster"]'
+    )
+    const img = item.querySelector('img.image') as HTMLImageElement | null
+
+    const rawTitle = lazyPoster?.getAttribute('data-item-name') ?? ''
+    const titleMatch = rawTitle.match(/^(.+?)(?:\s*\((\d{4})\))?$/)
+    const title = titleMatch?.[1]?.trim() ?? rawTitle
+    const year = titleMatch?.[2] ?? ''
+    const filmId = lazyPoster?.getAttribute('data-film-id') ?? ''
+
+    const resolvedSrc = img?.src ?? ''
+    const dataPosterUrl = lazyPoster?.getAttribute('data-poster-url') ?? ''
+    const posterUrl = resolvedSrc && !resolvedSrc.includes(PLACEHOLDER)
+      ? resolvedSrc
+      : dataPosterUrl
+        ? `https://letterboxd.com${dataPosterUrl}`
+        : ''
+
+    return { title, year, rating: '', posterUrl, filmId }
+  })
 }
 
 // ── Message listener ──────────────────────────────────────────────────────────
@@ -166,14 +193,18 @@ export function scrapeList(count: number): FilmData[] {
 chrome.runtime.onMessage.addListener((message: GetFilmDataRequest, _sender, sendResponse) => {
   if (message.type === 'GET_FILM_DATA') {
     let films: FilmData[]
+    let listMeta: { listTitle?: string; listDescription?: string } = {}
     switch (message.cardType) {
       case 'favorites':    films = scrapeFavorites();                        break
       case 'recent-diary': films = scrapeDiary(message.listCount ?? 4);      break
-      case 'list':         films = scrapeList(message.listCount ?? 4);       break
+      case 'list':
+        films = scrapeList(message.listCount ?? 4)
+        listMeta = scrapeListMeta()
+        break
       default:             films = scrapeRecentActivity();                   break
     }
     const username = (document.body as HTMLBodyElement & { dataset: DOMStringMap }).dataset.owner ?? ''
-    sendResponse({ films, username } satisfies FilmDataResponse)
+    sendResponse({ films, username, ...listMeta } satisfies FilmDataResponse)
   }
   return true
 })

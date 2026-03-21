@@ -22,12 +22,24 @@ export default function Popup() {
   const [cardType,    setCardType]    = useState<CardType>('last-four-watched')
   const [listCount,   setListCount]   = useState<ListCount>(4)
   const [isValidPage, setIsValidPage] = useState<boolean | null>(null)
-  const [showTitle,   setShowTitle]   = useState(true)
-  const [showYear,    setShowYear]    = useState(true)
-  const [showRating,  setShowRating]  = useState(true)
-  const [showDate,    setShowDate]    = useState(true)
-  const [cardUrl,     setCardUrl]     = useState<string | null>(null)
-  const [cardBlob,    setCardBlob]    = useState<Blob | null>(null)
+  const [showTitle,     setShowTitle]     = useState(true)
+  const [showYear,      setShowYear]      = useState(true)
+  const [showRating,    setShowRating]    = useState(true)
+  const [showDate,      setShowDate]      = useState(true)
+  const [showListTitle,      setShowListTitle]      = useState(true)
+  const [showListDesc,       setShowListDesc]       = useState(true)
+  const [showCardTypeLabel,  setShowCardTypeLabel]  = useState(true)
+  const [cardUrl,       setCardUrl]       = useState<string | null>(null)
+  const [cardBlob,      setCardBlob]      = useState<Blob | null>(null)
+
+  // On mount: auto-select the card type matching the current tab URL
+  useEffect(() => {
+    chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
+      const url = tab?.url ?? ''
+      const match = CARD_TYPES.find(t => CARD_TYPE_CONFIGS[t].urlPattern.test(url))
+      if (match) setCardType(match)
+    })
+  }, [])
 
   // Validate current tab URL whenever the card type changes
   useEffect(() => {
@@ -87,6 +99,12 @@ export default function Popup() {
         showDate,
         cardType,
         listCount: (cardType === 'list' || cardType === 'recent-diary') ? listCount : undefined,
+        showListTitle:       cardType === 'list' ? showListTitle : undefined,
+        showListDescription: cardType === 'list' ? showListDesc  : undefined,
+        listTitle:           cardType === 'list' ? filmData.listTitle       : undefined,
+        listDescription:     cardType === 'list' ? filmData.listDescription : undefined,
+        showCardTypeLabel:   cardType !== 'list' ? showCardTypeLabel : undefined,
+        cardTypeLabel:       cardType !== 'list' ? CARD_TYPE_CONFIGS[cardType].label : undefined,
       })
 
       setCardBlob(blob)
@@ -164,6 +182,30 @@ export default function Popup() {
         <p style={{ color: '#e08040', margin: '0 0 10px', fontSize: 12 }}>
           Navigate to {CARD_TYPE_CONFIGS[cardType].urlHint} first.
         </p>
+      )}
+
+      {/* List title / description checkboxes */}
+      {cardType === 'list' && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', marginBottom: 12 }}>
+          <label style={labelStyle}>
+            <input type="checkbox" checked={showListTitle} onChange={e => setShowListTitle(e.target.checked)} />
+            List title
+          </label>
+          <label style={labelStyle}>
+            <input type="checkbox" checked={showListDesc} onChange={e => setShowListDesc(e.target.checked)} />
+            Description
+          </label>
+        </div>
+      )}
+
+      {/* Card type label checkbox — for non-list types */}
+      {cardType !== 'list' && (
+        <div style={{ marginBottom: 12 }}>
+          <label style={labelStyle}>
+            <input type="checkbox" checked={showCardTypeLabel} onChange={e => setShowCardTypeLabel(e.target.checked)} />
+            Card type label
+          </label>
+        </div>
       )}
 
       {/* Checkboxes */}

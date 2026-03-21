@@ -82,6 +82,34 @@ describe('renderCard', () => {
     })
     expect(blob).toBeInstanceOf(Blob)
   })
+
+  it('renders a card with card type label', async () => {
+    const blob = await renderCard({
+      ...MOCK_OPTIONS,
+      showCardTypeLabel: true,
+      cardTypeLabel: 'Last Four Watched',
+    })
+    expect(blob).toBeInstanceOf(Blob)
+  })
+
+  it('renders a card with title and description metadata', async () => {
+    const films = Array.from({ length: 4 }, (_, i) => ({
+      title: `Film ${i}`, year: '2024', rating: '',
+      posterDataUrl: 'data:image/png;base64,abc',
+    }))
+    const blob = await renderCard({
+      films,
+      username: 'test',
+      showTitle: true, showYear: false, showRating: false, showDate: false,
+      cardType: 'list',
+      listCount: 4,
+      showListTitle: true,
+      showListDescription: true,
+      listTitle: 'My 2025 Releases Ranked',
+      listDescription: 'A fantastic year for musical horror movies',
+    })
+    expect(blob).toBeInstanceOf(Blob)
+  })
 })
 
 describe('computeLayout', () => {
@@ -112,6 +140,14 @@ describe('computeLayout', () => {
     const layout = computeLayout(10)
     const usedWidth = layout.cols * layout.posterW + (layout.cols - 1) * layout.posterGap
     expect(layout.posterLeft * 2 + usedWidth).toBe(layout.cardWidth)
+  })
+
+  it('titleAreaH shifts posterTop, footerY, and cardHeight by the same amount', () => {
+    const base    = computeLayout(4)
+    const shifted = computeLayout(4, 60)
+    expect(shifted.posterTop).toBe(base.posterTop + 60)
+    expect(shifted.footerY).toBe(base.footerY + 60)
+    expect(shifted.cardHeight).toBe(base.cardHeight + 60)
   })
 })
 

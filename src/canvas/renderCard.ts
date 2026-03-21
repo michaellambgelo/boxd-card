@@ -18,6 +18,12 @@ export interface CardOptions {
   showDate: boolean
   cardType: CardType
   listCount?: ListCount
+  showListTitle?: boolean
+  showListDescription?: boolean
+  listTitle?: string
+  listDescription?: string
+  showCardTypeLabel?: boolean
+  cardTypeLabel?: string
 }
 
 export interface CardLayout {
@@ -39,20 +45,20 @@ const POSTER_TOP = 80   // = HEADER_H + 20
 const TEXT_AREA_H = 60  // space below each poster for title + rating
 
 /**
- * Compute card layout geometry based on film count.
- * filmCount ≤ 4: single row of 4 at 200px each (1200×560, unchanged)
+ * Compute card layout geometry based on film count and optional title area height.
+ * filmCount ≤ 4: single row of 4 at 200px each (base 1200×560)
  * filmCount 5–20: 5-column grid, 208px posters, taller card
+ * titleAreaH: extra vertical space between header and posters (list title/description)
  */
-export function computeLayout(filmCount: number): CardLayout {
+export function computeLayout(filmCount: number, titleAreaH = 0): CardLayout {
   if (filmCount <= 4) {
-    // Existing layout — keep exact pixel values unchanged
     return {
-      cardWidth: 1200, cardHeight: 560,
+      cardWidth: 1200, cardHeight: 560 + titleAreaH,
       posterW: 200, posterH: 300, posterGap: 20,
       posterLeft: 170,   // (1200 − 860) / 2
-      posterTop: POSTER_TOP,
+      posterTop: POSTER_TOP + titleAreaH,
       cols: 4, rows: 1,
-      footerY: 496,
+      footerY: 496 + titleAreaH,
       textAreaH: TEXT_AREA_H,
     }
   }
@@ -64,14 +70,15 @@ export function computeLayout(filmCount: number): CardLayout {
   const posterW = 208
   const posterH = 312
   const rowH = posterH + TEXT_AREA_H   // 372
-  const footerY = POSTER_TOP + rows * rowH + 56
+  const pt = POSTER_TOP + titleAreaH
+  const footerY = pt + rows * rowH + 56
   const cardHeight = footerY + 64
 
   return {
     cardWidth: 1200, cardHeight,
     posterW, posterH, posterGap: 20,
     posterLeft: 40,
-    posterTop: POSTER_TOP,
+    posterTop: pt,
     cols, rows,
     footerY,
     textAreaH: TEXT_AREA_H,
@@ -101,13 +108,33 @@ function truncate(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
   return truncated + '…'
 }
 
+const LIST_PADDING = 12
+const LIST_TITLE_H = 32
+const LIST_DESC_H  = 24
+const LIST_BOTTOM  = 8
+
 export async function renderCard(options: CardOptions): Promise<Blob> {
-  const { films, username, showTitle, showYear, showRating, showDate, cardType, listCount } = options
+  const {
+    films, username, showTitle, showYear, showRating, showDate, cardType, listCount,
+    showListTitle, showListDescription, listTitle, listDescription,
+    showCardTypeLabel, cardTypeLabel,
+  } = options
 
   const filmCount = (cardType === 'list' || cardType === 'recent-diary')
     ? (listCount ?? 4)
     : Math.min(films.length, 4)
-  const layout = computeLayout(filmCount)
+
+  const showingListTitle = cardType === 'list' && !!showListTitle && !!listTitle
+  const showingListDesc  = cardType === 'list' && !!showListDescription && !!listDescription
+  const showingCardTypeLabel = cardType !== 'list' && !!showCardTypeLabel && !!cardTypeLabel
+  const titleAreaH = (showingListTitle || showingListDesc || showingCardTypeLabel)
+    ? LIST_PADDING
+      + (showingListTitle || showingCardTypeLabel ? LIST_TITLE_H : 0)
+      + (showingListDesc  ? LIST_DESC_H  : 0)
+      + LIST_BOTTOM
+    : 0
+
+  const layout = computeLayout(filmCount, titleAreaH)
 
   const canvas = document.createElement('canvas')
   canvas.width  = layout.cardWidth
@@ -133,6 +160,30 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
     ctx.textAlign = 'right'
     ctx.textBaseline = 'middle'
     ctx.fillText(dateStr, layout.cardWidth - 40, headerMidY)
+  }
+
+  // ── List title / description / card type label ────────────
+  if (showingListTitle && listTitle) {
+    ctx.fillStyle = TEXT_COLOR
+    ctx.font = 'bold 20px sans-serif'
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'top'
+    ctx.fillText(truncate(ctx, listTitle, layout.cardWidth - 80), 40, POSTER_TOP + LIST_PADDING)
+  }
+  if (showingListDesc && listDescription) {
+    const descY = POSTER_TOP + LIST_PADDING + (showingListTitle ? LIST_TITLE_H : 0)
+    ctx.fillStyle = SUBTEXT_COLOR
+    ctx.font = '14px sans-serif'
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'top'
+    ctx.fillText(truncate(ctx, listDescription, layout.cardWidth - 80), 40, descY)
+  }
+  if (showingCardTypeLabel && cardTypeLabel) {
+    ctx.fillStyle = TEXT_COLOR
+    ctx.font = 'bold 20px sans-serif'
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'top'
+    ctx.fillText(cardTypeLabel, 40, POSTER_TOP + LIST_PADDING)
   }
 
   // ── Posters ───────────────────────────────────────────────

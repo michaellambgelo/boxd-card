@@ -1,3 +1,17 @@
+// Show the action only on letterboxd.com pages; hidden everywhere else.
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.declarativeContent.onPageChanged.removeRules(undefined, () => {
+    chrome.declarativeContent.onPageChanged.addRules([{
+      conditions: [
+        new chrome.declarativeContent.PageStateMatcher({
+          pageUrl: { hostEquals: 'letterboxd.com', schemes: ['https'] },
+        }),
+      ],
+      actions: [ new chrome.declarativeContent.ShowAction() ],
+    }])
+  })
+})
+
 export interface FetchImageRequest {
   type: 'FETCH_IMAGE'
   url: string

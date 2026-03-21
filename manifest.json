@@ -4,7 +4,7 @@
   "version": "0.1.1",
   "description": "Generate a shareable image card from your Letterboxd profile.",
   "homepage_url": "https://github.com/michaellambgelo/boxd-card",
-  "permissions": ["clipboardWrite", "activeTab"],
+  "permissions": ["clipboardWrite", "activeTab", "declarativeContent"],
   "host_permissions": [
     "https://letterboxd.com/*",
     "https://a.ltrbxd.com/*",
