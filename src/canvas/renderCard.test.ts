@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { renderCard, loadImage } from './renderCard'
+import { renderCard, loadImage, computeLayout } from './renderCard'
 
 // Auto-loading Image: fires onload immediately so renderCard doesn't hang in tests
 class AutoImage {
@@ -25,6 +25,7 @@ const MOCK_OPTIONS = {
   showYear: true,
   showRating: true,
   showDate: true,
+  cardType: 'last-four-watched' as const,
 }
 
 describe('renderCard', () => {
@@ -50,6 +51,67 @@ describe('renderCard', () => {
       showDate: false,
     })
     expect(blob).toBeInstanceOf(Blob)
+  })
+
+  it('renders a 10-film list card', async () => {
+    const films = Array.from({ length: 10 }, (_, i) => ({
+      title: `Film ${i}`, year: '2024', rating: '★★★',
+      posterDataUrl: 'data:image/png;base64,abc',
+    }))
+    const blob = await renderCard({
+      films,
+      username: 'test',
+      showTitle: true, showYear: true, showRating: true, showDate: false,
+      cardType: 'list',
+      listCount: 10,
+    })
+    expect(blob).toBeInstanceOf(Blob)
+  })
+
+  it('renders a 20-film list card', async () => {
+    const films = Array.from({ length: 20 }, (_, i) => ({
+      title: `Film ${i}`, year: '2024', rating: '★★★',
+      posterDataUrl: 'data:image/png;base64,abc',
+    }))
+    const blob = await renderCard({
+      films,
+      username: 'test',
+      showTitle: true, showYear: true, showRating: true, showDate: false,
+      cardType: 'list',
+      listCount: 20,
+    })
+    expect(blob).toBeInstanceOf(Blob)
+  })
+})
+
+describe('computeLayout', () => {
+  it('4 films → cols=4, cardHeight=560 (unchanged)', () => {
+    const layout = computeLayout(4)
+    expect(layout.cols).toBe(4)
+    expect(layout.rows).toBe(1)
+    expect(layout.cardHeight).toBe(560)
+    expect(layout.posterW).toBe(200)
+  })
+
+  it('10 films → cols=5, rows=2, cardHeight > 560', () => {
+    const layout = computeLayout(10)
+    expect(layout.cols).toBe(5)
+    expect(layout.rows).toBe(2)
+    expect(layout.cardHeight).toBeGreaterThan(560)
+  })
+
+  it('20 films → cols=5, rows=4, taller than 10-film card', () => {
+    const layout10 = computeLayout(10)
+    const layout20 = computeLayout(20)
+    expect(layout20.cols).toBe(5)
+    expect(layout20.rows).toBe(4)
+    expect(layout20.cardHeight).toBeGreaterThan(layout10.cardHeight)
+  })
+
+  it('5-column layout fits within 1200px width', () => {
+    const layout = computeLayout(10)
+    const usedWidth = layout.cols * layout.posterW + (layout.cols - 1) * layout.posterGap
+    expect(layout.posterLeft * 2 + usedWidth).toBe(layout.cardWidth)
   })
 })
 

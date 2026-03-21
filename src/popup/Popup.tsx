@@ -1,7 +1,9 @@
-import { useState } from 'react'
-import type { FilmData, FilmDataResponse } from '../content/index'
+import { useState, useEffect } from 'react'
+import type { FilmData, FilmDataResponse, GetFilmDataRequest } from '../content/index'
 import type { FetchImageResponse } from '../background/service-worker'
 import { renderCard } from '../canvas/renderCard'
+import { CARD_TYPES, CARD_TYPE_CONFIGS } from '../types'
+import type { CardType, ListCount } from '../types'
 
 type Status = 'idle' | 'loading' | 'ready' | 'error'
 
@@ -15,42 +17,55 @@ async function fetchPosterDataUrl(url: string): Promise<string> {
 }
 
 export default function Popup() {
-  const [status,     setStatus]     = useState<Status>('idle')
-  const [error,      setError]      = useState<string | null>(null)
-  const [showTitle,  setShowTitle]  = useState(true)
-  const [showYear,   setShowYear]   = useState(true)
-  const [showRating, setShowRating] = useState(true)
-  const [showDate,   setShowDate]   = useState(true)
-  const [cardUrl,    setCardUrl]    = useState<string | null>(null)
-  const [cardBlob,   setCardBlob]   = useState<Blob | null>(null)
+  const [status,      setStatus]      = useState<Status>('idle')
+  const [error,       setError]       = useState<string | null>(null)
+  const [cardType,    setCardType]    = useState<CardType>('last-four-watched')
+  const [listCount,   setListCount]   = useState<ListCount>(4)
+  const [isValidPage, setIsValidPage] = useState<boolean | null>(null)
+  const [showTitle,   setShowTitle]   = useState(true)
+  const [showYear,    setShowYear]    = useState(true)
+  const [showRating,  setShowRating]  = useState(true)
+  const [showDate,    setShowDate]    = useState(true)
+  const [cardUrl,     setCardUrl]     = useState<string | null>(null)
+  const [cardBlob,    setCardBlob]    = useState<Blob | null>(null)
+
+  // Validate current tab URL whenever the card type changes
+  useEffect(() => {
+    setIsValidPage(null)
+    chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
+      const url = tab?.url ?? ''
+      setIsValidPage(CARD_TYPE_CONFIGS[cardType].urlPattern.test(url))
+    })
+  }, [cardType])
 
   async function handleGenerate() {
     setStatus('loading')
     setError(null)
 
-    // Revoke previous object URL
     if (cardUrl) URL.revokeObjectURL(cardUrl)
     setCardUrl(null)
     setCardBlob(null)
 
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-      if (!tab.id) throw new Error('No active tab')
+      if (!tab?.id) throw new Error('No active tab')
 
+      // Defensive re-check for race condition (user navigates away after button enabled)
       const url = tab.url ?? ''
-      if (!url.match(/^https:\/\/letterboxd\.com\/[^/]+\/?$/)) {
-        throw new Error('Navigate to a Letterboxd profile page (letterboxd.com/username) first.')
+      if (!CARD_TYPE_CONFIGS[cardType].urlPattern.test(url)) {
+        throw new Error(`Navigate to ${CARD_TYPE_CONFIGS[cardType].urlHint} first.`)
       }
 
       const filmData: FilmDataResponse = await chrome.tabs.sendMessage(tab.id, {
         type: 'GET_FILM_DATA',
-      })
+        cardType,
+        listCount: (cardType === 'list' || cardType === 'recent-diary') ? listCount : undefined,
+      } satisfies GetFilmDataRequest)
 
       if (!filmData.films.length) {
-        throw new Error('No films found on this profile page.')
+        throw new Error('No films found on this page.')
       }
 
-      // Fetch all poster images in parallel
       const posterDataUrls = await Promise.all(
         filmData.films.map((f: FilmData) => fetchPosterDataUrl(f.posterUrl))
       )
@@ -59,6 +74,7 @@ export default function Popup() {
         title:         f.title,
         year:          f.year,
         rating:        f.rating,
+        date:          f.date,
         posterDataUrl: posterDataUrls[i],
       }))
 
@@ -69,6 +85,8 @@ export default function Popup() {
         showYear,
         showRating,
         showDate,
+        cardType,
+        listCount: (cardType === 'list' || cardType === 'recent-diary') ? listCount : undefined,
       })
 
       setCardBlob(blob)
@@ -99,9 +117,54 @@ export default function Popup() {
     display: 'flex', alignItems: 'center', gap: 6, fontSize: 13,
   }
 
+  const buttonDisabled = status === 'loading' || isValidPage !== true
+
   return (
     <div style={{ width: 340, padding: 16, fontFamily: 'sans-serif' }}>
       <h1 style={{ fontSize: 17, margin: '0 0 12px', fontWeight: 600 }}>Boxd Card</h1>
+
+      {/* Card type dropdown */}
+      <div style={{ marginBottom: 12 }}>
+        <label style={{ fontSize: 13, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          Card type
+          <select
+            value={cardType}
+            onChange={e => setCardType(e.target.value as CardType)}
+            style={{ fontSize: 13, padding: '4px 6px' }}
+          >
+            {CARD_TYPES.map(type => (
+              <option key={type} value={type}>
+                {CARD_TYPE_CONFIGS[type].label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {/* Film count selector — for List and Recent Diary */}
+      {(cardType === 'list' || cardType === 'recent-diary') && (
+        <div style={{ marginBottom: 12, display: 'flex', gap: 12, fontSize: 13 }}>
+          {([4, 10, 20] as ListCount[]).map(n => (
+            <label key={n} style={labelStyle}>
+              <input
+                type="radio"
+                name="listCount"
+                value={n}
+                checked={listCount === n}
+                onChange={() => setListCount(n)}
+              />
+              {n} films
+            </label>
+          ))}
+        </div>
+      )}
+
+      {/* Navigation hint when on wrong page */}
+      {isValidPage === false && (
+        <p style={{ color: '#e08040', margin: '0 0 10px', fontSize: 12 }}>
+          Navigate to {CARD_TYPE_CONFIGS[cardType].urlHint} first.
+        </p>
+      )}
 
       {/* Checkboxes */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', marginBottom: 12 }}>
@@ -119,13 +182,13 @@ export default function Popup() {
         </label>
         <label style={labelStyle}>
           <input type="checkbox" checked={showDate} onChange={e => setShowDate(e.target.checked)} />
-          Date
+          {cardType === 'recent-diary' ? 'Watch date' : 'Date'}
         </label>
       </div>
 
       <button
         onClick={handleGenerate}
-        disabled={status === 'loading'}
+        disabled={buttonDisabled}
         style={{ width: '100%', padding: '8px 0', marginBottom: 8 }}
       >
         {status === 'loading' ? 'Generating…' : 'Generate Card'}

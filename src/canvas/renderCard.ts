@@ -1,8 +1,11 @@
+import type { CardType, ListCount } from '../types'
+
 export interface FilmEntry {
   title: string
   year: string
   rating: string
   posterDataUrl: string
+  date?: string   // forwarded from FilmData for diary entries
 }
 
 export interface CardOptions {
@@ -12,37 +15,82 @@ export interface CardOptions {
   showYear: boolean   // only relevant when showTitle is true
   showRating: boolean
   showDate: boolean
+  cardType: CardType
+  listCount?: ListCount
 }
 
-const CARD_WIDTH   = 1200
-const CARD_HEIGHT  = 560
-const POSTER_W     = 200
-const POSTER_H     = 300
-const POSTER_GAP   = 20
-const POSTER_TOP   = 80
-const HEADER_H     = 60
-const FOOTER_Y     = 496
+export interface CardLayout {
+  cardWidth: number
+  cardHeight: number
+  posterW: number
+  posterH: number
+  posterGap: number
+  posterLeft: number
+  posterTop: number
+  cols: number
+  rows: number
+  footerY: number
+  textAreaH: number
+}
 
-// Derived: 4 posters + 3 gaps = 860px; center them
-const POSTERS_TOTAL_W = 4 * POSTER_W + 3 * POSTER_GAP
-const POSTER_LEFT     = (CARD_WIDTH - POSTERS_TOTAL_W) / 2
+const HEADER_H   = 60
+const POSTER_TOP = 80   // = HEADER_H + 20
+const TEXT_AREA_H = 60  // space below each poster for title + rating
+
+/**
+ * Compute card layout geometry based on film count.
+ * filmCount ≤ 4: single row of 4 at 200px each (1200×560, unchanged)
+ * filmCount 5–20: 5-column grid, 208px posters, taller card
+ */
+export function computeLayout(filmCount: number): CardLayout {
+  if (filmCount <= 4) {
+    // Existing layout — keep exact pixel values unchanged
+    return {
+      cardWidth: 1200, cardHeight: 560,
+      posterW: 200, posterH: 300, posterGap: 20,
+      posterLeft: 170,   // (1200 − 860) / 2
+      posterTop: POSTER_TOP,
+      cols: 4, rows: 1,
+      footerY: 496,
+      textAreaH: TEXT_AREA_H,
+    }
+  }
+
+  // 5-column layout for 10 or 20 films
+  // posterLeft=40, gap=20 → 5×208 + 4×20 = 1120 = 1200 − 2×40 ✓
+  const cols = 5
+  const rows = Math.ceil(filmCount / cols)
+  const posterW = 208
+  const posterH = 312
+  const rowH = posterH + TEXT_AREA_H   // 372
+  const footerY = POSTER_TOP + rows * rowH + 56
+  const cardHeight = footerY + 64
+
+  return {
+    cardWidth: 1200, cardHeight,
+    posterW, posterH, posterGap: 20,
+    posterLeft: 40,
+    posterTop: POSTER_TOP,
+    cols, rows,
+    footerY,
+    textAreaH: TEXT_AREA_H,
+  }
+}
 
 const BG_COLOR      = '#1a1a1a'
 const TEXT_COLOR    = '#ffffff'
 const SUBTEXT_COLOR = '#99aabb'
 const DIM_COLOR     = '#666677'
 
-// Letterboxd brand dots
 const DOTS = [
   { color: '#FF8000' }, // orange
   { color: '#00C030' }, // green
   { color: '#40BCF4' }, // teal
 ]
-const DOT_R    = 9
-const DOT_GAP  = 4
+const DOT_R   = 9
+const DOT_GAP = 4
 
 function drawLogo(ctx: CanvasRenderingContext2D, x: number, y: number) {
-  // Three colored dots
   let cx = x + DOT_R
   for (const { color } of DOTS) {
     ctx.beginPath()
@@ -51,7 +99,6 @@ function drawLogo(ctx: CanvasRenderingContext2D, x: number, y: number) {
     ctx.fill()
     cx += DOT_R * 2 + DOT_GAP
   }
-  // "Letterboxd" wordmark text
   ctx.fillStyle = TEXT_COLOR
   ctx.font = 'bold 18px sans-serif'
   ctx.textAlign = 'left'
@@ -69,25 +116,29 @@ function truncate(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
 }
 
 export async function renderCard(options: CardOptions): Promise<Blob> {
-  const { films, username, showTitle, showYear, showRating, showDate } = options
+  const { films, username, showTitle, showYear, showRating, showDate, cardType, listCount } = options
+
+  const filmCount = (cardType === 'list' || cardType === 'recent-diary')
+    ? (listCount ?? 4)
+    : Math.min(films.length, 4)
+  const layout = computeLayout(filmCount)
 
   const canvas = document.createElement('canvas')
-  canvas.width  = CARD_WIDTH
-  canvas.height = CARD_HEIGHT
+  canvas.width  = layout.cardWidth
+  canvas.height = layout.cardHeight
   const ctx = canvas.getContext('2d')!
 
   // Background
   ctx.fillStyle = BG_COLOR
-  ctx.fillRect(0, 0, CARD_WIDTH, CARD_HEIGHT)
+  ctx.fillRect(0, 0, layout.cardWidth, layout.cardHeight)
 
-  // ── Header ──────────────────────────────────────────────
+  // ── Header ────────────────────────────────────────────────
   const headerMidY = HEADER_H / 2
 
-  // Logo (left)
   drawLogo(ctx, 40, headerMidY)
 
-  // Date (right, if enabled)
-  if (showDate) {
+  // Date in header: all types except recent-diary (which shows per-film dates instead)
+  if (showDate && cardType !== 'recent-diary') {
     const dateStr = new Date().toLocaleDateString('en-US', {
       month: 'long', day: 'numeric', year: 'numeric',
     })
@@ -95,25 +146,25 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
     ctx.font = '15px sans-serif'
     ctx.textAlign = 'right'
     ctx.textBaseline = 'middle'
-    ctx.fillText(dateStr, CARD_WIDTH - 40, headerMidY)
+    ctx.fillText(dateStr, layout.cardWidth - 40, headerMidY)
   }
 
-  // ── Posters ──────────────────────────────────────────────
-  for (let i = 0; i < Math.min(films.length, 4); i++) {
+  // ── Posters ───────────────────────────────────────────────
+  for (let i = 0; i < Math.min(films.length, filmCount); i++) {
     const film = films[i]
-    const x = POSTER_LEFT + i * (POSTER_W + POSTER_GAP)
+    const col = i % layout.cols
+    const row = Math.floor(i / layout.cols)
+    const x = layout.posterLeft + col * (layout.posterW + layout.posterGap)
+    const y = layout.posterTop  + row * (layout.posterH + layout.textAreaH)
 
-    // Poster image
     try {
       const img = await loadImage(film.posterDataUrl)
-      ctx.drawImage(img, x, POSTER_TOP, POSTER_W, POSTER_H)
+      ctx.drawImage(img, x, y, layout.posterW, layout.posterH)
     } catch {
-      // Fallback: grey rectangle with film index
       ctx.fillStyle = '#333344'
-      ctx.fillRect(x, POSTER_TOP, POSTER_W, POSTER_H)
+      ctx.fillRect(x, y, layout.posterW, layout.posterH)
     }
 
-    // Title
     if (showTitle) {
       const displayTitle = showYear && film.year
         ? `${film.title} (${film.year})`
@@ -122,34 +173,41 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
       ctx.font = '14px sans-serif'
       ctx.textAlign = 'left'
       ctx.textBaseline = 'top'
-      ctx.fillText(truncate(ctx, displayTitle, POSTER_W), x, POSTER_TOP + POSTER_H + 10)
+      ctx.fillText(truncate(ctx, displayTitle, layout.posterW), x, y + layout.posterH + 10)
     }
 
-    // Rating
     if (showRating && film.rating) {
       ctx.fillStyle = '#FFB020'
       ctx.font = '14px sans-serif'
       ctx.textAlign = 'left'
       ctx.textBaseline = 'top'
-      const ratingY = POSTER_TOP + POSTER_H + (showTitle ? 30 : 10)
+      const ratingY = y + layout.posterH + (showTitle ? 30 : 10)
       ctx.fillText(film.rating, x, ratingY)
+    }
+
+    // For diary type: show per-film watch date under the rating when showDate is on
+    if (cardType === 'recent-diary' && showDate && film.date) {
+      const dateOffset = y + layout.posterH + (showRating && film.rating ? 50 : showTitle ? 30 : 10)
+      ctx.fillStyle = SUBTEXT_COLOR
+      ctx.font = '12px sans-serif'
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'top'
+      ctx.fillText(film.date, x, dateOffset)
     }
   }
 
-  // ── Footer ───────────────────────────────────────────────
-  // Username (left)
+  // ── Footer ────────────────────────────────────────────────
   ctx.fillStyle = SUBTEXT_COLOR
   ctx.font = '15px sans-serif'
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
-  ctx.fillText(`letterboxd.com/${username}`, 40, FOOTER_Y)
+  ctx.fillText(`letterboxd.com/${username}`, 40, layout.footerY)
 
-  // Attribution (right)
   ctx.fillStyle = DIM_COLOR
   ctx.font = '13px sans-serif'
   ctx.textAlign = 'right'
   ctx.textBaseline = 'middle'
-  ctx.fillText('generated by Boxd Card', CARD_WIDTH - 40, FOOTER_Y)
+  ctx.fillText('generated by Boxd Card', layout.cardWidth - 40, layout.footerY)
 
   return new Promise((resolve, reject) => {
     canvas.toBlob(

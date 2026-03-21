@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Boxd Card",
   "version": "0.1.1",
-  "description": "Generate a shareable Last Four Watched image card from your Letterboxd profile.",
+  "description": "Generate a shareable image card from your Letterboxd profile.",
   "homepage_url": "https://github.com/michaellambgelo/boxd-card",
   "permissions": ["clipboardWrite", "activeTab"],
   "host_permissions": [
@@ -24,7 +24,12 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://letterboxd.com/*/"],
+      "matches": [
+        "https://letterboxd.com/*/",
+        "https://letterboxd.com/*/diary/",
+        "https://letterboxd.com/*/films/diary/",
+        "https://letterboxd.com/*/list/*/"
+      ],
       "js": ["src/content/index.ts"],
       "run_at": "document_idle"
     }
