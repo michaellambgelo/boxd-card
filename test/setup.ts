@@ -25,13 +25,18 @@ const mockCtx = {
   fillRect: vi.fn(),
   drawImage: vi.fn(),
   fillText: vi.fn(),
+  fill: vi.fn(),
+  stroke: vi.fn(),
   measureText: vi.fn(() => ({ width: 80 })),
   save: vi.fn(),
   restore: vi.fn(),
   clip: vi.fn(),
   beginPath: vi.fn(),
+  closePath: vi.fn(),
   roundRect: vi.fn(),
   arc: vi.fn(),
+  moveTo: vi.fn(),
+  lineTo: vi.fn(),
 }
 
 Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
