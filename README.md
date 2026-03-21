@@ -54,6 +54,7 @@ npm run dev      # build in watch mode → dist/
 npm run build    # one-shot production build
 npm run test     # Vitest in watch mode
 npm run test:run # single test run (CI)
+npm run coverage # v8 coverage report
 ```
 
 **Loading the extension in Chrome:**
@@ -84,8 +85,9 @@ After each subsequent `npm run build`, click the **↺ reload** button on the ex
 
 ## Status
 
-Currently in active development (v0.1.0). The core generation pipeline is working. Known gaps:
+v0.1.1 — Core generation pipeline is working. Submitted to the Chrome Web Store. Known gaps:
 
-- Icons are placeholder — a real icon is needed before any store submission
 - No graceful handling for profiles with fewer than 4 recent films
 - Popup UI is functional but unstyled
+
+Privacy policy: [blog.michaellamb.dev/boxd-card/privacy.html](https://blog.michaellamb.dev/boxd-card/privacy.html)
