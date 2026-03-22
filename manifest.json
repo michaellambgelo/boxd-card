@@ -1,10 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Boxd Card",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Generate a shareable image card from your Letterboxd profile.",
   "homepage_url": "https://github.com/michaellambgelo/boxd-card",
-  "permissions": ["clipboardWrite", "activeTab", "declarativeContent"],
+  "permissions": [
+    "clipboardWrite",
+    "activeTab",
+    "declarativeContent"
+  ],
   "host_permissions": [
     "https://letterboxd.com/*",
     "https://a.ltrbxd.com/*",
@@ -30,7 +34,9 @@
         "https://letterboxd.com/*/films/diary/",
         "https://letterboxd.com/*/list/*/"
       ],
-      "js": ["src/content/index.ts"],
+      "js": [
+        "src/content/index.ts"
+      ],
       "run_at": "document_idle"
     }
   ],
