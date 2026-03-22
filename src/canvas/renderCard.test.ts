@@ -92,6 +92,10 @@ describe('renderCard', () => {
     expect(blob).toBeInstanceOf(Blob)
   })
 
+  it('throws when films array is empty', async () => {
+    await expect(renderCard({ ...MOCK_OPTIONS, films: [] })).rejects.toThrow('No films found to render.')
+  })
+
   it('renders a card with title and description metadata', async () => {
     const films = Array.from({ length: 4 }, (_, i) => ({
       title: `Film ${i}`, year: '2024', rating: '',

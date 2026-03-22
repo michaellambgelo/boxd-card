@@ -132,6 +132,10 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
     (cardType === 'list' || cardType === 'recent-diary') ? (listCount ?? 4) : 4,
   )
 
+  if (filmCount === 0) {
+    throw new Error('No films found to render.')
+  }
+
   const showingListTitle = cardType === 'list' && !!showListTitle && !!listTitle
   const showingListDesc  = cardType === 'list' && !!showListDescription && !!listDescription
   const showingCardTypeLabel = cardType !== 'list' && !!showCardTypeLabel && !!cardTypeLabel

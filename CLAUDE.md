@@ -177,7 +177,6 @@ npm run coverage # Vitest with v8 coverage
 
 ## Known Gaps
 
-- Version not bumped since v0.1.1 despite significant new features
 - Favorites have no star ratings by design (not present in the DOM)
-- No graceful handling when page has fewer films than the requested count
-- Popup UI is functional but unstyled
+- Sparse layout (1–3 films for last-four/favorites) is centered correctly but visually sparse — accepted behavior
+- Popup UI styled; no known remaining gaps
