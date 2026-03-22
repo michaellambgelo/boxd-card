@@ -37,13 +37,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Find the PR that was merged into release by this commit
+          # Resolve the semver bump level from the label on the PR that introduced
+          # this commit. Uses the commits API rather than searching merged PRs —
+          # more reliable since it doesn't depend on merge-commit SHA matching.
           SHA="${{ github.sha }}"
-          LABEL=$(gh pr list \
-            --base release \
-            --state merged \
-            --json number,mergeCommit,labels \
-            --jq ".[] | select(.mergeCommit.oid == \"$SHA\") | .labels[].name" \
+          LABEL=$(gh api "repos/${{ github.repository }}/commits/$SHA/pulls" \
+            --jq '.[0].labels[].name' \
             | grep -E '^(major|minor|patch)$' \
             | head -1)
 
