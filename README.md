@@ -15,7 +15,7 @@ Custom posters (a Letterboxd Pro/Patron feature) are supported automatically —
 | Recent Diary | `letterboxd.com/<username>/diary/` | 4, 10, or 20 |
 | List | `letterboxd.com/<username>/list/<slug>/` | 4, 10, or 20 |
 
-The extension icon is only shown when you're on a `letterboxd.com` page. The Generate button disables automatically when the current page doesn't match the selected card type, with a hint showing where to navigate.
+The extension icon is always visible. The Generate button is inactive on non-Letterboxd pages. While on Letterboxd, if the selected card type doesn't match the current page, a navigation hint appears pointing to the correct URL.
 
 ## How it works
 
@@ -110,7 +110,7 @@ After each subsequent `npm run build`, click the **↺ reload** button on the ex
 |---|---|
 | `activeTab` | Read the URL of the current tab to validate it's a supported Letterboxd page |
 | `clipboardWrite` | Copy the generated card image to the clipboard |
-| `declarativeContent` | Show the extension icon only on letterboxd.com pages |
+| `declarativeContent` | Control Generate button availability based on the active tab URL |
 | `https://letterboxd.com/*` | Fetch poster redirects from the Letterboxd CDN |
 | `https://a.ltrbxd.com/*` | Fetch poster images from the primary Letterboxd image CDN |
 | `https://s.ltrbxd.com/*` | Fetch static assets (logo) |
@@ -121,7 +121,6 @@ v0.1.1 — submitted to the Chrome Web Store. Core generation pipeline is workin
 
 Known gaps:
 - Popup UI is functional but unstyled
-- No graceful handling when a page has fewer films than the requested count
 - Favorites cards show no star ratings (ratings are not present in the favorites DOM)
 
 Privacy policy: [blog.michaellamb.dev/boxd-card/privacy.html](https://blog.michaellamb.dev/boxd-card/privacy.html)
