@@ -1,0 +1,195 @@
+/* ── Color tokens (dark default, light via media query) ─────── */
+.popup {
+  --bg:       #1a1a1a;
+  --surface:  #262626;
+  --text:     #ffffff;
+  --subtext:  #99aabb;
+  --border:   #333344;
+  --input-bg: #2a2a2a;
+  --error:    #e05555;
+  --warn:     #e08040;
+  --gradient: linear-gradient(to right, #EF8D22, #0EDF52, #40BCF4);
+  --radius:   6px;
+
+  color-scheme: dark;
+  width: 340px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, sans-serif;
+  font-size: 13px;
+  overflow: hidden;
+}
+
+@media (prefers-color-scheme: light) {
+  .popup {
+    --bg:       #f5f5f5;
+    --surface:  #ffffff;
+    --text:     #1a1a1a;
+    --subtext:  #556677;
+    --border:   #dedede;
+    --input-bg: #ffffff;
+    --error:    #c0392b;
+    --warn:     #b5600e;
+    color-scheme: light;
+  }
+}
+
+/* ── Loading bar ─────────────────────────────────────────────── */
+.loadingBar {
+  height: 3px;
+  background: linear-gradient(to right, #EF8D22, #0EDF52, #40BCF4, #EF8D22);
+  background-size: 200% auto;
+  animation: sweep 1.5s linear infinite;
+}
+
+@keyframes sweep {
+  from { background-position:   0% center; }
+  to   { background-position: 200% center; }
+}
+
+/* ── Header ──────────────────────────────────────────────────── */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+/* ── Body ────────────────────────────────────────────────────── */
+.body {
+  padding: 14px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ── Field (label + select) ──────────────────────────────────── */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.fieldLabel {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--subtext);
+}
+
+.select {
+  background: var(--input-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+  font-size: 13px;
+  width: 100%;
+}
+
+/* ── Radio group (film count) ────────────────────────────────── */
+.radioGroup {
+  display: flex;
+  gap: 16px;
+}
+
+/* ── Navigation hint ─────────────────────────────────────────── */
+.hint {
+  color: var(--warn);
+  font-size: 12px;
+  margin: 0;
+}
+
+/* ── Checkbox layouts ────────────────────────────────────────── */
+.checkboxGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 12px;
+}
+
+.checkboxRow {
+  display: flex;
+  gap: 16px;
+}
+
+.checkboxLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.checkboxLabel:has(input:disabled) {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Generate button ─────────────────────────────────────────── */
+.generateBtn {
+  width: 100%;
+  padding: 9px 0;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--gradient);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.generateBtn:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.generateBtn:disabled {
+  background: var(--surface);
+  color: var(--subtext);
+  border: 1px solid var(--border);
+  cursor: not-allowed;
+}
+
+/* ── Error ───────────────────────────────────────────────────── */
+.error {
+  color: var(--error);
+  font-size: 13px;
+  margin: 0;
+}
+
+/* ── Card preview ────────────────────────────────────────────── */
+.preview {
+  width: 100%;
+  border-radius: 4px;
+  display: block;
+}
+
+/* ── Download / Copy buttons ─────────────────────────────────── */
+.actionRow {
+  display: flex;
+  gap: 8px;
+}
+
+.actionBtn {
+  flex: 1;
+  padding: 7px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.actionBtn:hover {
+  background: var(--input-bg);
+}
