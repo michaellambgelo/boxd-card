@@ -43,8 +43,7 @@ jobs:
             --base release \
             --state merged \
             --json number,mergeCommit,labels \
-            --jq --arg sha "$SHA" \
-            '.[] | select(.mergeCommit.oid == $sha) | .labels[].name' \
+            --jq ".[] | select(.mergeCommit.oid == \"$SHA\") | .labels[].name" \
             | grep -E '^(major|minor|patch)$' \
             | head -1)
 
