@@ -78,9 +78,16 @@ export default function Popup() {
         throw new Error('No films found on this page.')
       }
 
-      const posterDataUrls = await Promise.all(
+      const posterResults = await Promise.allSettled(
         filmData.films.map((f: FilmData) => fetchPosterDataUrl(f.posterUrl))
       )
+      const failedCount = posterResults.filter(r => r.status === 'rejected').length
+      if (failedCount > 0) {
+        throw new Error(
+          `${failedCount} poster${failedCount === 1 ? '' : 's'} failed to load. Try refreshing the page.`
+        )
+      }
+      const posterDataUrls = posterResults.map(r => (r as PromiseFulfilledResult<string>).value)
 
       const films = filmData.films.map((f: FilmData, i: number) => ({
         title:         f.title,
