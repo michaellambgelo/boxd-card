@@ -147,9 +147,18 @@ export function scrapeDiary(count = 4): FilmData[] {
 }
 
 // ── List ──────────────────────────────────────────────────────────────────────
-// Scrapes letterboxd.com/<username>/list/<slug>/
+// Scrapes letterboxd.com/<username>/list/<slug>/ (grid view)
+//      or letterboxd.com/<username>/list/<slug>/detail/ (detail view, has ratings)
 // count: 4 | 10 | 20
-// Selectors verified against live Letterboxd list DOM.
+
+// Letterboxd encodes the owner's rating as data-owner-rating="N" (1–10 scale)
+// on li.posteritem in the grid view. Convert to star text for display.
+const STAR_MAP = ['½', '★', '★½', '★★', '★★½', '★★★', '★★★½', '★★★★', '★★★★½', '★★★★★']
+export function ownerRatingToStars(value: string | null): string {
+  if (!value) return ''
+  const n = parseInt(value, 10)
+  return (n >= 1 && n <= 10) ? STAR_MAP[n - 1] : ''
+}
 
 export function scrapeListMeta(): { listTitle: string; listDescription: string } {
   const listTitle = document.querySelector('.list-title-intro h1.title-1')?.textContent?.trim() ?? ''
@@ -162,8 +171,9 @@ export function scrapeListMeta(): { listTitle: string; listDescription: string }
 }
 
 export function scrapeList(count: number): FilmData[] {
+  // li.posteritem = grid view  |  li.film-detail = detail view (/detail/)
   return Array.from(
-    document.querySelectorAll('ul.js-list-entries li.posteritem')
+    document.querySelectorAll('ul.js-list-entries li.posteritem, ul.js-list-entries li.film-detail')
   ).slice(0, count).map(item => {
     const lazyPoster = item.querySelector(
       '.react-component[data-component-class="LazyPoster"]'
@@ -184,7 +194,12 @@ export function scrapeList(count: number): FilmData[] {
         ? `https://letterboxd.com${dataPosterUrl}`
         : ''
 
-    return { title, year, rating: '', posterUrl, filmId }
+    // Detail view: explicit .rating span. Grid view: data-owner-rating attribute.
+    const ratingEl = item.querySelector('.rating')
+    const rating = ratingEl?.textContent?.trim()
+      || ownerRatingToStars(item.getAttribute('data-owner-rating'))
+
+    return { title, year, rating, posterUrl, filmId }
   })
 }
 

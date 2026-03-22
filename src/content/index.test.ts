@@ -5,6 +5,7 @@ import {
   scrapeDiary,
   scrapeList,
   scrapeListMeta,
+  ownerRatingToStars,
 } from './index'
 
 const PLACEHOLDER = 'empty-poster-150-DtnLDE3k.png'
@@ -297,6 +298,7 @@ describe('scrapeList', () => {
     filmId?: string
     posterUrl?: string
     imgSrc?: string
+    ownerRating?: string | null   // null = omit attribute entirely
   }
 
   function makeListItem(overrides: ListItemOverrides = {}): string {
@@ -305,14 +307,38 @@ describe('scrapeList', () => {
       filmId = '371378',
       posterUrl = '/film/dune-2021/image-150/',
       imgSrc = REAL_POSTER,
+      ownerRating = '8',
     } = overrides
+    const ratingAttr = ownerRating != null ? ` data-owner-rating="${ownerRating}"` : ''
     return `
-      <li class="posteritem" data-owner-rating="8">
+      <li class="posteritem"${ratingAttr}>
         <div class="react-component" data-component-class="LazyPoster"
           data-item-name="${name}"
           data-film-id="${filmId}"
           data-poster-url="${posterUrl}">
           <img class="image" src="${imgSrc}" />
+        </div>
+      </li>`
+  }
+
+  function makeDetailListItem(overrides: ListItemOverrides & { rating?: string } = {}): string {
+    const {
+      name = 'Dune (2021)',
+      filmId = '371378',
+      posterUrl = '/film/dune-2021/image-150/',
+      imgSrc = REAL_POSTER,
+      rating = '★★★★',
+    } = overrides
+    return `
+      <li class="film-detail">
+        <div class="react-component" data-component-class="LazyPoster"
+          data-item-name="${name}"
+          data-film-id="${filmId}"
+          data-poster-url="${posterUrl}">
+          <img class="image" src="${imgSrc}" />
+        </div>
+        <div class="film-detail-content">
+          <span class="rating">${rating}</span>
         </div>
       </li>`
   }
@@ -335,7 +361,47 @@ describe('scrapeList', () => {
     expect(film.title).toBe('Dune')
     expect(film.year).toBe('2021')
     expect(film.filmId).toBe('371378')
+    expect(film.rating).toBe('★★★★')  // data-owner-rating="8"
+  })
+
+  it('returns empty rating when data-owner-rating is absent', () => {
+    setListDOM([makeListItem({ ownerRating: null })])
+    const [film] = scrapeList(1)
     expect(film.rating).toBe('')
+  })
+
+  it('reads rating from .rating span in detail view (li.film-detail)', () => {
+    document.body.innerHTML = `<ul class="js-list-entries">${makeDetailListItem()}</ul>`
+    const [film] = scrapeList(1)
+    expect(film.title).toBe('Dune')
+    expect(film.rating).toBe('★★★★')
+  })
+
+  it('prefers .rating span over data-owner-rating when both present', () => {
+    document.body.innerHTML = `
+      <ul class="js-list-entries">
+        <li class="posteritem" data-owner-rating="2">
+          <div class="react-component" data-component-class="LazyPoster"
+            data-item-name="Dune (2021)" data-film-id="1" data-poster-url="/film/dune/image-150/">
+            <img class="image" src="${REAL_POSTER}" />
+          </div>
+          <span class="rating">★★★★★</span>
+        </li>
+      </ul>`
+    const [film] = scrapeList(1)
+    expect(film.rating).toBe('★★★★★')
+  })
+
+  it('returns mixed grid and detail items from the same list', () => {
+    document.body.innerHTML = `
+      <ul class="js-list-entries">
+        ${makeListItem({ name: 'Film A (2021)', filmId: '1' })}
+        ${makeDetailListItem({ name: 'Film B (2022)', filmId: '2', rating: '★★★' })}
+      </ul>`
+    const films = scrapeList(4)
+    expect(films).toHaveLength(2)
+    expect(films[0].rating).toBe('★★★★')
+    expect(films[1].rating).toBe('★★★')
   })
 
   it('uses resolved img.src when not a placeholder', () => {
@@ -423,5 +489,32 @@ describe('scrapeListMeta', () => {
   it('returns empty listDescription when all paragraphs are filtered', () => {
     setListMetaDOM('Test List', ['Updated 20 Mar'])
     expect(scrapeListMeta().listDescription).toBe('')
+  })
+})
+
+// ── ownerRatingToStars ────────────────────────────────────────────────────────
+
+describe('ownerRatingToStars', () => {
+  it('returns empty string for null', () => {
+    expect(ownerRatingToStars(null)).toBe('')
+  })
+
+  it('returns empty string for out-of-range values', () => {
+    expect(ownerRatingToStars('0')).toBe('')
+    expect(ownerRatingToStars('11')).toBe('')
+    expect(ownerRatingToStars('abc')).toBe('')
+  })
+
+  it('maps 1→½ and 2→★', () => {
+    expect(ownerRatingToStars('1')).toBe('½')
+    expect(ownerRatingToStars('2')).toBe('★')
+  })
+
+  it('maps 8→★★★★', () => {
+    expect(ownerRatingToStars('8')).toBe('★★★★')
+  })
+
+  it('maps 10→★★★★★', () => {
+    expect(ownerRatingToStars('10')).toBe('★★★★★')
   })
 })
