@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="500px" height="500px" viewBox="0 0 500 500" version="1.1" xmlns="http://www.w3.org/2000/svg">
+    <title>letterboxd-decal-bc-pos-rgb</title>
+    <!--
+      Same visual as the Letterboxd decal series: dark circle (#202830) with
+      the letter shape knocked out (transparent) via an SVG mask.
+      White areas of the mask = circle fill shows through (dark).
+      Black areas of the mask = circle fill is hidden (knockout).
+    -->
+    <defs>
+        <mask id="letter-mask">
+            <circle cx="250" cy="250" r="250" fill="white"/>
+            <text
+                x="250" y="250"
+                text-anchor="middle"
+                dominant-baseline="central"
+                font-family="Arial Black, Arial, Helvetica, sans-serif"
+                font-weight="900"
+                font-size="230"
+                fill="black">BC</text>
+        </mask>
+    </defs>
+    <circle cx="250" cy="250" r="250" fill="#202830" mask="url(#letter-mask)"/>
+</svg>

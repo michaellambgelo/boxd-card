@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="500px" height="500px" viewBox="0 0 500 500" version="1.1" xmlns="http://www.w3.org/2000/svg">
+    <title>letterboxd-decal-bc-grad2-rgb</title>
+    <defs>
+        <!-- Letterboxd brand gradient: orange → green → blue, top-left to bottom-right -->
+        <linearGradient id="brand-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%"   stop-color="#EF8D22"/>
+            <stop offset="50%"  stop-color="#0EDF52"/>
+            <stop offset="100%" stop-color="#40BCF4"/>
+        </linearGradient>
+        <!-- Mask: white = gradient shows through, black = letter knockout (transparent) -->
+        <mask id="letter-mask">
+            <circle cx="250" cy="250" r="250" fill="white"/>
+            <text
+                x="250" y="250"
+                text-anchor="middle"
+                dominant-baseline="central"
+                font-family="Arial Black, Arial, Helvetica, sans-serif"
+                font-weight="900"
+                font-size="230"
+                fill="black">BC</text>
+        </mask>
+    </defs>
+    <circle cx="250" cy="250" r="250" fill="url(#brand-gradient)" mask="url(#letter-mask)"/>
+</svg>
