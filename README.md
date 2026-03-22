@@ -1,4 +1,4 @@
-# Boxd Card
+# ![Boxd Card](public/icons/icon48.png) Boxd Card
 
 A Chrome extension that generates shareable image cards from your Letterboxd profile — last watched films, favorites, diary entries, or any list.
 
