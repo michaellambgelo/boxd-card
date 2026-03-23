@@ -18,6 +18,9 @@ export interface FilmDataResponse {
   listDescription?: string
   listTags?: string[] // user tags for the list itself
   backdropUrl?: string
+  loggedInUsername?: string  // logged-in user; used by popup for isOwnProfile detection only
+  loggedInAvatarUrl?: string // logged-in user avatar; used when isOwnProfile
+  authorAvatarUrl?: string   // page owner avatar; used when not isOwnProfile
 }
 
 export interface GetFilmDataRequest {
@@ -353,12 +356,122 @@ export async function scrapeReviewsList(count: number): Promise<FilmData[]> {
 export async function scrapeReviews(count: number): Promise<FilmDataResponse> {
   const username = (document.body as HTMLBodyElement & { dataset: DOMStringMap }).dataset.owner ?? ''
   const backdropUrl = scrapeBackdropUrl()
+  const { username: loggedInUsername, avatarUrl: loggedInAvatarUrl } = scrapeLoggedInUser()
+  const authorAvatarUrl = scrapePageOwnerAvatarUrl()
   if (document.querySelector('div.viewing-list')) {
     const films = await scrapeReviewsList(count)
-    return { films, username, backdropUrl }
+    return { films, username, backdropUrl, loggedInUsername, loggedInAvatarUrl, authorAvatarUrl }
   }
   const films = await scrapeReview()
-  return { films, username, backdropUrl }
+  return { films, username, backdropUrl, loggedInUsername, loggedInAvatarUrl, authorAvatarUrl }
+}
+
+// ── Films page (/<username>/films/) ──────────────────────────────────────────
+// Scrapes the first 4 films from the films grid on letterboxd.com/<username>/films/.
+// The page defaults to "Recently Watched" order, so the first 4 are the last four watched.
+// Selector: div.poster-grid > ul.grid li.griditem (matches actual /films/ page HTML).
+
+export function scrapeFilmsPage(): FilmData[] {
+  return Array.from(
+    document.querySelectorAll('ul.grid li.griditem')
+  ).slice(0, 4).map(item => {
+    const lazyPoster = item.querySelector(
+      '.react-component[data-component-class="LazyPoster"]'
+    )
+    const img = item.querySelector('img.image') as HTMLImageElement | null
+
+    const rawTitle = lazyPoster?.getAttribute('data-item-name') ?? ''
+    const titleMatch = rawTitle.match(/^(.+?)(?:\s*\((\d{4})\))?$/)
+    const title = titleMatch?.[1]?.trim() ?? rawTitle
+    const year = titleMatch?.[2] ?? ''
+    const filmId = lazyPoster?.getAttribute('data-film-id') ?? ''
+
+    const resolvedSrc = img?.src ?? ''
+    const dataPosterUrl = lazyPoster?.getAttribute('data-poster-url') ?? ''
+    const posterUrl = resolvedSrc && !resolvedSrc.includes(PLACEHOLDER)
+      ? resolvedSrc
+      : dataPosterUrl
+        ? `https://letterboxd.com${dataPosterUrl}`
+        : ''
+
+    const ratingEl = item.querySelector('.rating')
+    const rating = ratingEl?.textContent?.trim() ?? ''
+
+    return { title, year, rating, posterUrl, filmId }
+  })
+}
+
+// ── Logged-In User ────────────────────────────────────────────────────────────
+// Reads the logged-in user's username and avatar from Letterboxd's page-level
+// `person` global. Letterboxd sets these as property assignments in an inline
+// <head> script: `person.username = "foo"; person.loggedIn = true;`
+// Content scripts run in an isolated JS world, so they cannot access page globals
+// directly. We use a two-pass strategy:
+//
+//   1. Direct access — works in test environments (JSDOM shares the global
+//      scope) and any future MAIN-world execution context.
+//   2. Inline script text parsing — reads textContent of inline <script> tags
+//      and extracts values via regex. No execution or injection needed, so
+//      it works even when Letterboxd's CSP blocks inline script injection.
+
+export function scrapeLoggedInUser(): { username: string; avatarUrl: string } {
+  // Pass 1: direct access (succeeds in JSDOM / MAIN world).
+  try {
+    // @ts-ignore
+    if (typeof person !== 'undefined' && person?.loggedIn && person?.username) {
+      // @ts-ignore
+      const u: string = person.username
+      // @ts-ignore
+      const a: string = (person.avatarURL24 || '').replace('0-48-0-48-crop', '0-80-0-80-crop')
+      return { username: u, avatarUrl: a }
+    }
+  } catch { /* fall through */ }
+
+  // Pass 2: parse inline <script> text — works in Chrome's isolated world.
+  // Letterboxd writes assignments: person.username = "foo"; person.loggedIn = true;
+  // (Some pages may also use JSON object literal format.)
+  try {
+    const scripts = Array.from(document.querySelectorAll('head script:not([src])'))
+    for (const s of scripts) {
+      const text = s.textContent ?? ''
+      if (!text.includes('person') || !text.includes('loggedIn')) continue
+      const loggedInMatch = text.match(/(?:person\.loggedIn\s*=\s*|"loggedIn"\s*:\s*)(true|false)/)
+      if (!loggedInMatch || loggedInMatch[1] !== 'true') continue
+      const usernameMatch = text.match(/(?:person\.username\s*=\s*|"username"\s*:\s*)"([^"]+)"/)
+      const avatarMatch = text.match(/(?:person\.avatarURL24\s*=\s*|"avatarURL24"\s*:\s*)"([^"]+)"/)
+      if (!usernameMatch) continue
+      const u = usernameMatch[1]
+      const a = (avatarMatch?.[1] ?? '').replace('0-48-0-48-crop', '0-80-0-80-crop')
+      return { username: u, avatarUrl: a }
+    }
+  } catch { /* fall through */ }
+
+  return { username: '', avatarUrl: '' }
+}
+
+// ── Page Owner Avatar ─────────────────────────────────────────────────────────
+// Profile and diary pages render the page owner's avatar in a profile-header
+// section. Single review and list pages may not have a visible avatar for the
+// owner; in those cases we return empty string and the footer shows username only.
+// We also try data-src for lazily-loaded images.
+
+export function scrapePageOwnerAvatarUrl(): string {
+  const selectors = [
+    '.profile-person-avatar img',
+    '.profile-person .avatar img',
+    'section.profile-header img.avatar',
+    '.profile-summary .avatar img',
+    '.person-summary .avatar img',
+  ]
+  for (const sel of selectors) {
+    const el = document.querySelector(sel) as HTMLImageElement | null
+    if (!el) continue
+    const src = el.getAttribute('data-src') || el.src || ''
+    if (src && !src.includes('empty') && !src.includes('placeholder') && src.startsWith('http')) {
+      return src.replace('0-48-0-48-crop', '0-80-0-80-crop')
+    }
+  }
+  return ''
 }
 
 // ── Backdrop ──────────────────────────────────────────────────────────────────
@@ -387,6 +500,11 @@ chrome.runtime.onMessage.addListener((message: GetFilmDataRequest, _sender, send
     let films: FilmData[]
     let listMeta: { listTitle?: string; listDescription?: string; listTags?: string[] } = {}
     switch (message.cardType) {
+      case 'last-four-watched':
+        // Profile page uses #recent-activity; /films/ page uses ul.poster-list
+        films = scrapeRecentActivity()
+        if (!films.length) films = scrapeFilmsPage()
+        break
       case 'favorites':    films = scrapeFavorites();                        break
       case 'recent-diary': films = scrapeDiary(message.listCount ?? 4);      break
       case 'list':
@@ -396,7 +514,14 @@ chrome.runtime.onMessage.addListener((message: GetFilmDataRequest, _sender, send
       default:             films = scrapeRecentActivity();                   break
     }
     const username = (document.body as HTMLBodyElement & { dataset: DOMStringMap }).dataset.owner ?? ''
-    sendResponse({ films, username, ...listMeta, backdropUrl: scrapeBackdropUrl() } satisfies FilmDataResponse)
+    sendResponse({ 
+      films, 
+      username, 
+      ...listMeta, 
+      backdropUrl: scrapeBackdropUrl(),
+      ...(() => { const { username: u, avatarUrl: a } = scrapeLoggedInUser(); return { loggedInUsername: u, loggedInAvatarUrl: a } })(),
+      authorAvatarUrl: scrapePageOwnerAvatarUrl(),
+    } satisfies FilmDataResponse)
   }
   return true
 })

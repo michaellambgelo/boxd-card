@@ -96,6 +96,15 @@ describe('renderCard', () => {
     await expect(renderCard({ ...MOCK_OPTIONS, films: [] })).rejects.toThrow('No films found to render.')
   })
 
+  it('renders with a logged-in user avatar in the footer', async () => {
+    const blob = await renderCard({
+      ...MOCK_OPTIONS,
+      footerAvatarDataUrl: 'data:image/png;base64,abc',
+      showShareIcon: false,
+    })
+    expect(blob).toBeInstanceOf(Blob)
+  })
+
   it('renders a card with title and description metadata', async () => {
     const films = Array.from({ length: 4 }, (_, i) => ({
       title: `Film ${i}`, year: '2024', rating: '',
@@ -215,18 +224,19 @@ describe('drawTagPills', () => {
     expect(drawTagPills(ctx, [], 0, 0, 500, false)).toBe(0)
   })
 
-  it('returns TAG_PILL_H (22) for a single tag that fits', () => {
+  it('returns TAG_PILL_H (56) for a single tag that fits', () => {
     const ctx = makeCtx()
     const h = drawTagPills(ctx, ['sci-fi'], 0, 0, 500, false)
-    expect(h).toBe(22)
+    expect(h).toBe(56)
   })
 
   it('wraps to a second row when pills overflow maxWidth', () => {
     const ctx = makeCtx()
-    // Each tag "aaaaaaaaaa" (10 chars) → 80px text + 16px padding = 96px pill
-    // maxWidth=100: first pill fits (96 < 100), second pill at curX=96+6=102 > 100 → new row
+    // Each tag "aaaaaaaaaa" (10 chars) → 80px text + 40px padding (TAG_PAD_X*2) = 120px pill
+    // maxWidth=100: first pill placed at curX=0 (no prior pill to trigger wrap check),
+    // second pill at curX=135 → 135+120 > 100 && curX>0 → new row
     const h = drawTagPills(ctx, ['aaaaaaaaaa', 'aaaaaaaaaa'], 0, 0, 100, false)
-    expect(h).toBe(22 + 6 + 22)  // two rows: PILL_H + ROW_GAP + PILL_H
+    expect(h).toBe(56 + 15 + 56)  // two rows: PILL_H + ROW_GAP + PILL_H
   })
 
   it('draws pill backgrounds and text when draw=true', () => {
@@ -376,6 +386,19 @@ describe('renderCard — review type', () => {
       cardType: 'review',
       reviewCount: 1,
       backdropDataUrl: 'data:image/png;base64,abc',
+    })
+    expect(blob).toBeInstanceOf(Blob)
+  })
+
+  it('renders with a logged-in user avatar in the footer', async () => {
+    const blob = await renderCard({
+      films: [reviewFilm],
+      username: 'michaellamb',
+      showTitle: true, showYear: true, showRating: true, showDate: true,
+      cardType: 'review',
+      reviewCount: 1,
+      footerAvatarDataUrl: 'data:image/png;base64,abc',
+      showShareIcon: false,
     })
     expect(blob).toBeInstanceOf(Blob)
   })

@@ -30,6 +30,8 @@ export interface CardOptions {
   showTags?: boolean
   listTags?: string[]
   backdropDataUrl?: string
+  footerAvatarDataUrl?: string  // avatar for the footer identity (own avatar or author avatar)
+  showShareIcon?: boolean        // true when generating from someone else's profile
 }
 
 export interface CardLayout {
@@ -169,12 +171,12 @@ export function wrapText(
 }
 
 // ── Tag pills ────────────────────────────────────────────────────────────────
-const TAG_FONT     = '12px sans-serif'
-const TAG_PILL_H   = 22
-const TAG_PAD_X    = 8
-const TAG_GAP      = 6    // horizontal gap between pills
-const TAG_ROW_GAP  = 6    // vertical gap between pill rows
-const TAG_RADIUS   = 11   // fully rounded ends
+const TAG_FONT     = '30px sans-serif'
+const TAG_PILL_H   = 56
+const TAG_PAD_X    = 20
+const TAG_GAP      = 15   // horizontal gap between pills
+const TAG_ROW_GAP  = 15   // vertical gap between pill rows
+const TAG_RADIUS   = 28   // fully rounded ends
 const TAG_BG       = '#2d3a52'
 const TAG_COLOR    = '#99aabb'
 
@@ -252,11 +254,11 @@ const RV_POSTER_H      = 300
 const RV_POSTER_X      = 40
 const RV_CONTENT_X     = RV_POSTER_X + RV_POSTER_W + 30  // 270
 const RV_CONTENT_W     = 1200 - RV_CONTENT_X - 40        // 890
-const RV_TITLE_H       = 30   // bold 22px title line height
-const RV_META_H        = 26   // rating / date line height
-const RV_META_GAP      = 6    // gap between consecutive meta lines
-const RV_REVIEW_FS     = 17   // review text font-size (px)
-const RV_REVIEW_LINE_H = 24   // review text line height
+const RV_TITLE_H       = 54   // bold 39px title line height
+const RV_META_H        = 45   // rating / date line height
+const RV_META_GAP      = 9    // gap between consecutive meta lines
+const RV_REVIEW_FS     = 30   // review text font-size (px)
+const RV_REVIEW_LINE_H = 42   // review text line height
 const RV_TOP_PAD       = 28   // gap below header, above first review
 const RV_ROW_GAP       = 28   // gap between consecutive review rows
 const RV_FOOTER_GAP    = 44   // gap below last review, above footer
@@ -301,7 +303,7 @@ function measureReviewRows(
     }
 
     if (film.reviewText) {
-      if (!firstMeta) contentH += 14  // gap before review text
+      if (!firstMeta) contentH += 21  // gap before review text
       measureCtx.font = `${RV_REVIEW_FS}px sans-serif`
       contentH += wrapText(measureCtx, film.reviewText, 0, 0, RV_CONTENT_W, RV_REVIEW_LINE_H, false)
     }
@@ -325,6 +327,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
     films, username, showTitle, showYear, showRating, showDate, cardType, listCount,
     showListTitle, showListDescription, listTitle, listDescription,
     showCardTypeLabel, cardTypeLabel, reviewCount, showTags, listTags, backdropDataUrl,
+    footerAvatarDataUrl, showShareIcon,
   } = options
 
   // ── Review card ──────────────────────────────────────────────────────────
@@ -379,7 +382,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
             ? `${film.title} (${film.year})`
             : film.title
           ctx.fillStyle = TEXT_COLOR
-          ctx.font = 'bold 22px sans-serif'
+          ctx.font = 'bold 39px sans-serif'
           ctx.textAlign = 'left'
           ctx.textBaseline = 'top'
           ctx.fillText(truncate(ctx, displayTitle, RV_CONTENT_W), RV_CONTENT_X, contentY)
@@ -389,7 +392,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
       if (showRating && film.rating) {
         drawMetaLine(RV_META_H, () => {
           ctx.fillStyle = '#FFB020'
-          ctx.font = '20px sans-serif'
+          ctx.font = '35px sans-serif'
           ctx.textAlign = 'left'
           ctx.textBaseline = 'top'
           ctx.fillText(film.rating, RV_CONTENT_X, contentY)
@@ -399,7 +402,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
       if (showDate && film.date) {
         drawMetaLine(RV_META_H, () => {
           ctx.fillStyle = SUBTEXT_COLOR
-          ctx.font = '18px sans-serif'
+          ctx.font = '32px sans-serif'
           ctx.textAlign = 'left'
           ctx.textBaseline = 'top'
           ctx.fillText(film.date!, RV_CONTENT_X, contentY)
@@ -413,7 +416,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
       }
 
       if (film.reviewText) {
-        if (!firstMeta) contentY += 14
+        if (!firstMeta) contentY += 21
         ctx.fillStyle = TEXT_COLOR
         ctx.font = `${RV_REVIEW_FS}px sans-serif`
         ctx.textAlign = 'left'
@@ -423,17 +426,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
     }
 
     // Footer
-    ctx.fillStyle = SUBTEXT_COLOR
-    ctx.font = '27px sans-serif'
-    ctx.textAlign = 'left'
-    ctx.textBaseline = 'middle'
-    ctx.fillText(`letterboxd.com/${username}`, 40, footerY)
-
-    ctx.fillStyle = DIM_COLOR
-    ctx.font = '23px sans-serif'
-    ctx.textAlign = 'right'
-    ctx.textBaseline = 'middle'
-    ctx.fillText('generated by Boxd Card', 1200 - 40, footerY)
+    await drawFooter(ctx, footerY, 1200, username, footerAvatarDataUrl, showShareIcon)
 
     return new Promise((resolve, reject) => {
       canvas.toBlob(
@@ -579,17 +572,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
   }
 
   // ── Footer ────────────────────────────────────────────────
-  ctx.fillStyle = SUBTEXT_COLOR
-  ctx.font = '27px sans-serif'
-  ctx.textAlign = 'left'
-  ctx.textBaseline = 'middle'
-  ctx.fillText(`letterboxd.com/${username}`, 40, layout.footerY)
-
-  ctx.fillStyle = DIM_COLOR
-  ctx.font = '23px sans-serif'
-  ctx.textAlign = 'right'
-  ctx.textBaseline = 'middle'
-  ctx.fillText('generated by Boxd Card', layout.cardWidth - 40, layout.footerY)
+  await drawFooter(ctx, layout.footerY, layout.cardWidth, username, footerAvatarDataUrl, showShareIcon)
 
   return new Promise((resolve, reject) => {
     canvas.toBlob(
@@ -600,6 +583,100 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
       'image/png'
     )
   })
+}
+
+// Draws an iOS-style share icon: upward arrow + open-top box.
+// x/y is the top-left corner of the icon's bounding box; size is width and height.
+function drawShareIcon(
+  ctx: CanvasRenderingContext2D, x: number, y: number, size: number, color: string,
+): void {
+  ctx.strokeStyle = color
+  ctx.lineWidth = 2
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+
+  const cx = x + size / 2
+  const tipY  = y + size * 0.08
+  const wingY = y + size * 0.30
+  const wingX = size * 0.21
+  const stemY = y + size * 0.58
+
+  // Arrow head + stem
+  ctx.beginPath()
+  ctx.moveTo(cx - wingX, wingY)
+  ctx.lineTo(cx, tipY)
+  ctx.lineTo(cx + wingX, wingY)
+  ctx.stroke()
+
+  ctx.beginPath()
+  ctx.moveTo(cx, tipY)
+  ctx.lineTo(cx, stemY)
+  ctx.stroke()
+
+  // Open-top box (left side, bottom, right side)
+  const boxL  = x + size * 0.125
+  const boxR  = x + size * 0.875
+  const boxT  = y + size * 0.42
+  const boxB  = y + size * 0.92
+
+  ctx.beginPath()
+  ctx.moveTo(boxL, boxT)
+  ctx.lineTo(boxL, boxB)
+  ctx.lineTo(boxR, boxB)
+  ctx.lineTo(boxR, boxT)
+  ctx.stroke()
+}
+
+// Draws the card footer.
+// Left side always shows the page author: [share icon?] [avatar?] username
+//   showShareIcon=false (own profile):  [avatar] username
+//   showShareIcon=true  (other/none):   [share icon] [avatar?] username
+async function drawFooter(
+  ctx: CanvasRenderingContext2D,
+  footerY: number,
+  cardWidth: number,
+  username: string | undefined,
+  footerAvatarDataUrl: string | undefined,
+  showShareIcon: boolean | undefined,
+): Promise<void> {
+  const SHARE_SIZE = 24
+  const AVATAR_SIZE = 32
+  const ICON_GAP = 10
+
+  let x = 40
+
+  if (showShareIcon) {
+    drawShareIcon(ctx, x, footerY - SHARE_SIZE / 2, SHARE_SIZE, DIM_COLOR)
+    x += SHARE_SIZE + ICON_GAP
+  }
+
+  if (username) {
+    if (footerAvatarDataUrl) {
+      try {
+        const avatarImg = await loadImage(footerAvatarDataUrl)
+        ctx.save()
+        ctx.beginPath()
+        ctx.arc(x + AVATAR_SIZE / 2, footerY, AVATAR_SIZE / 2, 0, Math.PI * 2)
+        ctx.clip()
+        ctx.drawImage(avatarImg, x, footerY - AVATAR_SIZE / 2, AVATAR_SIZE, AVATAR_SIZE)
+        ctx.restore()
+        x += AVATAR_SIZE + ICON_GAP
+      } catch { /* skip avatar on load failure */ }
+    }
+
+    ctx.fillStyle = SUBTEXT_COLOR
+    ctx.font = '27px sans-serif'
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(username, x, footerY)
+  }
+
+  // Right side attribution
+  ctx.fillStyle = DIM_COLOR
+  ctx.font = '23px sans-serif'
+  ctx.textAlign = 'right'
+  ctx.textBaseline = 'middle'
+  ctx.fillText('generated by Boxd Card', cardWidth - 40, footerY)
 }
 
 export async function loadImage(dataUrl: string): Promise<HTMLImageElement> {

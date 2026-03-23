@@ -21,8 +21,8 @@ const U = '[^/]+'
 export const CARD_TYPE_CONFIGS: Record<CardType, CardTypeConfig> = {
   'last-four-watched': {
     label: 'Last Four Watched',
-    urlPattern: new RegExp(`^https://letterboxd\\.com/${U}/?$`),
-    urlHint: 'letterboxd.com/username/',
+    urlPattern: new RegExp(`^https://letterboxd\\.com/${U}/(?:films/)?$`),
+    urlHint: 'letterboxd.com/username/ or /username/films/',
   },
   'favorites': {
     label: 'Favorites',
