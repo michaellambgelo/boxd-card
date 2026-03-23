@@ -205,3 +205,12 @@
 .actionBtn:hover {
   background: var(--input-bg);
 }
+
+.actionBtnCopied {
+  background: linear-gradient(to right, #EF8D22, #0EDF52, #40BCF4, #EF8D22);
+  background-size: 200% auto;
+  animation: sweep 1.5s linear infinite;
+  border-color: transparent;
+  color: #ffffff;
+  font-weight: 600;
+}
