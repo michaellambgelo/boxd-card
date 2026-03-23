@@ -240,7 +240,7 @@ export default function Popup() {
                   checked={reviewCount === n}
                   onChange={() => setReviewCount(n)}
                 />
-                {n} {n === 1 ? 'review' : 'reviews'}
+                {n}
               </label>
             ))}
           </div>
