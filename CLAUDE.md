@@ -107,6 +107,34 @@ ul.js-list-entries li.posteritem
   (filter out paragraphs starting with "Updated")
 ```
 
+### Single review page (`letterboxd.com/<username>/film/<slug>/` or `.../film/<slug>/\d+/`)
+
+```
+Username: document.body.dataset.owner
+
+section.viewing-poster-container
+  .react-component[data-component-class="LazyPoster"]
+    @data-poster-url   "/film/groundhog-day/image-150/"
+  img.image            ← src = resolved poster or placeholder (same fallback strategy)
+
+header.inline-production-masthead h2.primaryname a   ← film title text "Groundhog Day"
+header.inline-production-masthead .releasedate a     ← year text "1993"
+
+.content-reactions-strip span.inline-rating svg      ← @aria-label = "★★★★★" (absent if unrated)
+
+p.view-date a   ← three links in DOM order: day "02", month "Feb", year "2026"
+  (preceded by "Watched" / "Rewatched" text node — ignore)
+
+.js-review-body p   ← one <p> per paragraph; use innerText to get text with \n at <br>
+  join paragraphs with \n\n
+  presence of .js-review-body confirms page is a review (not just a diary entry)
+```
+
+### Reviews list page (`letterboxd.com/<username>/reviews/`) — selectors TBD
+
+Needs a DOM sample. Likely each entry uses similar LazyPoster + `.js-review-body` structure
+repeated in a list container. Scraper will take first N entries matching the count selector.
+
 ### Poster URL strategy
 
 `img.src` starts as a placeholder (`empty-poster-*.png`) and is updated by Letterboxd's LazyPoster React component after load. The scraper checks if `img.src` contains `"empty-poster"` and falls back to `https://letterboxd.com` + `data-poster-url` if so. The background worker then fetches that URL, which redirects to the actual CDN image.
