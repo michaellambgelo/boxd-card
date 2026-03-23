@@ -179,4 +179,3 @@ npm run coverage # Vitest with v8 coverage
 
 - Favorites have no star ratings by design (not present in the DOM)
 - Sparse layout (1–3 films for last-four/favorites) is centered correctly but visually sparse — accepted behavior
-- Popup UI styled; no known remaining gaps
