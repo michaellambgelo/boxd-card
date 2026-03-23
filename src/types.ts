@@ -37,7 +37,7 @@ export const CARD_TYPE_CONFIGS: Record<CardType, CardTypeConfig> = {
   'list': {
     label: 'List',
     urlPattern: new RegExp(`^https://letterboxd\\.com/${U}/list/${U}/(?:detail/?)?$`),
-    urlHint: 'letterboxd.com/username/list/list-name/ (use /detail/ for ratings)',
+    urlHint: 'letterboxd.com/username/list/list-name/',
   },
   'review': {
     label: 'Review',
