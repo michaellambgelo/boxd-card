@@ -117,6 +117,13 @@ npm run coverage # v8 coverage report
 
 After each subsequent `npm run build`, click the **↺ reload** button on the extension card. For content script changes, also refresh the Letterboxd tab.
 
+### Don't want to build from source?
+
+1. Download the [latest release](https://github.com/michaellambgelo/boxd-card/releases) and unzip the contents
+2. Open `chrome://extensions`
+3. Enable **Developer mode**
+4. Click **Load unpacked** → select the `dist/` folder
+
 ## Tech stack
 
 - **Chrome Manifest V3** — service worker, content script, popup
