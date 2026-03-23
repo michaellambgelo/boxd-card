@@ -1,4 +1,4 @@
-import type { CardType, ListCount } from '../types'
+import type { CardType, ListCount, ReviewCount } from '../types'
 import logoUrl from '../assets/letterboxd-logo-h-neg-rgb.svg?url'
 
 export interface FilmEntry {
@@ -6,7 +6,9 @@ export interface FilmEntry {
   year: string
   rating: string
   posterDataUrl: string
-  date?: string   // forwarded from FilmData for diary entries
+  date?: string        // forwarded from FilmData for diary/review entries
+  reviewText?: string  // forwarded from FilmData for review entries
+  tags?: string[]      // forwarded from FilmData for review entries
 }
 
 export interface CardOptions {
@@ -24,6 +26,10 @@ export interface CardOptions {
   listDescription?: string
   showCardTypeLabel?: boolean
   cardTypeLabel?: string
+  reviewCount?: ReviewCount
+  showTags?: boolean
+  listTags?: string[]
+  backdropDataUrl?: string
 }
 
 export interface CardLayout {
@@ -115,6 +121,200 @@ function truncate(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
   return truncated + '…'
 }
 
+/**
+ * Word-wraps `text` into lines within `maxWidth`, drawing each line at (x, currentY)
+ * if `draw` is true. Handles `\n\n` paragraph breaks and `\n` hard line breaks.
+ * Returns the total pixel height consumed (number of lines × lineHeight + paragraph gaps).
+ */
+export function wrapText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  lineHeight: number,
+  draw: boolean,
+): number {
+  if (!text) return 0
+  let currentY = y
+  const paragraphs = text.split('\n\n')
+
+  for (let pi = 0; pi < paragraphs.length; pi++) {
+    if (pi > 0) currentY += Math.round(lineHeight * 0.5)  // paragraph gap
+    const hardLines = paragraphs[pi].split('\n')
+
+    for (const hardLine of hardLines) {
+      const words = hardLine.split(' ').filter(w => w.length > 0)
+      if (words.length === 0) { currentY += lineHeight; continue }
+
+      let line = ''
+      for (const word of words) {
+        const testLine = line ? `${line} ${word}` : word
+        if (line && ctx.measureText(testLine).width > maxWidth) {
+          if (draw) ctx.fillText(line, x, currentY)
+          line = word
+          currentY += lineHeight
+        } else {
+          line = testLine
+        }
+      }
+      if (line) {
+        if (draw) ctx.fillText(line, x, currentY)
+        currentY += lineHeight
+      }
+    }
+  }
+
+  return currentY - y
+}
+
+// ── Tag pills ────────────────────────────────────────────────────────────────
+const TAG_FONT     = '12px sans-serif'
+const TAG_PILL_H   = 22
+const TAG_PAD_X    = 8
+const TAG_GAP      = 6    // horizontal gap between pills
+const TAG_ROW_GAP  = 6    // vertical gap between pill rows
+const TAG_RADIUS   = 11   // fully rounded ends
+const TAG_BG       = '#2d3a52'
+const TAG_COLOR    = '#99aabb'
+
+/**
+ * Draws (or measures) a row of tag pills that wrap within `maxWidth`.
+ * When `draw` is false, nothing is painted but the height consumed is returned.
+ */
+export function drawTagPills(
+  ctx: CanvasRenderingContext2D,
+  tags: string[],
+  x: number,
+  y: number,
+  maxWidth: number,
+  draw: boolean,
+): number {
+  if (!tags.length) return 0
+  ctx.font = TAG_FONT
+
+  let curX = x
+  let curY = y
+
+  for (const tag of tags) {
+    const pillW = ctx.measureText(tag).width + TAG_PAD_X * 2
+    if (curX + pillW > x + maxWidth && curX > x) {
+      curX = x
+      curY += TAG_PILL_H + TAG_ROW_GAP
+    }
+    if (draw) {
+      ctx.fillStyle = TAG_BG
+      ctx.beginPath()
+      ctx.roundRect(curX, curY, pillW, TAG_PILL_H, TAG_RADIUS)
+      ctx.fill()
+      ctx.fillStyle = TAG_COLOR
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'middle'
+      ctx.fillText(tag, curX + TAG_PAD_X, curY + TAG_PILL_H / 2)
+    }
+    curX += pillW + TAG_GAP
+  }
+
+  return (curY - y) + TAG_PILL_H
+}
+
+// ── Background (solid or blurred backdrop) ───────────────────────────────────
+const BACKDROP_BLUR = 20
+
+async function drawBackground(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  backdropDataUrl?: string,
+): Promise<void> {
+  // Solid fill is always drawn first — acts as fallback if backdrop load fails.
+  ctx.fillStyle = BG_COLOR
+  ctx.fillRect(0, 0, width, height)
+  if (!backdropDataUrl) return
+  try {
+    const img = await loadImage(backdropDataUrl)
+    // Draw oversized to avoid transparent fringe from the blur kernel.
+    const pad = BACKDROP_BLUR * 3
+    ctx.filter = `blur(${BACKDROP_BLUR}px)`
+    ctx.drawImage(img, -pad, -pad, width + pad * 2, height + pad * 2)
+    ctx.filter = 'none'
+    // Dark overlay so text and other content remain legible.
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.72)'
+    ctx.fillRect(0, 0, width, height)
+  } catch {
+    // Solid fallback already in place.
+  }
+}
+
+// ── Review card layout constants ─────────────────────────────────────────────
+const RV_POSTER_W      = 200
+const RV_POSTER_H      = 300
+const RV_POSTER_X      = 40
+const RV_CONTENT_X     = RV_POSTER_X + RV_POSTER_W + 30  // 270
+const RV_CONTENT_W     = 1200 - RV_CONTENT_X - 40        // 890
+const RV_TITLE_H       = 30   // bold 22px title line height
+const RV_META_H        = 26   // rating / date line height
+const RV_META_GAP      = 6    // gap between consecutive meta lines
+const RV_REVIEW_FS     = 17   // review text font-size (px)
+const RV_REVIEW_LINE_H = 24   // review text line height
+const RV_TOP_PAD       = 28   // gap below header, above first review
+const RV_ROW_GAP       = 28   // gap between consecutive review rows
+const RV_FOOTER_GAP    = 44   // gap below last review, above footer
+
+interface ReviewRowMeasure {
+  y: number
+  rowH: number
+}
+
+/** Measure each review row's height without drawing anything. */
+function measureReviewRows(
+  films: FilmEntry[],
+  count: number,
+  showTitle: boolean,
+  showRating: boolean,
+  showDate: boolean,
+  showTags: boolean,
+  measureCtx: CanvasRenderingContext2D,
+): { rows: ReviewRowMeasure[]; footerY: number; cardHeight: number } {
+  const rows: ReviewRowMeasure[] = []
+  let currentY = HEADER_H + RV_TOP_PAD
+
+  for (let i = 0; i < count; i++) {
+    const film = films[i]
+    let contentH = 0
+    let firstMeta = true
+
+    function addMetaLine(lineH: number) {
+      if (!firstMeta) contentH += RV_META_GAP
+      contentH += lineH
+      firstMeta = false
+    }
+
+    if (showTitle) addMetaLine(RV_TITLE_H)
+    if (showRating && film.rating) addMetaLine(RV_META_H)
+    if (showDate && film.date) addMetaLine(RV_META_H)
+    if (showTags && film.tags?.length) {
+      const tagsH = drawTagPills(measureCtx, film.tags, 0, 0, RV_CONTENT_W, false)
+      if (!firstMeta) contentH += RV_META_GAP
+      contentH += tagsH
+      firstMeta = false
+    }
+
+    if (film.reviewText) {
+      if (!firstMeta) contentH += 14  // gap before review text
+      measureCtx.font = `${RV_REVIEW_FS}px sans-serif`
+      contentH += wrapText(measureCtx, film.reviewText, 0, 0, RV_CONTENT_W, RV_REVIEW_LINE_H, false)
+    }
+
+    const rowH = Math.max(RV_POSTER_H, contentH)
+    rows.push({ y: currentY, rowH })
+    currentY += rowH + (i < count - 1 ? RV_ROW_GAP : 0)
+  }
+
+  const footerY = currentY + RV_FOOTER_GAP
+  return { rows, footerY, cardHeight: footerY + 64 }
+}
+
 const LIST_PADDING = 12
 const LIST_TITLE_H = 32
 const LIST_DESC_H  = 24
@@ -124,9 +324,126 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
   const {
     films, username, showTitle, showYear, showRating, showDate, cardType, listCount,
     showListTitle, showListDescription, listTitle, listDescription,
-    showCardTypeLabel, cardTypeLabel,
+    showCardTypeLabel, cardTypeLabel, reviewCount, showTags, listTags, backdropDataUrl,
   } = options
 
+  // ── Review card ──────────────────────────────────────────────────────────
+  if (cardType === 'review') {
+    const count = Math.min(films.length, reviewCount ?? 1)
+    if (count === 0) throw new Error('No films found to render.')
+
+    // Pass 1: measure row heights using a temporary canvas
+    const measureCanvas = document.createElement('canvas')
+    const measureCtx = measureCanvas.getContext('2d')!
+    const { rows, footerY, cardHeight } = measureReviewRows(
+      films, count, showTitle, showRating, showDate, showTags ?? false, measureCtx
+    )
+
+    // Pass 2: draw
+    const canvas = document.createElement('canvas')
+    canvas.width  = 1200
+    canvas.height = cardHeight
+    const ctx = canvas.getContext('2d')!
+
+    await drawBackground(ctx, 1200, cardHeight, backdropDataUrl)
+
+    await drawLogo(ctx, 40, HEADER_H / 2)
+
+    for (let i = 0; i < count; i++) {
+      const film = films[i]
+      const rowY = rows[i].y
+
+      // Poster
+      try {
+        const img = await loadImage(film.posterDataUrl)
+        ctx.drawImage(img, RV_POSTER_X, rowY, RV_POSTER_W, RV_POSTER_H)
+      } catch {
+        ctx.fillStyle = '#333344'
+        ctx.fillRect(RV_POSTER_X, rowY, RV_POSTER_W, RV_POSTER_H)
+      }
+
+      // Right column
+      let contentY = rowY
+      let firstMeta = true
+
+      function drawMetaLine(lineH: number, drawFn: () => void) {
+        if (!firstMeta) contentY += RV_META_GAP
+        drawFn()
+        contentY += lineH
+        firstMeta = false
+      }
+
+      if (showTitle) {
+        drawMetaLine(RV_TITLE_H, () => {
+          const displayTitle = showYear && film.year
+            ? `${film.title} (${film.year})`
+            : film.title
+          ctx.fillStyle = TEXT_COLOR
+          ctx.font = 'bold 22px sans-serif'
+          ctx.textAlign = 'left'
+          ctx.textBaseline = 'top'
+          ctx.fillText(truncate(ctx, displayTitle, RV_CONTENT_W), RV_CONTENT_X, contentY)
+        })
+      }
+
+      if (showRating && film.rating) {
+        drawMetaLine(RV_META_H, () => {
+          ctx.fillStyle = '#FFB020'
+          ctx.font = '20px sans-serif'
+          ctx.textAlign = 'left'
+          ctx.textBaseline = 'top'
+          ctx.fillText(film.rating, RV_CONTENT_X, contentY)
+        })
+      }
+
+      if (showDate && film.date) {
+        drawMetaLine(RV_META_H, () => {
+          ctx.fillStyle = SUBTEXT_COLOR
+          ctx.font = '18px sans-serif'
+          ctx.textAlign = 'left'
+          ctx.textBaseline = 'top'
+          ctx.fillText(film.date!, RV_CONTENT_X, contentY)
+        })
+      }
+
+      if (showTags && film.tags?.length) {
+        if (!firstMeta) contentY += RV_META_GAP
+        contentY += drawTagPills(ctx, film.tags, RV_CONTENT_X, contentY, RV_CONTENT_W, true)
+        firstMeta = false
+      }
+
+      if (film.reviewText) {
+        if (!firstMeta) contentY += 14
+        ctx.fillStyle = TEXT_COLOR
+        ctx.font = `${RV_REVIEW_FS}px sans-serif`
+        ctx.textAlign = 'left'
+        ctx.textBaseline = 'top'
+        wrapText(ctx, film.reviewText, RV_CONTENT_X, contentY, RV_CONTENT_W, RV_REVIEW_LINE_H, true)
+      }
+    }
+
+    // Footer
+    ctx.fillStyle = SUBTEXT_COLOR
+    ctx.font = '27px sans-serif'
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(`letterboxd.com/${username}`, 40, footerY)
+
+    ctx.fillStyle = DIM_COLOR
+    ctx.font = '23px sans-serif'
+    ctx.textAlign = 'right'
+    ctx.textBaseline = 'middle'
+    ctx.fillText('generated by Boxd Card', 1200 - 40, footerY)
+
+    return new Promise((resolve, reject) => {
+      canvas.toBlob(
+        (blob) => { if (blob) resolve(blob); else reject(new Error('canvas.toBlob returned null')) },
+        'image/png'
+      )
+    })
+  }
+
+  // ── Poster-grid cards (existing logic) ───────────────────────────────────
   const filmCount = Math.min(
     films.length,
     (cardType === 'list' || cardType === 'recent-diary') ? (listCount ?? 4) : 4,
@@ -139,10 +456,21 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
   const showingListTitle = cardType === 'list' && !!showListTitle && !!listTitle
   const showingListDesc  = cardType === 'list' && !!showListDescription && !!listDescription
   const showingCardTypeLabel = cardType !== 'list' && !!showCardTypeLabel && !!cardTypeLabel
-  const titleAreaH = (showingListTitle || showingListDesc || showingCardTypeLabel)
+  const showingListTags  = cardType === 'list' && !!showTags && !!listTags?.length
+
+  // Measure list-tag pill height before computing layout (needs a canvas context)
+  let listTagsAreaH = 0
+  if (showingListTags && listTags) {
+    const mCanvas = document.createElement('canvas')
+    const mCtx = mCanvas.getContext('2d')!
+    listTagsAreaH = LIST_PADDING + drawTagPills(mCtx, listTags, 0, 0, 1200 - 80, false)
+  }
+
+  const titleAreaH = (showingListTitle || showingListDesc || showingCardTypeLabel || showingListTags)
     ? LIST_PADDING
       + (showingListTitle || showingCardTypeLabel ? LIST_TITLE_H : 0)
       + (showingListDesc  ? LIST_DESC_H  : 0)
+      + listTagsAreaH
       + LIST_BOTTOM
     : 0
 
@@ -153,9 +481,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
   canvas.height = layout.cardHeight
   const ctx = canvas.getContext('2d')!
 
-  // Background
-  ctx.fillStyle = BG_COLOR
-  ctx.fillRect(0, 0, layout.cardWidth, layout.cardHeight)
+  await drawBackground(ctx, layout.cardWidth, layout.cardHeight, backdropDataUrl)
 
   // ── Header ────────────────────────────────────────────────
   const headerMidY = HEADER_H / 2
@@ -189,6 +515,13 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
     ctx.textAlign = 'left'
     ctx.textBaseline = 'top'
     ctx.fillText(truncate(ctx, listDescription, layout.cardWidth - 80), 40, descY)
+  }
+  if (showingListTags && listTags) {
+    const tagsY = POSTER_TOP + LIST_PADDING
+      + (showingListTitle ? LIST_TITLE_H : 0)
+      + (showingListDesc  ? LIST_DESC_H  : 0)
+      + LIST_PADDING
+    drawTagPills(ctx, listTags, 40, tagsY, layout.cardWidth - 80, true)
   }
   if (showingCardTypeLabel && cardTypeLabel) {
     ctx.fillStyle = TEXT_COLOR

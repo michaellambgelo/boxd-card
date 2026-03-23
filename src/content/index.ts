@@ -1,4 +1,4 @@
-import type { CardType, ListCount } from '../types'
+import type { CardType, ListCount, ReviewCount } from '../types'
 
 export interface FilmData {
   title: string
@@ -6,7 +6,9 @@ export interface FilmData {
   rating: string
   posterUrl: string
   filmId: string
-  date?: string   // ISO-ish date string; populated by scrapeDiary only
+  date?: string       // ISO-ish date string; populated by diary/review scrapers
+  reviewText?: string // review body text; populated by review scrapers only
+  tags?: string[]     // user tags; populated by review scrapers only
 }
 
 export interface FilmDataResponse {
@@ -14,12 +16,15 @@ export interface FilmDataResponse {
   username: string
   listTitle?: string
   listDescription?: string
+  listTags?: string[] // user tags for the list itself
+  backdropUrl?: string
 }
 
 export interface GetFilmDataRequest {
   type: 'GET_FILM_DATA'
   cardType: CardType
   listCount?: ListCount
+  reviewCount?: ReviewCount
 }
 
 const PLACEHOLDER = 'empty-poster'
@@ -160,14 +165,17 @@ export function ownerRatingToStars(value: string | null): string {
   return (n >= 1 && n <= 10) ? STAR_MAP[n - 1] : ''
 }
 
-export function scrapeListMeta(): { listTitle: string; listDescription: string } {
+export function scrapeListMeta(): { listTitle: string; listDescription: string; listTags: string[] } {
   const listTitle = document.querySelector('.list-title-intro h1.title-1')?.textContent?.trim() ?? ''
   const paragraphs = Array.from(document.querySelectorAll('.list-title-intro .body-text p'))
   const listDescription = paragraphs
     .map(p => p.textContent?.trim() ?? '')
     .filter(text => text && !text.startsWith('Updated'))
     .join(' ')
-  return { listTitle, listDescription }
+  const listTags = Array.from(document.querySelectorAll('ul.tags li a'))
+    .map(a => a.textContent?.trim() ?? '')
+    .filter(Boolean)
+  return { listTitle, listDescription, listTags }
 }
 
 export function scrapeList(count: number): FilmData[] {
@@ -203,12 +211,181 @@ export function scrapeList(count: number): FilmData[] {
   })
 }
 
+// ── Reviews ───────────────────────────────────────────────────────────────────
+// Scrapes review pages: single review (letterboxd.com/<username>/film/<slug>/[n]/)
+//                   or reviews list (letterboxd.com/<username>/reviews/)
+
+// innerText is not available in jsdom (tests); fall back to textContent.
+// In a real browser, innerText handles <br> → \n; textContent does not, but
+// Letterboxd review paragraphs rarely use <br>, so the difference is minor.
+function elementText(el: Element): string {
+  return ((el as HTMLElement).innerText ?? el.textContent ?? '').trim()
+}
+
+// Fetch the full review text from a Letterboxd /s/full-text/ fragment URL.
+// Returns the joined paragraph text, or '' on failure.
+async function fetchFullText(path: string): Promise<string> {
+  try {
+    const res = await fetch(`https://letterboxd.com${path}`)
+    if (!res.ok) return ''
+    const html = await res.text()
+    const div = document.createElement('div')
+    div.innerHTML = html
+    return Array.from(div.querySelectorAll('p'))
+      .map(elementText)
+      .filter(Boolean)
+      .join('\n\n')
+  } catch {
+    return ''
+  }
+}
+
+// Single review page scraper.
+// Returns an array of 0 or 1 entries (0 when page is not a review).
+export async function scrapeReview(): Promise<FilmData[]> {
+  const container = document.querySelector('section.viewing-poster-container')
+  if (!container) return []
+
+  const lazyPoster = container.querySelector(
+    '.react-component[data-component-class="LazyPoster"]'
+  )
+  const img = container.querySelector('img.image') as HTMLImageElement | null
+  const resolvedSrc = img?.src ?? ''
+  const dataPosterUrl = lazyPoster?.getAttribute('data-poster-url') ?? ''
+  const posterUrl = resolvedSrc && !resolvedSrc.includes(PLACEHOLDER)
+    ? resolvedSrc
+    : dataPosterUrl ? `https://letterboxd.com${dataPosterUrl}` : ''
+
+  const title = document.querySelector(
+    'header.inline-production-masthead h2.primaryname a'
+  )?.textContent?.trim() ?? ''
+  const year = document.querySelector(
+    'header.inline-production-masthead .releasedate a'
+  )?.textContent?.trim() ?? ''
+  const rating = document.querySelector(
+    '.content-reactions-strip span.inline-rating svg'
+  )?.getAttribute('aria-label')?.trim() ?? ''
+
+  // Watch date: three <a> links in p.view-date in order: day, month, year
+  const dateLinks = Array.from(document.querySelectorAll('p.view-date a'))
+  const day   = dateLinks[0]?.textContent?.trim() ?? ''
+  const month = dateLinks[1]?.textContent?.trim() ?? ''
+  const yr    = dateLinks[2]?.textContent?.trim() ?? ''
+  const date = (day && month && yr) ? `${month} ${day}, ${yr}` : ''
+
+  const filmId = lazyPoster?.getAttribute('data-film-id') ?? ''
+
+  const reviewBody = container.closest('body')?.querySelector('.js-review-body')
+  const reviewText = reviewBody
+    ? Array.from(reviewBody.querySelectorAll('p')).map(elementText).filter(Boolean).join('\n\n')
+    : ''
+
+  const tags = Array.from(document.querySelectorAll('ul.tags li a'))
+    .map(a => a.textContent?.trim() ?? '')
+    .filter(Boolean)
+
+  return [{ title, year, rating, posterUrl, filmId, date, reviewText, tags }]
+}
+
+// Reviews list page scraper.
+export async function scrapeReviewsList(count: number): Promise<FilmData[]> {
+  const items = Array.from(
+    document.querySelectorAll('div.viewing-list div.listitem.js-listitem')
+  ).slice(0, count)
+
+  return Promise.all(items.map(async (item) => {
+    const lazyPoster = item.querySelector(
+      '.react-component[data-component-class="LazyPoster"]'
+    )
+    const img = item.querySelector('img.image') as HTMLImageElement | null
+    const resolvedSrc = img?.src ?? ''
+    const dataPosterUrl = lazyPoster?.getAttribute('data-poster-url') ?? ''
+    const posterUrl = resolvedSrc && !resolvedSrc.includes(PLACEHOLDER)
+      ? resolvedSrc
+      : dataPosterUrl ? `https://letterboxd.com${dataPosterUrl}` : ''
+
+    const title = item.querySelector(
+      'header.inline-production-masthead h2.primaryname a'
+    )?.textContent?.trim() ?? ''
+    const year = item.querySelector(
+      'header.inline-production-masthead .releasedate a'
+    )?.textContent?.trim() ?? ''
+    const rating = item.querySelector(
+      '.content-reactions-strip .inline-rating svg'
+    )?.getAttribute('aria-label')?.trim() ?? ''
+
+    // Watch date: ISO datetime attribute (e.g. "2026-03-22") on <time>
+    const dateStr = item.querySelector(
+      '.content-reactions-strip .date time'
+    )?.getAttribute('datetime') ?? ''
+    const date = dateStr
+      ? new Date(`${dateStr}T00:00:00`).toLocaleDateString('en-US', {
+          month: 'short', day: 'numeric', year: 'numeric',
+        })
+      : ''
+
+    const filmId = lazyPoster?.getAttribute('data-film-id') ?? ''
+
+    // Review text — fetch full text if the review is truncated on the list page
+    const reviewBodyEl = item.querySelector('.js-review-body') as HTMLElement | null
+    let reviewText = ''
+    if (reviewBodyEl) {
+      const fullTextUrl = reviewBodyEl.getAttribute('data-full-text-url')
+      if (fullTextUrl) {
+        reviewText = await fetchFullText(fullTextUrl)
+      } else {
+        reviewText = Array.from(reviewBodyEl.querySelectorAll('p'))
+          .map(elementText)
+          .filter(Boolean)
+          .join('\n\n')
+      }
+    }
+
+    const tags = Array.from(item.querySelectorAll('ul.tags li a'))
+      .map(a => a.textContent?.trim() ?? '')
+      .filter(Boolean)
+
+    return { title, year, rating, posterUrl, filmId, date, reviewText, tags }
+  }))
+}
+
+// Dispatcher: detects page type from DOM and calls the appropriate scraper.
+export async function scrapeReviews(count: number): Promise<FilmDataResponse> {
+  const username = (document.body as HTMLBodyElement & { dataset: DOMStringMap }).dataset.owner ?? ''
+  const backdropUrl = scrapeBackdropUrl()
+  if (document.querySelector('div.viewing-list')) {
+    const films = await scrapeReviewsList(count)
+    return { films, username, backdropUrl }
+  }
+  const films = await scrapeReview()
+  return { films, username, backdropUrl }
+}
+
+// ── Backdrop ──────────────────────────────────────────────────────────────────
+// Letterboxd review and list pages expose a backdrop image via data attributes
+// on a `.backdrop` element (e.g. `<div class="backdrop" data-backdrop-retina="//a.ltrbxd.com/...">`).
+// We prefer the retina (2×) URL; both are typically protocol-relative.
+
+export function scrapeBackdropUrl(): string {
+  const el = document.querySelector('[data-backdrop-retina], [data-backdrop]')
+  if (!el) return ''
+  const raw = el.getAttribute('data-backdrop-retina') || el.getAttribute('data-backdrop') || ''
+  if (!raw) return ''
+  // Protocol-relative → absolute HTTPS
+  return raw.startsWith('//') ? `https:${raw}` : raw
+}
+
 // ── Message listener ──────────────────────────────────────────────────────────
 
 chrome.runtime.onMessage.addListener((message: GetFilmDataRequest, _sender, sendResponse) => {
   if (message.type === 'GET_FILM_DATA') {
+    if (message.cardType === 'review') {
+      scrapeReviews(message.reviewCount ?? 1).then(sendResponse)
+      return true
+    }
+
     let films: FilmData[]
-    let listMeta: { listTitle?: string; listDescription?: string } = {}
+    let listMeta: { listTitle?: string; listDescription?: string; listTags?: string[] } = {}
     switch (message.cardType) {
       case 'favorites':    films = scrapeFavorites();                        break
       case 'recent-diary': films = scrapeDiary(message.listCount ?? 4);      break
@@ -219,7 +396,7 @@ chrome.runtime.onMessage.addListener((message: GetFilmDataRequest, _sender, send
       default:             films = scrapeRecentActivity();                   break
     }
     const username = (document.body as HTMLBodyElement & { dataset: DOMStringMap }).dataset.owner ?? ''
-    sendResponse({ films, username, ...listMeta } satisfies FilmDataResponse)
+    sendResponse({ films, username, ...listMeta, backdropUrl: scrapeBackdropUrl() } satisfies FilmDataResponse)
   }
   return true
 })

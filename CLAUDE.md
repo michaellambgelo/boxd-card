@@ -107,6 +107,15 @@ ul.js-list-entries li.posteritem
   (filter out paragraphs starting with "Updated")
 ```
 
+### Tags (reviews and lists)
+
+```
+ul.tags li a   ← tag text content (e.g. "in theaters", "moviepass")
+```
+
+For single review and list pages: `document.querySelectorAll('ul.tags li a')`
+For reviews list page: `item.querySelectorAll('ul.tags li a')` per review entry
+
 ### Single review page (`letterboxd.com/<username>/film/<slug>/` or `.../film/<slug>/\d+/`)
 
 ```
@@ -130,10 +139,30 @@ p.view-date a   ← three links in DOM order: day "02", month "Feb", year "2026"
   presence of .js-review-body confirms page is a review (not just a diary entry)
 ```
 
-### Reviews list page (`letterboxd.com/<username>/reviews/`) — selectors TBD
+### Reviews list page (`letterboxd.com/<username>/reviews/`)
 
-Needs a DOM sample. Likely each entry uses similar LazyPoster + `.js-review-body` structure
-repeated in a list container. Scraper will take first N entries matching the count selector.
+```
+div.viewing-list > div.listitem.js-listitem   (one per review, take first N)
+  article.production-viewing.viewing-poster-container.js-production-viewing
+
+  Poster (same LazyPoster pattern):
+    .react-component[data-component-class="LazyPoster"] @data-poster-url
+    img.image   ← src = resolved poster or empty-poster fallback
+
+  Film title:   header.inline-production-masthead h2.primaryname a
+  Year:         header.inline-production-masthead .releasedate a
+  Rating:       .content-reactions-strip .inline-rating svg @aria-label  ("★★★★½"; absent if unrated)
+  Watch date:   .content-reactions-strip .date time @datetime             (ISO: "2026-03-22")
+
+  Review text:  .js-review-body p   ← innerText, join with \n\n
+
+  CRITICAL — truncated reviews:
+    .js-review-body also carries class js-collapsible-text and
+    @data-full-text-url="/s/full-text/viewing:{id}/"
+    Long reviews are truncated on the list page. To get the full text, fetch
+    https://letterboxd.com + data-full-text-url (returns HTML fragment; extract <p> tags).
+    If data-full-text-url is absent, the review is short enough to be complete.
+```
 
 ### Poster URL strategy
 

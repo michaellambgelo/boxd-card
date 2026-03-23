@@ -3,8 +3,10 @@ export type CardType =
   | 'favorites'
   | 'recent-diary'
   | 'list'
+  | 'review'
 
 export type ListCount = 4 | 10 | 20
+export type ReviewCount = 1 | 2 | 3 | 4
 
 export interface CardTypeConfig {
   label: string
@@ -36,6 +38,11 @@ export const CARD_TYPE_CONFIGS: Record<CardType, CardTypeConfig> = {
     label: 'List',
     urlPattern: new RegExp(`^https://letterboxd\\.com/${U}/list/${U}/(?:detail/?)?$`),
     urlHint: 'letterboxd.com/username/list/list-name/ (use /detail/ for ratings)',
+  },
+  'review': {
+    label: 'Review',
+    urlPattern: new RegExp(`^https://letterboxd\\.com/${U}/(?:reviews|film/${U}(?:/\\d+)?)/?$`),
+    urlHint: 'letterboxd.com/username/reviews/ or /film/slug/',
   },
 }
 
