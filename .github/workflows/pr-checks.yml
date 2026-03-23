@@ -13,6 +13,17 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check version is not already tagged
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if git tag | grep -qx "v$VERSION"; then
+            echo "ERROR: Tag v$VERSION already exists. Bump the version in package.json and manifest.json before opening a release PR."
+            exit 1
+          fi
+          echo "Version v$VERSION is clear to release."
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
