@@ -9,6 +9,8 @@ import {
   scrapeReview,
   scrapeReviewsList,
   scrapeBackdropUrl,
+  scrapeLoggedInUser,
+  scrapeFilmsPage,
 } from './index'
 
 const PLACEHOLDER = 'empty-poster-150-DtnLDE3k.png'
@@ -448,6 +450,93 @@ describe('scrapeList', () => {
   })
 })
 
+// ── scrapeFilmsPage ───────────────────────────────────────────────────────────
+
+describe('scrapeFilmsPage', () => {
+  function makeFilmsPageItem(overrides: FilmOverrides = {}): string {
+    const {
+      name = 'Dune (2021)',
+      filmId = '371378',
+      posterUrl = '/film/dune-2021/image-150/',
+      imgSrc = REAL_POSTER,
+      rating = '★★★★',
+    } = overrides
+    return `
+      <li class="poster-container">
+        <div class="react-component"
+          data-component-class="LazyPoster"
+          data-item-name="${name}"
+          data-film-id="${filmId}"
+          data-poster-url="${posterUrl}">
+          <img class="image" src="${imgSrc}" />
+        </div>
+        <p class="poster-viewingdata">
+          <span class="rating">${rating}</span>
+        </p>
+      </li>`
+  }
+
+  function setFilmsPageDOM(items: string[]) {
+    document.body.innerHTML = `
+      <ul class="poster-list">
+        ${items.join('')}
+      </ul>`
+  }
+
+  it('returns [] when ul.poster-list is absent', () => {
+    document.body.innerHTML = '<div>nothing</div>'
+    expect(scrapeFilmsPage()).toEqual([])
+  })
+
+  it('extracts title, year, rating, and filmId', () => {
+    setFilmsPageDOM([makeFilmsPageItem()])
+    const [film] = scrapeFilmsPage()
+    expect(film.title).toBe('Dune')
+    expect(film.year).toBe('2021')
+    expect(film.rating).toBe('★★★★')
+    expect(film.filmId).toBe('371378')
+  })
+
+  it('uses resolved img.src as posterUrl when not a placeholder', () => {
+    setFilmsPageDOM([makeFilmsPageItem({ imgSrc: REAL_POSTER })])
+    const [film] = scrapeFilmsPage()
+    expect(film.posterUrl).toBe(REAL_POSTER)
+  })
+
+  it('falls back to data-poster-url when img.src contains the placeholder', () => {
+    setFilmsPageDOM([
+      makeFilmsPageItem({
+        imgSrc: `https://s.ltrbxd.com/static/img/${PLACEHOLDER}`,
+        posterUrl: '/film/dune-2021/image-150/',
+      }),
+    ])
+    const [film] = scrapeFilmsPage()
+    expect(film.posterUrl).toBe('https://letterboxd.com/film/dune-2021/image-150/')
+  })
+
+  it('caps results at 4', () => {
+    setFilmsPageDOM(Array.from({ length: 6 }, (_, i) =>
+      makeFilmsPageItem({ name: `Film ${i} (202${i})`, filmId: `${i}` })
+    ))
+    expect(scrapeFilmsPage()).toHaveLength(4)
+  })
+
+  it('returns empty string for rating when rating element is absent', () => {
+    document.body.innerHTML = `
+      <ul class="poster-list">
+        <li class="poster-container">
+          <div class="react-component" data-component-class="LazyPoster"
+            data-item-name="No Rating (2024)" data-film-id="1"
+            data-poster-url="/film/x/">
+            <img class="image" src="${REAL_POSTER}" />
+          </div>
+        </li>
+      </ul>`
+    const [film] = scrapeFilmsPage()
+    expect(film.rating).toBe('')
+  })
+})
+
 // ── scrapeListMeta ────────────────────────────────────────────────────────────
 
 describe('scrapeListMeta', () => {
@@ -807,6 +896,73 @@ describe('scrapeReviewsList', () => {
       </div>`
     const [entry] = await scrapeReviewsList(1)
     expect(entry.tags).toEqual(['sci-fi', 'favorites'])
+  })
+})
+
+describe('scrapeLoggedInUser', () => {
+  afterEach(() => {
+    // @ts-ignore
+    delete window.person
+    document.head.innerHTML = ''
+  })
+
+  it('returns empty strings when not logged in', () => {
+    expect(scrapeLoggedInUser()).toEqual({ username: '', avatarUrl: '' })
+  })
+
+  it('extracts username from global person object (Pass 1)', () => {
+    // @ts-ignore
+    window.person = { loggedIn: true, username: 'michaellamb', avatarURL24: '' }
+    expect(scrapeLoggedInUser().username).toBe('michaellamb')
+  })
+
+  it('extracts and upsizes avatarUrl from global person object (Pass 1)', () => {
+    // @ts-ignore
+    window.person = {
+      loggedIn: true,
+      username: 'michaellamb',
+      avatarURL24: 'https://a.ltrbxd.com/resized/avatar/upload/1/4/3/6/9/2/4/shard/avtr-0-48-0-48-crop.jpg?v=52b738d4e8',
+    }
+    expect(scrapeLoggedInUser().avatarUrl).toBe(
+      'https://a.ltrbxd.com/resized/avatar/upload/1/4/3/6/9/2/4/shard/avtr-0-80-0-80-crop.jpg?v=52b738d4e8'
+    )
+  })
+
+  it('returns empty strings when person.loggedIn is false (Pass 1)', () => {
+    // @ts-ignore
+    window.person = {
+      loggedIn: false,
+      username: 'michaellamb',
+      avatarURL24: 'https://a.ltrbxd.com/resized/avatar/upload/1/4/3/6/9/2/4/shard/avtr-0-48-0-48-crop.jpg',
+    }
+    expect(scrapeLoggedInUser()).toEqual({ username: '', avatarUrl: '' })
+  })
+
+  it('extracts username from inline script assignment syntax (Pass 2)', () => {
+    // type="text/plain" prevents JSDOM from executing the script; the selector still finds it
+    const s = document.createElement('script')
+    s.type = 'text/plain'
+    s.textContent = `person.username = "michaellamb"; person.loggedIn = true; person.avatarURL24 = "";`
+    document.head.appendChild(s)
+    expect(scrapeLoggedInUser().username).toBe('michaellamb')
+  })
+
+  it('extracts and upsizes avatarUrl from inline script assignment syntax (Pass 2)', () => {
+    const s = document.createElement('script')
+    s.type = 'text/plain'
+    s.textContent = `person.username = "michaellamb"; person.loggedIn = true; person.avatarURL24 = "https://a.ltrbxd.com/resized/avatar/upload/1/4/3/6/9/2/4/shard/avtr-0-48-0-48-crop.jpg?v=52b738d4e8";`
+    document.head.appendChild(s)
+    expect(scrapeLoggedInUser().avatarUrl).toBe(
+      'https://a.ltrbxd.com/resized/avatar/upload/1/4/3/6/9/2/4/shard/avtr-0-80-0-80-crop.jpg?v=52b738d4e8'
+    )
+  })
+
+  it('returns empty strings when loggedIn is false in inline script (Pass 2)', () => {
+    const s = document.createElement('script')
+    s.type = 'text/plain'
+    s.textContent = `person.username = "michaellamb"; person.loggedIn = false;`
+    document.head.appendChild(s)
+    expect(scrapeLoggedInUser()).toEqual({ username: '', avatarUrl: '' })
   })
 })
 

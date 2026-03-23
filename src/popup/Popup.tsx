@@ -105,6 +105,25 @@ export default function Popup() {
         }
       }
 
+      const isOwnProfile = !!(
+        filmData.loggedInUsername &&
+        filmData.loggedInUsername.toLowerCase() === filmData.username.toLowerCase()
+      )
+
+      // Footer always shows the page author. On own profile we use the logged-in
+      // avatar (same person); on other profiles we fetch the author's avatar.
+      const avatarUrlToFetch = isOwnProfile
+        ? filmData.loggedInAvatarUrl
+        : filmData.authorAvatarUrl
+      let footerAvatarDataUrl: string | undefined
+      if (avatarUrlToFetch) {
+        try {
+          footerAvatarDataUrl = await fetchPosterDataUrl(avatarUrlToFetch)
+        } catch {
+          // Non-fatal: render without avatar
+        }
+      }
+
       const films = filmData.films.map((f: FilmData, i: number) => ({
         title:         f.title,
         year:          f.year,
@@ -134,6 +153,8 @@ export default function Popup() {
         showTags:            (cardType === 'list' || cardType === 'review') ? showTags : undefined,
         listTags:            cardType === 'list' ? filmData.listTags : undefined,
         backdropDataUrl,
+        footerAvatarDataUrl,
+        showShareIcon: !isOwnProfile,
       })
 
       setCardBlob(blob)
