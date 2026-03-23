@@ -36,6 +36,7 @@ export default function Popup() {
   const [showBackdrop,       setShowBackdrop]       = useState(true)
   const [cardUrl,       setCardUrl]       = useState<string | null>(null)
   const [cardBlob,      setCardBlob]      = useState<Blob | null>(null)
+  const [copied,        setCopied]        = useState(false)
 
   // On mount: auto-select the card type matching the current tab URL
   useEffect(() => {
@@ -179,6 +180,8 @@ export default function Popup() {
     await navigator.clipboard.write([
       new ClipboardItem({ 'image/png': cardBlob }),
     ])
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
   }
 
   const buttonDisabled = status === 'loading' || isValidPage !== true
@@ -359,7 +362,9 @@ export default function Popup() {
             </a>
             <div className={styles.actionRow}>
               <button className={styles.actionBtn} onClick={handleDownload}>Download</button>
-              <button className={styles.actionBtn} onClick={handleCopy}>Copy</button>
+              <button className={`${styles.actionBtn}${copied ? ` ${styles.actionBtnCopied}` : ''}`} onClick={handleCopy}>
+                {copied ? 'Copied!' : 'Copy'}
+              </button>
             </div>
           </>
         )}

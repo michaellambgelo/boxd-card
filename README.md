@@ -1,5 +1,8 @@
 # ![Boxd Card](public/icons/icon48.png) Boxd Card
 
+[![Latest release](https://img.shields.io/github/v/release/michaellambgelo/boxd-card)](https://github.com/michaellambgelo/boxd-card/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/michaellambgelo/boxd-card/pr-checks.yml?branch=main&label=CI)](https://github.com/michaellambgelo/boxd-card/actions/workflows/pr-checks.yml)
+
 A Chrome extension that generates shareable image cards from your Letterboxd profile — last watched films, favorites, diary entries, lists, or reviews.
 
 Open the extension on a supported Letterboxd page, pick a card type, click **Generate Card**, and get a PNG you can download or copy straight to your clipboard.

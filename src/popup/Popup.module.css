@@ -192,6 +192,7 @@
 
 .actionBtn {
   flex: 1;
+  position: relative;
   padding: 7px 0;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -204,4 +205,14 @@
 
 .actionBtn:hover {
   background: var(--input-bg);
+}
+
+.actionBtnCopied,
+.actionBtnCopied:hover {
+  background: linear-gradient(to right, #EF8D22, #0EDF52, #40BCF4, #EF8D22);
+  background-size: 200% auto;
+  animation: sweep 1.5s linear infinite;
+  border-color: transparent;
+  color: #ffffff;
+  font-weight: 600;
 }
