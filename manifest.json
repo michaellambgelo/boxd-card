@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Boxd Card",
-  "version": "0.2.43",
+  "version": "0.2.44",
   "description": "Generate a shareable image card from your Letterboxd profile.",
   "homepage_url": "https://github.com/michaellambgelo/boxd-card",
   "permissions": [
