@@ -30,6 +30,7 @@
     {
       "matches": [
         "https://letterboxd.com/*/",
+        "https://letterboxd.com/*/films/",
         "https://letterboxd.com/*/diary/",
         "https://letterboxd.com/*/films/diary/",
         "https://letterboxd.com/*/list/*/",
