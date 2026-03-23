@@ -462,7 +462,7 @@ describe('scrapeFilmsPage', () => {
       rating = '★★★★',
     } = overrides
     return `
-      <li class="poster-container">
+      <li class="griditem">
         <div class="react-component"
           data-component-class="LazyPoster"
           data-item-name="${name}"
@@ -478,12 +478,12 @@ describe('scrapeFilmsPage', () => {
 
   function setFilmsPageDOM(items: string[]) {
     document.body.innerHTML = `
-      <ul class="poster-list">
+      <ul class="grid">
         ${items.join('')}
       </ul>`
   }
 
-  it('returns [] when ul.poster-list is absent', () => {
+  it('returns [] when ul.grid is absent', () => {
     document.body.innerHTML = '<div>nothing</div>'
     expect(scrapeFilmsPage()).toEqual([])
   })
@@ -523,8 +523,8 @@ describe('scrapeFilmsPage', () => {
 
   it('returns empty string for rating when rating element is absent', () => {
     document.body.innerHTML = `
-      <ul class="poster-list">
-        <li class="poster-container">
+      <ul class="grid">
+        <li class="griditem">
           <div class="react-component" data-component-class="LazyPoster"
             data-item-name="No Rating (2024)" data-film-id="1"
             data-poster-url="/film/x/">

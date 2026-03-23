@@ -369,11 +369,11 @@ export async function scrapeReviews(count: number): Promise<FilmDataResponse> {
 // ── Films page (/<username>/films/) ──────────────────────────────────────────
 // Scrapes the first 4 films from the films grid on letterboxd.com/<username>/films/.
 // The page defaults to "Recently Watched" order, so the first 4 are the last four watched.
-// Selectors follow the standard Letterboxd poster-list pattern used across film grids.
+// Selector: div.poster-grid > ul.grid li.griditem (matches actual /films/ page HTML).
 
 export function scrapeFilmsPage(): FilmData[] {
   return Array.from(
-    document.querySelectorAll('ul.poster-list li.poster-container')
+    document.querySelectorAll('ul.grid li.griditem')
   ).slice(0, 4).map(item => {
     const lazyPoster = item.querySelector(
       '.react-component[data-component-class="LazyPoster"]'
