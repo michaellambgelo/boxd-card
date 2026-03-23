@@ -48,9 +48,18 @@ export interface CardLayout {
   textAreaH: number
 }
 
-const HEADER_H   = 90
-const POSTER_TOP = 110  // = HEADER_H + 20
-const TEXT_AREA_H = 60  // space below each poster for title + rating
+const HEADER_H    = 90
+const POSTER_TOP  = 110  // = HEADER_H + 20
+const TEXT_AREA_H = 100  // space below each poster for title + rating + date
+
+// Font sizes for poster-grid card text (title/rating/date under each poster)
+const GRID_TITLE_FS    = 24
+const GRID_META_FS     = 24
+const GRID_DATE_FS     = 21
+const GRID_LINE_H      = 28  // line height for 24px text
+const GRID_DATE_LINE_H = 25  // line height for 21px text
+const GRID_LINE_GAP    =  4  // gap between consecutive text lines
+const GRID_TEXT_PAD    = 10  // top padding above first text item
 
 /**
  * Compute card layout geometry based on film count and optional title area height.
@@ -540,34 +549,36 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
       ctx.fillRect(x, y, layout.posterW, layout.posterH)
     }
 
+    let textY = y + layout.posterH + GRID_TEXT_PAD
+
     if (showTitle) {
       const displayTitle = showYear && film.year
         ? `${film.title} (${film.year})`
         : film.title
       ctx.fillStyle = TEXT_COLOR
-      ctx.font = '14px sans-serif'
+      ctx.font = `${GRID_TITLE_FS}px sans-serif`
       ctx.textAlign = 'left'
       ctx.textBaseline = 'top'
-      ctx.fillText(truncate(ctx, displayTitle, layout.posterW), x, y + layout.posterH + 10)
+      ctx.fillText(truncate(ctx, displayTitle, layout.posterW), x, textY)
+      textY += GRID_LINE_H + GRID_LINE_GAP
     }
 
     if (showRating && film.rating) {
       ctx.fillStyle = '#FFB020'
-      ctx.font = '14px sans-serif'
+      ctx.font = `${GRID_META_FS}px sans-serif`
       ctx.textAlign = 'left'
       ctx.textBaseline = 'top'
-      const ratingY = y + layout.posterH + (showTitle ? 30 : 10)
-      ctx.fillText(film.rating, x, ratingY)
+      ctx.fillText(film.rating, x, textY)
+      textY += GRID_LINE_H + GRID_LINE_GAP
     }
 
     // For diary type: show per-film watch date under the rating when showDate is on
     if (cardType === 'recent-diary' && showDate && film.date) {
-      const dateOffset = y + layout.posterH + (showRating && film.rating ? 50 : showTitle ? 30 : 10)
       ctx.fillStyle = SUBTEXT_COLOR
-      ctx.font = '12px sans-serif'
+      ctx.font = `${GRID_DATE_FS}px sans-serif`
       ctx.textAlign = 'left'
       ctx.textBaseline = 'top'
-      ctx.fillText(film.date, x, dateOffset)
+      ctx.fillText(film.date, x, textY)
     }
   }
 
