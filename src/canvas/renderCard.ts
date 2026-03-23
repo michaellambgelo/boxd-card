@@ -169,12 +169,12 @@ export function wrapText(
 }
 
 // ── Tag pills ────────────────────────────────────────────────────────────────
-const TAG_FONT     = '12px sans-serif'
-const TAG_PILL_H   = 22
-const TAG_PAD_X    = 8
-const TAG_GAP      = 6    // horizontal gap between pills
-const TAG_ROW_GAP  = 6    // vertical gap between pill rows
-const TAG_RADIUS   = 11   // fully rounded ends
+const TAG_FONT     = '30px sans-serif'
+const TAG_PILL_H   = 56
+const TAG_PAD_X    = 20
+const TAG_GAP      = 15   // horizontal gap between pills
+const TAG_ROW_GAP  = 15   // vertical gap between pill rows
+const TAG_RADIUS   = 28   // fully rounded ends
 const TAG_BG       = '#2d3a52'
 const TAG_COLOR    = '#99aabb'
 
@@ -252,11 +252,11 @@ const RV_POSTER_H      = 300
 const RV_POSTER_X      = 40
 const RV_CONTENT_X     = RV_POSTER_X + RV_POSTER_W + 30  // 270
 const RV_CONTENT_W     = 1200 - RV_CONTENT_X - 40        // 890
-const RV_TITLE_H       = 30   // bold 22px title line height
-const RV_META_H        = 26   // rating / date line height
-const RV_META_GAP      = 6    // gap between consecutive meta lines
-const RV_REVIEW_FS     = 17   // review text font-size (px)
-const RV_REVIEW_LINE_H = 24   // review text line height
+const RV_TITLE_H       = 54   // bold 39px title line height
+const RV_META_H        = 45   // rating / date line height
+const RV_META_GAP      = 9    // gap between consecutive meta lines
+const RV_REVIEW_FS     = 30   // review text font-size (px)
+const RV_REVIEW_LINE_H = 42   // review text line height
 const RV_TOP_PAD       = 28   // gap below header, above first review
 const RV_ROW_GAP       = 28   // gap between consecutive review rows
 const RV_FOOTER_GAP    = 44   // gap below last review, above footer
@@ -301,7 +301,7 @@ function measureReviewRows(
     }
 
     if (film.reviewText) {
-      if (!firstMeta) contentH += 14  // gap before review text
+      if (!firstMeta) contentH += 21  // gap before review text
       measureCtx.font = `${RV_REVIEW_FS}px sans-serif`
       contentH += wrapText(measureCtx, film.reviewText, 0, 0, RV_CONTENT_W, RV_REVIEW_LINE_H, false)
     }
@@ -379,7 +379,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
             ? `${film.title} (${film.year})`
             : film.title
           ctx.fillStyle = TEXT_COLOR
-          ctx.font = 'bold 22px sans-serif'
+          ctx.font = 'bold 39px sans-serif'
           ctx.textAlign = 'left'
           ctx.textBaseline = 'top'
           ctx.fillText(truncate(ctx, displayTitle, RV_CONTENT_W), RV_CONTENT_X, contentY)
@@ -389,7 +389,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
       if (showRating && film.rating) {
         drawMetaLine(RV_META_H, () => {
           ctx.fillStyle = '#FFB020'
-          ctx.font = '20px sans-serif'
+          ctx.font = '35px sans-serif'
           ctx.textAlign = 'left'
           ctx.textBaseline = 'top'
           ctx.fillText(film.rating, RV_CONTENT_X, contentY)
@@ -399,7 +399,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
       if (showDate && film.date) {
         drawMetaLine(RV_META_H, () => {
           ctx.fillStyle = SUBTEXT_COLOR
-          ctx.font = '18px sans-serif'
+          ctx.font = '32px sans-serif'
           ctx.textAlign = 'left'
           ctx.textBaseline = 'top'
           ctx.fillText(film.date!, RV_CONTENT_X, contentY)
@@ -413,7 +413,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
       }
 
       if (film.reviewText) {
-        if (!firstMeta) contentY += 14
+        if (!firstMeta) contentY += 21
         ctx.fillStyle = TEXT_COLOR
         ctx.font = `${RV_REVIEW_FS}px sans-serif`
         ctx.textAlign = 'left'
