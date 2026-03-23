@@ -9,6 +9,7 @@ jobs:
   release:
     name: Version, Build & Release
     runs-on: ubuntu-latest
+    if: "!startsWith(github.event.head_commit.message, 'chore: release')"
     permissions:
       contents: write
       pull-requests: read
@@ -103,6 +104,14 @@ jobs:
         run: |
           git tag "v${{ steps.version.outputs.new_version }}"
           git push origin release --follow-tags
+
+      - name: Back-merge version bump to main
+        run: |
+          VERSION_COMMIT=$(git rev-parse HEAD)
+          git fetch origin main
+          git checkout main
+          git cherry-pick "$VERSION_COMMIT"
+          git push origin main
 
       - name: Create GitHub Release
         env:

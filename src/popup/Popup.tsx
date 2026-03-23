@@ -263,11 +263,13 @@ export default function Popup() {
 
         {status === 'ready' && cardUrl && (
           <>
-            <img
-              src={cardUrl}
-              alt="Boxd Card preview"
-              className={styles.preview}
-            />
+            <a href={cardUrl} target="_blank" rel="noreferrer">
+              <img
+                src={cardUrl}
+                alt="Boxd Card preview"
+                className={styles.preview}
+              />
+            </a>
             <div className={styles.actionRow}>
               <button className={styles.actionBtn} onClick={handleDownload}>Download</button>
               <button className={styles.actionBtn} onClick={handleCopy}>Copy</button>
