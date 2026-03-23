@@ -1,6 +1,6 @@
 {
   "name": "boxd-card",
-  "version": "0.2.42",
+  "version": "0.2.43",
   "private": true,
   "scripts": {
     "dev": "vite build --watch",
