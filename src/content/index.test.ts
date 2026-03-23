@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   scrapeRecentActivity,
   scrapeFavorites,
@@ -6,6 +6,9 @@ import {
   scrapeList,
   scrapeListMeta,
   ownerRatingToStars,
+  scrapeReview,
+  scrapeReviewsList,
+  scrapeBackdropUrl,
 } from './index'
 
 const PLACEHOLDER = 'empty-poster-150-DtnLDE3k.png'
@@ -460,7 +463,7 @@ describe('scrapeListMeta', () => {
 
   it('returns empty strings when .list-title-intro is absent', () => {
     document.body.innerHTML = '<div>nothing</div>'
-    expect(scrapeListMeta()).toEqual({ listTitle: '', listDescription: '' })
+    expect(scrapeListMeta()).toEqual({ listTitle: '', listDescription: '', listTags: [] })
   })
 
   it('extracts listTitle from h1.title-1', () => {
@@ -490,6 +493,24 @@ describe('scrapeListMeta', () => {
     setListMetaDOM('Test List', ['Updated 20 Mar'])
     expect(scrapeListMeta().listDescription).toBe('')
   })
+
+  it('extracts listTags from ul.tags li a', () => {
+    document.body.innerHTML = `
+      <div class="list-title-intro">
+        <h1 class="title-1">My List</h1>
+        <div class="body-text"></div>
+      </div>
+      <ul class="tags">
+        <li><a href="#">in theaters</a></li>
+        <li><a href="#">moviepass</a></li>
+      </ul>`
+    expect(scrapeListMeta().listTags).toEqual(['in theaters', 'moviepass'])
+  })
+
+  it('returns empty listTags when ul.tags is absent', () => {
+    setListMetaDOM('My List', [])
+    expect(scrapeListMeta().listTags).toEqual([])
+  })
 })
 
 // ── ownerRatingToStars ────────────────────────────────────────────────────────
@@ -516,5 +537,309 @@ describe('ownerRatingToStars', () => {
 
   it('maps 10→★★★★★', () => {
     expect(ownerRatingToStars('10')).toBe('★★★★★')
+  })
+})
+
+// ── scrapeReview ──────────────────────────────────────────────────────────────
+
+describe('scrapeReview', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  function setSingleReviewDOM(opts: {
+    posterUrl?: string
+    imgSrc?: string
+    title?: string
+    year?: string
+    rating?: string
+    day?: string
+    month?: string
+    yr?: string
+    reviewText?: string
+  } = {}) {
+    const {
+      posterUrl = '/film/groundhog-day/image-150/',
+      imgSrc = REAL_POSTER,
+      title = 'Groundhog Day',
+      year = '1993',
+      rating = '★★★★★',
+      day = '02',
+      month = 'Feb',
+      yr = '2026',
+      reviewText = 'What a masterpiece.',
+    } = opts
+    document.body.innerHTML = `
+      <section class="viewing-poster-container">
+        <div class="react-component" data-component-class="LazyPoster"
+          data-film-id="7418" data-poster-url="${posterUrl}">
+          <img class="image" src="${imgSrc}" />
+        </div>
+      </section>
+      <header class="inline-production-masthead">
+        <h2 class="primaryname"><a>${title}</a></h2>
+        <span class="releasedate"><a>${year}</a></span>
+      </header>
+      <div class="content-reactions-strip">
+        <span class="inline-rating">
+          <svg aria-label="${rating}"></svg>
+        </span>
+      </div>
+      <p class="view-date">
+        <a>${day}</a><a>${month}</a><a>${yr}</a>
+      </p>
+      <div class="js-review-body"><p>${reviewText}</p></div>`
+  }
+
+  it('returns [] when section.viewing-poster-container is absent', async () => {
+    document.body.innerHTML = '<div>nothing</div>'
+    expect(await scrapeReview()).toEqual([])
+  })
+
+  it('returns an entry with empty reviewText when .js-review-body is absent', async () => {
+    document.body.innerHTML = `
+      <section class="viewing-poster-container">
+        <div class="react-component" data-component-class="LazyPoster"
+             data-film-id="42" data-poster-url="/film/x/">
+          <img class="image" src="${REAL_POSTER}" />
+        </div>
+      </section>`
+    const result = await scrapeReview()
+    expect(result).toHaveLength(1)
+    expect(result[0].reviewText).toBe('')
+  })
+
+  it('extracts title, year, rating, date, and review text', async () => {
+    setSingleReviewDOM()
+    const [entry] = await scrapeReview()
+    expect(entry.title).toBe('Groundhog Day')
+    expect(entry.year).toBe('1993')
+    expect(entry.rating).toBe('★★★★★')
+    expect(entry.date).toBe('Feb 02, 2026')
+    expect(entry.reviewText).toBe('What a masterpiece.')
+  })
+
+  it('uses resolved img.src as posterUrl when not a placeholder', async () => {
+    setSingleReviewDOM({ imgSrc: REAL_POSTER })
+    const [entry] = await scrapeReview()
+    expect(entry.posterUrl).toBe(REAL_POSTER)
+  })
+
+  it('falls back to data-poster-url when img.src is a placeholder', async () => {
+    setSingleReviewDOM({
+      imgSrc: `https://s.ltrbxd.com/static/img/${PLACEHOLDER}`,
+      posterUrl: '/film/groundhog-day/image-150/',
+    })
+    const [entry] = await scrapeReview()
+    expect(entry.posterUrl).toBe('https://letterboxd.com/film/groundhog-day/image-150/')
+  })
+
+  it('joins multiple review paragraphs with \\n\\n', async () => {
+    document.body.innerHTML = `
+      <section class="viewing-poster-container">
+        <div class="react-component" data-component-class="LazyPoster" data-poster-url="/film/x/">
+          <img class="image" src="${REAL_POSTER}" />
+        </div>
+      </section>
+      <header class="inline-production-masthead">
+        <h2 class="primaryname"><a>Film</a></h2>
+        <span class="releasedate"><a>2020</a></span>
+      </header>
+      <div class="content-reactions-strip"></div>
+      <p class="view-date"><a>01</a><a>Jan</a><a>2020</a></p>
+      <div class="js-review-body"><p>First paragraph.</p><p>Second paragraph.</p></div>`
+    const [entry] = await scrapeReview()
+    expect(entry.reviewText).toBe('First paragraph.\n\nSecond paragraph.')
+  })
+
+  it('extracts tags from ul.tags li a', async () => {
+    setSingleReviewDOM()
+    // Inject tags into the page DOM
+    document.body.innerHTML += `
+      <ul class="tags">
+        <li><a href="#">in theaters</a></li>
+        <li><a href="#">moviepass</a></li>
+      </ul>`
+    const [entry] = await scrapeReview()
+    expect(entry.tags).toEqual(['in theaters', 'moviepass'])
+  })
+
+  it('returns empty tags array when ul.tags is absent', async () => {
+    setSingleReviewDOM()
+    const [entry] = await scrapeReview()
+    expect(entry.tags).toEqual([])
+  })
+
+  it('returns empty rating when rating element is absent', async () => {
+    document.body.innerHTML = `
+      <section class="viewing-poster-container">
+        <div class="react-component" data-component-class="LazyPoster" data-poster-url="/film/x/">
+          <img class="image" src="${REAL_POSTER}" />
+        </div>
+      </section>
+      <header class="inline-production-masthead">
+        <h2 class="primaryname"><a>Film</a></h2>
+        <span class="releasedate"><a>2020</a></span>
+      </header>
+      <div class="content-reactions-strip"></div>
+      <p class="view-date"><a>01</a><a>Jan</a><a>2020</a></p>
+      <div class="js-review-body"><p>Some text.</p></div>`
+    const [entry] = await scrapeReview()
+    expect(entry.rating).toBe('')
+  })
+})
+
+// ── scrapeReviewsList ─────────────────────────────────────────────────────────
+
+describe('scrapeReviewsList', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  function makeReviewListItem(opts: {
+    title?: string
+    year?: string
+    posterUrl?: string
+    imgSrc?: string
+    rating?: string
+    datetime?: string
+    reviewText?: string
+    fullTextUrl?: string
+  } = {}): string {
+    const {
+      title = 'Groundhog Day',
+      year = '1993',
+      posterUrl = '/film/groundhog-day/image-150/',
+      imgSrc = REAL_POSTER,
+      rating = '★★★★★',
+      datetime = '2026-03-22',
+      reviewText = 'A classic.',
+      fullTextUrl = '',
+    } = opts
+    const fullTextAttr = fullTextUrl ? ` data-full-text-url="${fullTextUrl}"` : ''
+    return `
+      <div class="listitem js-listitem">
+        <article class="production-viewing viewing-poster-container js-production-viewing">
+          <div class="react-component" data-component-class="LazyPoster"
+            data-film-id="7418" data-poster-url="${posterUrl}">
+            <img class="image" src="${imgSrc}" />
+          </div>
+          <header class="inline-production-masthead">
+            <h2 class="primaryname"><a>${title}</a></h2>
+            <span class="releasedate"><a>${year}</a></span>
+          </header>
+          <div class="content-reactions-strip">
+            <span class="inline-rating"><svg aria-label="${rating}"></svg></span>
+            <span class="date"><time datetime="${datetime}"></time></span>
+          </div>
+          <div class="js-review-body"${fullTextAttr}><p>${reviewText}</p></div>
+        </article>
+      </div>`
+  }
+
+  function setReviewsListDOM(items: string[]) {
+    document.body.innerHTML = `<div class="viewing-list">${items.join('')}</div>`
+  }
+
+  it('returns [] when div.viewing-list is absent', async () => {
+    document.body.innerHTML = '<div>nothing</div>'
+    expect(await scrapeReviewsList(4)).toEqual([])
+  })
+
+  it('extracts title, year, rating, date, and review text', async () => {
+    setReviewsListDOM([makeReviewListItem()])
+    const [entry] = await scrapeReviewsList(1)
+    expect(entry.title).toBe('Groundhog Day')
+    expect(entry.year).toBe('1993')
+    expect(entry.rating).toBe('★★★★★')
+    expect(entry.date).toMatch(/Mar/)
+    expect(entry.reviewText).toBe('A classic.')
+  })
+
+  it('caps results at the given count', async () => {
+    setReviewsListDOM(Array.from({ length: 5 }, () => makeReviewListItem()))
+    expect(await scrapeReviewsList(2)).toHaveLength(2)
+  })
+
+  it('fetches full text when data-full-text-url is present', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      text: async () => '<p>Full review text.</p>',
+    }))
+    setReviewsListDOM([makeReviewListItem({ fullTextUrl: '/s/full-text/viewing:123/' })])
+    const [entry] = await scrapeReviewsList(1)
+    expect(entry.reviewText).toBe('Full review text.')
+    expect(fetch).toHaveBeenCalledWith('https://letterboxd.com/s/full-text/viewing:123/')
+  })
+
+  it('falls back to DOM text when full-text fetch fails', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network error')))
+    setReviewsListDOM([makeReviewListItem({ fullTextUrl: '/s/full-text/viewing:999/' })])
+    const [entry] = await scrapeReviewsList(1)
+    expect(entry.reviewText).toBe('')
+  })
+
+  it('uses DOM text when data-full-text-url is absent', async () => {
+    setReviewsListDOM([makeReviewListItem({ reviewText: 'Short review.' })])
+    const [entry] = await scrapeReviewsList(1)
+    expect(entry.reviewText).toBe('Short review.')
+  })
+
+  it('extracts per-review tags from ul.tags li a', async () => {
+    document.body.innerHTML = `
+      <div class="viewing-list">
+        <div class="listitem js-listitem">
+          <article class="production-viewing viewing-poster-container js-production-viewing">
+            <div class="react-component" data-component-class="LazyPoster"
+              data-film-id="1" data-poster-url="/film/x/">
+              <img class="image" src="${REAL_POSTER}" />
+            </div>
+            <header class="inline-production-masthead">
+              <h2 class="primaryname"><a>Film</a></h2>
+              <span class="releasedate"><a>2020</a></span>
+            </header>
+            <div class="content-reactions-strip">
+              <span class="date"><time datetime="2026-01-01"></time></span>
+            </div>
+            <div class="js-review-body"><p>Great.</p></div>
+            <ul class="tags">
+              <li><a href="#">sci-fi</a></li>
+              <li><a href="#">favorites</a></li>
+            </ul>
+          </article>
+        </div>
+      </div>`
+    const [entry] = await scrapeReviewsList(1)
+    expect(entry.tags).toEqual(['sci-fi', 'favorites'])
+  })
+})
+
+describe('scrapeBackdropUrl', () => {
+  afterEach(() => { document.body.innerHTML = '' })
+
+  it('returns empty string when no backdrop element exists', () => {
+    document.body.innerHTML = '<div class="other"></div>'
+    expect(scrapeBackdropUrl()).toBe('')
+  })
+
+  it('prefers data-backdrop-retina over data-backdrop', () => {
+    document.body.innerHTML = `
+      <div class="backdrop"
+           data-backdrop="//a.ltrbxd.com/backdrop.jpg"
+           data-backdrop-retina="//a.ltrbxd.com/backdrop@2x.jpg"></div>`
+    expect(scrapeBackdropUrl()).toBe('https://a.ltrbxd.com/backdrop@2x.jpg')
+  })
+
+  it('falls back to data-backdrop when retina is absent', () => {
+    document.body.innerHTML = `
+      <div class="backdrop" data-backdrop="//a.ltrbxd.com/backdrop.jpg"></div>`
+    expect(scrapeBackdropUrl()).toBe('https://a.ltrbxd.com/backdrop.jpg')
+  })
+
+  it('returns absolute HTTPS URL unchanged', () => {
+    document.body.innerHTML = `
+      <div data-backdrop="https://a.ltrbxd.com/backdrop.jpg"></div>`
+    expect(scrapeBackdropUrl()).toBe('https://a.ltrbxd.com/backdrop.jpg')
+  })
+
+  it('returns empty string when attribute value is empty', () => {
+    document.body.innerHTML = '<div data-backdrop=""></div>'
+    expect(scrapeBackdropUrl()).toBe('')
   })
 })

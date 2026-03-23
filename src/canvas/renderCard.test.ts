@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { renderCard, loadImage, computeLayout } from './renderCard'
+import { renderCard, loadImage, computeLayout, wrapText, drawTagPills } from './renderCard'
 
 // Auto-loading Image: fires onload immediately so renderCard doesn't hang in tests
 class AutoImage {
@@ -190,5 +190,236 @@ describe('loadImage', () => {
     getCapture()!.onerror?.(new Event('error'))
 
     await expect(promise).rejects.toBeInstanceOf(Event)
+  })
+})
+
+describe('drawTagPills', () => {
+  function makeCtx() {
+    const drawn: Array<{ type: string; text?: string }> = []
+    return {
+      font: '',
+      measureText: (text: string) => ({ width: text.length * 8 }),
+      fillStyle: '' as string,
+      textAlign: '' as string,
+      textBaseline: '' as string,
+      fillText: (text: string) => drawn.push({ type: 'text', text }),
+      beginPath: () => drawn.push({ type: 'beginPath' }),
+      roundRect: () => drawn.push({ type: 'roundRect' }),
+      fill: () => drawn.push({ type: 'fill' }),
+      _drawn: drawn,
+    } as unknown as CanvasRenderingContext2D & { _drawn: typeof drawn }
+  }
+
+  it('returns 0 for empty tags array', () => {
+    const ctx = makeCtx()
+    expect(drawTagPills(ctx, [], 0, 0, 500, false)).toBe(0)
+  })
+
+  it('returns TAG_PILL_H (22) for a single tag that fits', () => {
+    const ctx = makeCtx()
+    const h = drawTagPills(ctx, ['sci-fi'], 0, 0, 500, false)
+    expect(h).toBe(22)
+  })
+
+  it('wraps to a second row when pills overflow maxWidth', () => {
+    const ctx = makeCtx()
+    // Each tag "aaaaaaaaaa" (10 chars) → 80px text + 16px padding = 96px pill
+    // maxWidth=100: first pill fits (96 < 100), second pill at curX=96+6=102 > 100 → new row
+    const h = drawTagPills(ctx, ['aaaaaaaaaa', 'aaaaaaaaaa'], 0, 0, 100, false)
+    expect(h).toBe(22 + 6 + 22)  // two rows: PILL_H + ROW_GAP + PILL_H
+  })
+
+  it('draws pill backgrounds and text when draw=true', () => {
+    const ctx = makeCtx()
+    drawTagPills(ctx, ['tag'], 0, 0, 500, true)
+    const drawn = (ctx as unknown as { _drawn: Array<{ type: string }> })._drawn
+    expect(drawn.some(d => d.type === 'roundRect')).toBe(true)
+    expect(drawn.some(d => d.type === 'fill')).toBe(true)
+    expect(drawn.some((d: { type: string; text?: string }) => d.type === 'text' && d.text === 'tag')).toBe(true)
+  })
+
+  it('does not draw anything when draw=false', () => {
+    const ctx = makeCtx()
+    drawTagPills(ctx, ['tag'], 0, 0, 500, false)
+    const drawn = (ctx as unknown as { _drawn: Array<{ type: string }> })._drawn
+    expect(drawn).toHaveLength(0)
+  })
+})
+
+describe('wrapText', () => {
+  // Build a minimal CanvasRenderingContext2D-like object for measurement tests.
+  // measureText returns width = 10px per character (deterministic).
+  function makeCtx(charsPerLine = 10) {
+    const drawn: string[] = []
+    return {
+      font: '',
+      measureText: (text: string) => ({ width: text.length * 10 }),
+      fillText: (text: string) => { drawn.push(text) },
+      _drawn: drawn,
+      _charsPerLine: charsPerLine,
+    } as unknown as CanvasRenderingContext2D & { _drawn: string[]; _charsPerLine: number }
+  }
+
+  it('returns 0 for empty text', () => {
+    const ctx = makeCtx()
+    expect(wrapText(ctx, '', 0, 0, 500, 24, false)).toBe(0)
+  })
+
+  it('returns one lineHeight for a short line that fits', () => {
+    const ctx = makeCtx()
+    // maxWidth=500, each char=10px → "hello" (5 chars = 50px) fits easily
+    const height = wrapText(ctx, 'hello', 0, 0, 500, 24, false)
+    expect(height).toBe(24)
+  })
+
+  it('wraps long text into multiple lines', () => {
+    const ctx = makeCtx()
+    // maxWidth=30 (3 chars per word "aa" = 20px; "aa bb" = 50px > 30 → wraps)
+    // Words "aa bb cc" → line1: "aa bb"? No: "aa"=20, "aa bb"=50>30 → wrap. Actually:
+    // line="aa", test "aa bb"→50>30 && line→flush, line="bb"; test "bb cc"→50>30 && line→flush, line="cc"; end→flush
+    // So 3 lines × 24 = 72
+    const height = wrapText(ctx, 'aa bb cc', 0, 0, 30, 24, false)
+    expect(height).toBe(72)
+  })
+
+  it('draws lines when draw=true', () => {
+    const ctx = makeCtx()
+    wrapText(ctx, 'one two', 0, 0, 500, 24, true)
+    expect((ctx as unknown as { _drawn: string[] })._drawn).toEqual(['one two'])
+  })
+
+  it('handles \\n\\n paragraph breaks with extra spacing', () => {
+    const ctx = makeCtx()
+    // Two short paragraphs → 2 lines + 1 paragraph gap (Math.round(24*0.5)=12)
+    const height = wrapText(ctx, 'hello\n\nworld', 0, 0, 500, 24, false)
+    expect(height).toBe(24 + 12 + 24)  // line1 + para-gap + line2
+  })
+
+  it('handles \\n hard line breaks within a paragraph', () => {
+    const ctx = makeCtx()
+    // Two hard lines, no paragraph gap between them
+    const height = wrapText(ctx, 'line one\nline two', 0, 0, 500, 24, false)
+    expect(height).toBe(48)
+  })
+})
+
+describe('renderCard — review type', () => {
+  beforeEach(() => {
+    vi.stubGlobal('Image', class AutoImage {
+      onload?: () => void
+      onerror?: () => void
+      private _src = ''
+      get src() { return this._src }
+      set src(v: string) { this._src = v; if (v) queueMicrotask(() => this.onload?.()) }
+    } as unknown as typeof Image)
+  })
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  const reviewFilm = {
+    title: 'Groundhog Day',
+    year: '1993',
+    rating: '★★★★★',
+    posterDataUrl: 'data:image/png;base64,abc',
+    date: 'Feb 02, 2026',
+    reviewText: 'One of the greatest films ever made.',
+  }
+
+  it('renders a single review card as a PNG Blob', async () => {
+    const blob = await renderCard({
+      films: [reviewFilm],
+      username: 'michaellamb',
+      showTitle: true, showYear: true, showRating: true, showDate: true,
+      cardType: 'review',
+      reviewCount: 1,
+    })
+    expect(blob).toBeInstanceOf(Blob)
+    expect(blob.type).toBe('image/png')
+  })
+
+  it('renders 4-review card', async () => {
+    const blob = await renderCard({
+      films: Array.from({ length: 4 }, () => reviewFilm),
+      username: 'test',
+      showTitle: true, showYear: true, showRating: true, showDate: true,
+      cardType: 'review',
+      reviewCount: 4,
+    })
+    expect(blob).toBeInstanceOf(Blob)
+  })
+
+  it('renders with all options disabled', async () => {
+    const blob = await renderCard({
+      films: [{ ...reviewFilm, rating: '', date: undefined }],
+      username: 'test',
+      showTitle: false, showYear: false, showRating: false, showDate: false,
+      cardType: 'review',
+      reviewCount: 1,
+    })
+    expect(blob).toBeInstanceOf(Blob)
+  })
+
+  it('throws when films array is empty', async () => {
+    await expect(renderCard({
+      films: [],
+      username: 'test',
+      showTitle: true, showYear: true, showRating: true, showDate: true,
+      cardType: 'review',
+      reviewCount: 1,
+    })).rejects.toThrow('No films found to render.')
+  })
+
+  it('renders with a backdrop data URL', async () => {
+    const blob = await renderCard({
+      films: [reviewFilm],
+      username: 'michaellamb',
+      showTitle: true, showYear: true, showRating: true, showDate: true,
+      cardType: 'review',
+      reviewCount: 1,
+      backdropDataUrl: 'data:image/png;base64,abc',
+    })
+    expect(blob).toBeInstanceOf(Blob)
+  })
+})
+
+describe('renderCard — backdrop', () => {
+  beforeEach(() => {
+    vi.stubGlobal('Image', class AutoImage {
+      onload?: () => void
+      onerror?: () => void
+      private _src = ''
+      get src() { return this._src }
+      set src(v: string) { this._src = v; if (v) queueMicrotask(() => this.onload?.()) }
+    } as unknown as typeof Image)
+  })
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('renders a list card with backdrop', async () => {
+    const films = Array.from({ length: 4 }, (_, i) => ({
+      title: `Film ${i}`, year: '2024', rating: '★★★',
+      posterDataUrl: 'data:image/png;base64,abc',
+    }))
+    const blob = await renderCard({
+      films,
+      username: 'test',
+      showTitle: true, showYear: true, showRating: true, showDate: false,
+      cardType: 'list',
+      listCount: 4,
+      backdropDataUrl: 'data:image/png;base64,abc',
+    })
+    expect(blob).toBeInstanceOf(Blob)
+  })
+
+  it('renders without backdrop when backdropDataUrl is absent', async () => {
+    const films = Array.from({ length: 4 }, (_, i) => ({
+      title: `Film ${i}`, year: '2024', rating: '★★★',
+      posterDataUrl: 'data:image/png;base64,abc',
+    }))
+    const blob = await renderCard({
+      films,
+      username: 'test',
+      showTitle: true, showYear: false, showRating: false, showDate: false,
+      cardType: 'last-four-watched',
+    })
+    expect(blob).toBeInstanceOf(Blob)
   })
 })

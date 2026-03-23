@@ -3,7 +3,7 @@ import type { FilmData, FilmDataResponse, GetFilmDataRequest } from '../content/
 import type { FetchImageResponse } from '../background/service-worker'
 import { renderCard } from '../canvas/renderCard'
 import { CARD_TYPES, CARD_TYPE_CONFIGS } from '../types'
-import type { CardType, ListCount } from '../types'
+import type { CardType, ListCount, ReviewCount } from '../types'
 import styles from './Popup.module.css'
 
 type Status = 'idle' | 'loading' | 'ready' | 'error'
@@ -22,7 +22,9 @@ export default function Popup() {
   const [error,       setError]       = useState<string | null>(null)
   const [cardType,    setCardType]    = useState<CardType>('last-four-watched')
   const [listCount,   setListCount]   = useState<ListCount>(4)
-  const [isValidPage, setIsValidPage] = useState<boolean | null>(null)
+  const [reviewCount, setReviewCount] = useState<ReviewCount>(1)
+  const [isValidPage,      setIsValidPage]      = useState<boolean | null>(null)
+  const [isReviewListPage, setIsReviewListPage] = useState(false)
   const [showTitle,     setShowTitle]     = useState(true)
   const [showYear,      setShowYear]      = useState(true)
   const [showRating,    setShowRating]    = useState(true)
@@ -30,6 +32,8 @@ export default function Popup() {
   const [showListTitle,      setShowListTitle]      = useState(true)
   const [showListDesc,       setShowListDesc]       = useState(true)
   const [showCardTypeLabel,  setShowCardTypeLabel]  = useState(true)
+  const [showTags,           setShowTags]           = useState(true)
+  const [showBackdrop,       setShowBackdrop]       = useState(true)
   const [cardUrl,       setCardUrl]       = useState<string | null>(null)
   const [cardBlob,      setCardBlob]      = useState<Blob | null>(null)
 
@@ -48,6 +52,7 @@ export default function Popup() {
     chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
       const url = tab?.url ?? ''
       setIsValidPage(CARD_TYPE_CONFIGS[cardType].urlPattern.test(url))
+      setIsReviewListPage(cardType === 'review' && /\/reviews\/?$/.test(url))
     })
   }, [cardType])
 
@@ -73,6 +78,7 @@ export default function Popup() {
         type: 'GET_FILM_DATA',
         cardType,
         listCount: (cardType === 'list' || cardType === 'recent-diary') ? listCount : undefined,
+        reviewCount: cardType === 'review' ? reviewCount : undefined,
       } satisfies GetFilmDataRequest)
 
       if (!filmData.films.length) {
@@ -90,11 +96,22 @@ export default function Popup() {
       }
       const posterDataUrls = posterResults.map(r => (r as PromiseFulfilledResult<string>).value)
 
+      let backdropDataUrl: string | undefined
+      if (showBackdrop && filmData.backdropUrl && (cardType === 'review' || cardType === 'list')) {
+        try {
+          backdropDataUrl = await fetchPosterDataUrl(filmData.backdropUrl)
+        } catch {
+          // Non-fatal: render without backdrop
+        }
+      }
+
       const films = filmData.films.map((f: FilmData, i: number) => ({
         title:         f.title,
         year:          f.year,
         rating:        f.rating,
         date:          f.date,
+        reviewText:    f.reviewText,
+        tags:          f.tags,
         posterDataUrl: posterDataUrls[i],
       }))
 
@@ -107,12 +124,16 @@ export default function Popup() {
         showDate,
         cardType,
         listCount: (cardType === 'list' || cardType === 'recent-diary') ? listCount : undefined,
+        reviewCount: cardType === 'review' ? reviewCount : undefined,
         showListTitle:       cardType === 'list' ? showListTitle : undefined,
         showListDescription: cardType === 'list' ? showListDesc  : undefined,
         listTitle:           cardType === 'list' ? filmData.listTitle       : undefined,
         listDescription:     cardType === 'list' ? filmData.listDescription : undefined,
-        showCardTypeLabel:   cardType !== 'list' ? showCardTypeLabel : undefined,
-        cardTypeLabel:       cardType !== 'list' ? CARD_TYPE_CONFIGS[cardType].label : undefined,
+        showCardTypeLabel:   (cardType !== 'list' && cardType !== 'review') ? showCardTypeLabel : undefined,
+        cardTypeLabel:       (cardType !== 'list' && cardType !== 'review') ? CARD_TYPE_CONFIGS[cardType].label : undefined,
+        showTags:            (cardType === 'list' || cardType === 'review') ? showTags : undefined,
+        listTags:            cardType === 'list' ? filmData.listTags : undefined,
+        backdropDataUrl,
       })
 
       setCardBlob(blob)
@@ -146,23 +167,30 @@ export default function Popup() {
       {status === 'loading' && <div className={styles.loadingBar} />}
 
       <header className={styles.header}>
-        <svg viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg" width="28" height="28" aria-hidden="true">
-          <defs>
-            <linearGradient id="bc-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%"   stopColor="#EF8D22" />
-              <stop offset="50%"  stopColor="#0EDF52" />
-              <stop offset="100%" stopColor="#40BCF4" />
-            </linearGradient>
-            <mask id="bc-mask">
-              <circle cx="250" cy="250" r="250" fill="white" />
-              <text x="250" y="250" textAnchor="middle" dominantBaseline="central"
-                fontFamily="Arial Black, Arial, Helvetica, sans-serif"
-                fontWeight="900" fontSize="230" fill="black">BC</text>
-            </mask>
-          </defs>
-          <circle cx="250" cy="250" r="250" fill="url(#bc-grad)" mask="url(#bc-mask)" />
-        </svg>
-        <h1>Boxd Card</h1>
+        <a
+          href="https://boxd-card.michaellamb.dev"
+          target="_blank"
+          rel="noreferrer"
+          className={styles.headerLink}
+        >
+          <svg viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg" width="28" height="28" aria-hidden="true">
+            <defs>
+              <linearGradient id="bc-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%"   stopColor="#EF8D22" />
+                <stop offset="50%"  stopColor="#0EDF52" />
+                <stop offset="100%" stopColor="#40BCF4" />
+              </linearGradient>
+              <mask id="bc-mask">
+                <circle cx="250" cy="250" r="250" fill="white" />
+                <text x="250" y="250" textAnchor="middle" dominantBaseline="central"
+                  fontFamily="Arial Black, Arial, Helvetica, sans-serif"
+                  fontWeight="900" fontSize="230" fill="black">BC</text>
+              </mask>
+            </defs>
+            <circle cx="250" cy="250" r="250" fill="url(#bc-grad)" mask="url(#bc-mask)" />
+          </svg>
+          <h1>Boxd Card</h1>
+        </a>
       </header>
 
       <div className={styles.body}>
@@ -200,6 +228,24 @@ export default function Popup() {
           </div>
         )}
 
+        {/* Review count selector — only on the reviews list page (single review pages always yield 1) */}
+        {cardType === 'review' && isReviewListPage && (
+          <div className={styles.radioGroup}>
+            {([1, 2, 3, 4] as ReviewCount[]).map(n => (
+              <label key={n} className={styles.checkboxLabel}>
+                <input
+                  type="radio"
+                  name="reviewCount"
+                  value={n}
+                  checked={reviewCount === n}
+                  onChange={() => setReviewCount(n)}
+                />
+                {n} {n === 1 ? 'review' : 'reviews'}
+              </label>
+            ))}
+          </div>
+        )}
+
         {/* Navigation hint when on wrong page */}
         {isValidPage === false && (
           <p className={styles.hint}>
@@ -207,7 +253,7 @@ export default function Popup() {
           </p>
         )}
 
-        {/* List title / description checkboxes */}
+        {/* List title / description / tags / backdrop checkboxes */}
         {cardType === 'list' && (
           <div className={styles.checkboxGrid}>
             <label className={styles.checkboxLabel}>
@@ -218,11 +264,19 @@ export default function Popup() {
               <input type="checkbox" checked={showListDesc} onChange={e => setShowListDesc(e.target.checked)} />
               Description
             </label>
+            <label className={styles.checkboxLabel}>
+              <input type="checkbox" checked={showTags} onChange={e => setShowTags(e.target.checked)} />
+              Tags
+            </label>
+            <label className={styles.checkboxLabel}>
+              <input type="checkbox" checked={showBackdrop} onChange={e => setShowBackdrop(e.target.checked)} />
+              Backdrop
+            </label>
           </div>
         )}
 
-        {/* Card type label checkbox — for non-list types */}
-        {cardType !== 'list' && (
+        {/* Card type label checkbox — for non-list, non-review types */}
+        {cardType !== 'list' && cardType !== 'review' && (
           <div>
             <label className={styles.checkboxLabel}>
               <input type="checkbox" checked={showCardTypeLabel} onChange={e => setShowCardTypeLabel(e.target.checked)} />
@@ -247,8 +301,20 @@ export default function Popup() {
           </label>
           <label className={styles.checkboxLabel}>
             <input type="checkbox" checked={showDate} onChange={e => setShowDate(e.target.checked)} />
-            {cardType === 'recent-diary' ? 'Watch date' : 'Date'}
+            {(cardType === 'recent-diary' || cardType === 'review') ? 'Watch date' : 'Date'}
           </label>
+          {cardType === 'review' && (
+            <label className={styles.checkboxLabel}>
+              <input type="checkbox" checked={showTags} onChange={e => setShowTags(e.target.checked)} />
+              Tags
+            </label>
+          )}
+          {cardType === 'review' && (
+            <label className={styles.checkboxLabel}>
+              <input type="checkbox" checked={showBackdrop} onChange={e => setShowBackdrop(e.target.checked)} />
+              Backdrop
+            </label>
+          )}
         </div>
 
         <button

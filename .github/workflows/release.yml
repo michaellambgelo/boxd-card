@@ -9,7 +9,7 @@ jobs:
   release:
     name: Version, Build & Release
     runs-on: ubuntu-latest
-    if: "!startsWith(github.event.head_commit.message, 'chore: release')"
+    if: "!startsWith(github.event.head_commit.message, 'chore: release') && !startsWith(github.event.head_commit.message, 'chore: sync version')"
     permissions:
       contents: write
       pull-requests: read
@@ -20,6 +20,7 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.RELEASE_TOKEN }}
+          ref: release
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -107,10 +108,22 @@ jobs:
 
       - name: Back-merge version bump to main
         run: |
-          VERSION_COMMIT=$(git rev-parse HEAD)
+          NEW_VERSION="${{ steps.version.outputs.new_version }}"
           git fetch origin main
           git checkout main
-          git cherry-pick "$VERSION_COMMIT"
+
+          # Re-apply the new version directly — avoids cherry-pick conflicts
+          # when main's version files have diverged from release.
+          npm version "$NEW_VERSION" --no-git-tag-version
+          node -e "
+            const fs = require('fs');
+            const m = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
+            m.version = '$NEW_VERSION';
+            fs.writeFileSync('manifest.json', JSON.stringify(m, null, 2) + '\n');
+          "
+
+          git add package.json package-lock.json manifest.json
+          git commit -m "chore: sync version to v$NEW_VERSION on main"
           git push origin main
 
       - name: Create GitHub Release

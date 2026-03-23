@@ -115,12 +115,4 @@ After each subsequent `npm run build`, click the **↺ reload** button on the ex
 | `https://a.ltrbxd.com/*` | Fetch poster images from the primary Letterboxd image CDN |
 | `https://s.ltrbxd.com/*` | Fetch static assets (logo) |
 
-## Status
-
-v0.1.1 — submitted to the Chrome Web Store. Core generation pipeline is working for all four card types.
-
-Known gaps:
-- Popup UI is functional but unstyled
-- Favorites cards show no star ratings (ratings are not present in the favorites DOM)
-
-Privacy policy: [blog.michaellamb.dev/boxd-card/privacy.html](https://blog.michaellamb.dev/boxd-card/privacy.html)
+Privacy policy: [boxd-card.michaellamb.dev/privacy.html](https://boxd-card.michaellamb.dev/privacy.html)

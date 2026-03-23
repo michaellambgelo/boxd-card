@@ -107,6 +107,63 @@ ul.js-list-entries li.posteritem
   (filter out paragraphs starting with "Updated")
 ```
 
+### Tags (reviews and lists)
+
+```
+ul.tags li a   ← tag text content (e.g. "in theaters", "moviepass")
+```
+
+For single review and list pages: `document.querySelectorAll('ul.tags li a')`
+For reviews list page: `item.querySelectorAll('ul.tags li a')` per review entry
+
+### Single review page (`letterboxd.com/<username>/film/<slug>/` or `.../film/<slug>/\d+/`)
+
+```
+Username: document.body.dataset.owner
+
+section.viewing-poster-container
+  .react-component[data-component-class="LazyPoster"]
+    @data-poster-url   "/film/groundhog-day/image-150/"
+  img.image            ← src = resolved poster or placeholder (same fallback strategy)
+
+header.inline-production-masthead h2.primaryname a   ← film title text "Groundhog Day"
+header.inline-production-masthead .releasedate a     ← year text "1993"
+
+.content-reactions-strip span.inline-rating svg      ← @aria-label = "★★★★★" (absent if unrated)
+
+p.view-date a   ← three links in DOM order: day "02", month "Feb", year "2026"
+  (preceded by "Watched" / "Rewatched" text node — ignore)
+
+.js-review-body p   ← one <p> per paragraph; use innerText to get text with \n at <br>
+  join paragraphs with \n\n
+  presence of .js-review-body confirms page is a review (not just a diary entry)
+```
+
+### Reviews list page (`letterboxd.com/<username>/reviews/`)
+
+```
+div.viewing-list > div.listitem.js-listitem   (one per review, take first N)
+  article.production-viewing.viewing-poster-container.js-production-viewing
+
+  Poster (same LazyPoster pattern):
+    .react-component[data-component-class="LazyPoster"] @data-poster-url
+    img.image   ← src = resolved poster or empty-poster fallback
+
+  Film title:   header.inline-production-masthead h2.primaryname a
+  Year:         header.inline-production-masthead .releasedate a
+  Rating:       .content-reactions-strip .inline-rating svg @aria-label  ("★★★★½"; absent if unrated)
+  Watch date:   .content-reactions-strip .date time @datetime             (ISO: "2026-03-22")
+
+  Review text:  .js-review-body p   ← innerText, join with \n\n
+
+  CRITICAL — truncated reviews:
+    .js-review-body also carries class js-collapsible-text and
+    @data-full-text-url="/s/full-text/viewing:{id}/"
+    Long reviews are truncated on the list page. To get the full text, fetch
+    https://letterboxd.com + data-full-text-url (returns HTML fragment; extract <p> tags).
+    If data-full-text-url is absent, the review is short enough to be complete.
+```
+
 ### Poster URL strategy
 
 `img.src` starts as a placeholder (`empty-poster-*.png`) and is updated by Letterboxd's LazyPoster React component after load. The scraper checks if `img.src` contains `"empty-poster"` and falls back to `https://letterboxd.com` + `data-poster-url` if so. The background worker then fetches that URL, which redirects to the actual CDN image.
@@ -179,4 +236,3 @@ npm run coverage # Vitest with v8 coverage
 
 - Favorites have no star ratings by design (not present in the DOM)
 - Sparse layout (1–3 films for last-four/favorites) is centered correctly but visually sparse — accepted behavior
-- Popup UI styled; no known remaining gaps
