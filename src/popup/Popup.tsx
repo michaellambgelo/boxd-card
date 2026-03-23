@@ -146,23 +146,30 @@ export default function Popup() {
       {status === 'loading' && <div className={styles.loadingBar} />}
 
       <header className={styles.header}>
-        <svg viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg" width="28" height="28" aria-hidden="true">
-          <defs>
-            <linearGradient id="bc-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%"   stopColor="#EF8D22" />
-              <stop offset="50%"  stopColor="#0EDF52" />
-              <stop offset="100%" stopColor="#40BCF4" />
-            </linearGradient>
-            <mask id="bc-mask">
-              <circle cx="250" cy="250" r="250" fill="white" />
-              <text x="250" y="250" textAnchor="middle" dominantBaseline="central"
-                fontFamily="Arial Black, Arial, Helvetica, sans-serif"
-                fontWeight="900" fontSize="230" fill="black">BC</text>
-            </mask>
-          </defs>
-          <circle cx="250" cy="250" r="250" fill="url(#bc-grad)" mask="url(#bc-mask)" />
-        </svg>
-        <h1>Boxd Card</h1>
+        <a
+          href="https://boxd-card.michaellamb.dev"
+          target="_blank"
+          rel="noreferrer"
+          className={styles.headerLink}
+        >
+          <svg viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg" width="28" height="28" aria-hidden="true">
+            <defs>
+              <linearGradient id="bc-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%"   stopColor="#EF8D22" />
+                <stop offset="50%"  stopColor="#0EDF52" />
+                <stop offset="100%" stopColor="#40BCF4" />
+              </linearGradient>
+              <mask id="bc-mask">
+                <circle cx="250" cy="250" r="250" fill="white" />
+                <text x="250" y="250" textAnchor="middle" dominantBaseline="central"
+                  fontFamily="Arial Black, Arial, Helvetica, sans-serif"
+                  fontWeight="900" fontSize="230" fill="black">BC</text>
+              </mask>
+            </defs>
+            <circle cx="250" cy="250" r="250" fill="url(#bc-grad)" mask="url(#bc-mask)" />
+          </svg>
+          <h1>Boxd Card</h1>
+        </a>
       </header>
 
       <div className={styles.body}>
