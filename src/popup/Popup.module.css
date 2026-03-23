@@ -192,6 +192,7 @@
 
 .actionBtn {
   flex: 1;
+  position: relative;
   padding: 7px 0;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -207,10 +208,16 @@
 }
 
 .actionBtnCopied {
+  border-color: transparent;
+}
+
+.actionBtnCopied::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: calc(var(--radius) + 2px);
   background: linear-gradient(to right, #EF8D22, #0EDF52, #40BCF4, #EF8D22);
   background-size: 200% auto;
   animation: sweep 1.5s linear infinite;
-  border-color: transparent;
-  color: #ffffff;
-  font-weight: 600;
+  z-index: -1;
 }
