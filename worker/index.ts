@@ -86,6 +86,11 @@ export default {
       const contentType = upstream.headers.get('Content-Type') ?? 'application/octet-stream'
       const body = await upstream.arrayBuffer()
 
+      if (!upstream.ok) {
+        const snippet = new TextDecoder().decode(body.slice(0, 512))
+        console.log(`[proxy] upstream ${upstream.status} for ${target} | cf-ray: ${upstream.headers.get('cf-ray')} | body: ${snippet}`)
+      }
+
       return new Response(body, {
         status: upstream.status,
         headers: {
