@@ -394,7 +394,9 @@ export function parseLetterboxdUrl(input: string): ParsedLetterboxdUrl | null {
   }
   if (section === 'film' && subpart) {
     // Single film review: /username/film/slug/ or /username/film/slug/N/
-    return { username, cardType: 'review', listSlug: '', isReviewListPage: false, filmSlug: subpart }
+    const entryNum = parts[3] // e.g. '6' for the 6th viewing of the same film
+    const filmSlug = entryNum ? `${subpart}/${entryNum}` : subpart
+    return { username, cardType: 'review', listSlug: '', isReviewListPage: false, filmSlug }
   }
 
   return null

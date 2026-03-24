@@ -1047,7 +1047,7 @@ describe('parseLetterboxdUrl', () => {
 
   it('parses a /film/slug/N/ page as single review', () => {
     const result = parseLetterboxdUrl('https://letterboxd.com/testuser/film/groundhog-day/2/')
-    expect(result).toMatchObject({ username: 'testuser', cardType: 'review', isReviewListPage: false, filmSlug: 'groundhog-day' })
+    expect(result).toMatchObject({ username: 'testuser', cardType: 'review', isReviewListPage: false, filmSlug: 'groundhog-day/2' })
   })
 
   it('returns short-URL placeholder for boxd.it URLs', () => {
