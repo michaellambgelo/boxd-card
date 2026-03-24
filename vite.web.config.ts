@@ -24,6 +24,10 @@ export default defineConfig({
   // Load .env files from the project root (not from src/web/).
   envDir: __dirname,
 
+  // Asset URLs must be relative to /app/ since GitHub Pages serves this
+  // from boxd-card.michaellamb.dev/app/, not the domain root.
+  base: '/app/',
+
   build: {
     // Output to docs/app/ so GitHub Pages serves it at /app/
     outDir: resolve(__dirname, 'docs/app'),
