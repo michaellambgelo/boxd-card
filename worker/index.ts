@@ -74,6 +74,11 @@ export default {
           'User-Agent': 'Mozilla/5.0 (compatible; BoxdCard-Web/1.0; +https://boxd-card.michaellamb.dev)',
           Accept: acceptHeader,
           'Accept-Language': 'en-US,en;q=0.9',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'Upgrade-Insecure-Requests': '1',
+          'Sec-Fetch-Site': 'none',
+          'Sec-Fetch-Mode': 'navigate',
+          'Sec-Fetch-Dest': 'document',
         },
         redirect: 'follow',
       })
