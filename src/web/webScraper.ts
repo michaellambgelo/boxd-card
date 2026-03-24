@@ -22,7 +22,7 @@ import type { FilmData, FilmDataResponse } from '../content/index'
 // For production the build bakes in the value at build time.
 const PROXY_BASE: string =
   (import.meta.env.VITE_PROXY_URL as string | undefined) ??
-  'https://proxy.boxd-card.michaellamb.dev'
+  'https://boxd-card.michael-dcc.workers.dev'
 
 export function proxyUrl(target: string, accept?: 'image'): string {
   let u = `${PROXY_BASE}?url=${encodeURIComponent(target)}`
@@ -35,7 +35,7 @@ export async function fetchPageDocument(url: string): Promise<Document> {
   if (!res.ok) {
     if (res.status === 403) {
       throw new Error(
-        "Letterboxd's firewall is blocking this request. Try the browser extension for best results.",
+        "Letterboxd's firewall is blocking this request. Try the browser extension for best results or paste another Letterboxd URL.",
       )
     }
     throw new Error(`HTTP ${res.status} fetching page`)
