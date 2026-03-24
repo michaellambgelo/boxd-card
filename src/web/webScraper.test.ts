@@ -1,17 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
   proxyUrl,
+  fetchImageDataUrl,
   scrapeRecentActivity,
   scrapeFavorites,
   scrapeDiary,
   scrapeList,
   scrapeListMeta,
   scrapeReviewsList,
+  scrapeSingleReview,
   scrapeLoggedInUser,
   scrapePageOwnerAvatarUrl,
   scrapeBackdropUrl,
   scrapeUsername,
   buildPageUrl,
+  parseLetterboxdUrl,
 } from './webScraper'
 
 // ── DOM helpers ───────────────────────────────────────────────────────────────
@@ -983,9 +986,254 @@ describe('buildPageUrl', () => {
     )
   })
 
-  it('builds review URL', () => {
+  it('builds review URL (list page)', () => {
     expect(buildPageUrl('user', 'review', '')).toBe(
       'https://letterboxd.com/user/reviews/'
     )
+  })
+
+  it('builds single review URL when filmSlug is provided', () => {
+    expect(buildPageUrl('user', 'review', '', 'groundhog-day')).toBe(
+      'https://letterboxd.com/user/film/groundhog-day/'
+    )
+  })
+})
+
+// ── parseLetterboxdUrl ────────────────────────────────────────────────────────
+
+describe('parseLetterboxdUrl', () => {
+  it('returns null for a non-Letterboxd URL', () => {
+    expect(parseLetterboxdUrl('https://example.com/foo')).toBeNull()
+  })
+
+  it('returns null for a plain string', () => {
+    expect(parseLetterboxdUrl('not a url')).toBeNull()
+  })
+
+  it('parses a profile page as cardType null', () => {
+    const result = parseLetterboxdUrl('https://letterboxd.com/testuser/')
+    expect(result).toMatchObject({ username: 'testuser', cardType: null, listSlug: '', isReviewListPage: false, filmSlug: '' })
+  })
+
+  it('parses a /films/ page as last-four-watched', () => {
+    const result = parseLetterboxdUrl('https://letterboxd.com/testuser/films/')
+    expect(result).toMatchObject({ username: 'testuser', cardType: 'last-four-watched', isReviewListPage: false })
+  })
+
+  it('parses a /diary/ page as recent-diary', () => {
+    const result = parseLetterboxdUrl('https://letterboxd.com/testuser/diary/')
+    expect(result).toMatchObject({ username: 'testuser', cardType: 'recent-diary', isReviewListPage: false })
+  })
+
+  it('parses a /films/diary/ page as recent-diary', () => {
+    const result = parseLetterboxdUrl('https://letterboxd.com/testuser/films/diary/')
+    expect(result).toMatchObject({ username: 'testuser', cardType: 'recent-diary', isReviewListPage: false })
+  })
+
+  it('parses a /list/slug/ page as list with slug', () => {
+    const result = parseLetterboxdUrl('https://letterboxd.com/testuser/list/best-of-2024/')
+    expect(result).toMatchObject({ username: 'testuser', cardType: 'list', listSlug: 'best-of-2024', isReviewListPage: false })
+  })
+
+  it('parses a /reviews/ page as review with isReviewListPage true', () => {
+    const result = parseLetterboxdUrl('https://letterboxd.com/testuser/reviews/')
+    expect(result).toMatchObject({ username: 'testuser', cardType: 'review', isReviewListPage: true, filmSlug: '' })
+  })
+
+  it('parses a /film/slug/ page as review with isReviewListPage false', () => {
+    const result = parseLetterboxdUrl('https://letterboxd.com/testuser/film/groundhog-day/')
+    expect(result).toMatchObject({ username: 'testuser', cardType: 'review', isReviewListPage: false, filmSlug: 'groundhog-day' })
+  })
+
+  it('parses a /film/slug/N/ page as single review', () => {
+    const result = parseLetterboxdUrl('https://letterboxd.com/testuser/film/groundhog-day/2/')
+    expect(result).toMatchObject({ username: 'testuser', cardType: 'review', isReviewListPage: false, filmSlug: 'groundhog-day' })
+  })
+
+  it('returns short-URL placeholder for boxd.it URLs', () => {
+    const result = parseLetterboxdUrl('https://boxd.it/aXIJ7l')
+    expect(result).toMatchObject({ username: '', cardType: null, isReviewListPage: false })
+  })
+
+  it('handles www prefix on letterboxd.com', () => {
+    const result = parseLetterboxdUrl('https://www.letterboxd.com/testuser/diary/')
+    expect(result).toMatchObject({ username: 'testuser', cardType: 'recent-diary' })
+  })
+})
+
+// ── scrapeSingleReview ────────────────────────────────────────────────────────
+
+function makeSingleReviewDoc(overrides: {
+  title?: string
+  year?: string
+  posterUrl?: string
+  rating?: string
+  day?: string
+  month?: string
+  yr?: string
+  reviewText?: string
+  tags?: string[]
+} = {}): Document {
+  const {
+    title = 'Groundhog Day',
+    year = '1993',
+    posterUrl = '/film/groundhog-day/image-150/',
+    rating = '★★★★★',
+    day = '02',
+    month = 'Feb',
+    yr = '2026',
+    reviewText = 'A timeless masterpiece.',
+    tags = ['comedy', 'classic'],
+  } = overrides
+
+  const tagsHtml = tags.map(t => `<li><a>${t}</a></li>`).join('')
+
+  return new DOMParser().parseFromString(`
+    <html><body>
+      <section class="viewing-poster-container">
+        <div class="react-component"
+          data-component-class="LazyPoster"
+          data-film-id="12345"
+          data-poster-url="${posterUrl}">
+          <img class="image" src="empty-poster.png" />
+        </div>
+      </section>
+      <header class="inline-production-masthead">
+        <h2 class="primaryname"><a>${title}</a></h2>
+        <span class="releasedate"><a>${year}</a></span>
+      </header>
+      <div class="content-reactions-strip">
+        <span class="inline-rating"><svg aria-label="${rating}"></svg></span>
+      </div>
+      <p class="view-date">
+        Watched <a>${day}</a> <a>${month}</a> <a>${yr}</a>
+      </p>
+      <div class="js-review-body"><p>${reviewText}</p></div>
+      <ul class="tags">${tagsHtml}</ul>
+    </body></html>
+  `, 'text/html')
+}
+
+describe('scrapeSingleReview', () => {
+  it('returns a one-element array with the review data', async () => {
+    const doc = makeSingleReviewDoc()
+    const result = await scrapeSingleReview(doc)
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({
+      title: 'Groundhog Day',
+      year: '1993',
+      rating: '★★★★★',
+      date: 'Feb 02, 2026',
+      reviewText: 'A timeless masterpiece.',
+      tags: ['comedy', 'classic'],
+      posterUrl: 'https://letterboxd.com/film/groundhog-day/image-150/',
+    })
+  })
+
+  it('returns empty array when title is missing', async () => {
+    const doc = makeSingleReviewDoc({ title: '' })
+    // The DOM will still have an <a> but textContent will be ''
+    const result = await scrapeSingleReview(doc)
+    expect(result).toHaveLength(0)
+  })
+
+  it('handles missing rating gracefully', async () => {
+    const html = `
+      <html><body>
+        <section class="viewing-poster-container">
+          <div class="react-component" data-component-class="LazyPoster" data-film-id="1" data-poster-url="/film/foo/image-150/"></div>
+        </section>
+        <header class="inline-production-masthead">
+          <h2 class="primaryname"><a>Some Film</a></h2>
+          <span class="releasedate"><a>2020</a></span>
+        </header>
+        <p class="view-date"><a>10</a><a>Jan</a><a>2025</a></p>
+        <div class="js-review-body"><p>Nice film.</p></div>
+      </body></html>`
+    const doc = new DOMParser().parseFromString(html, 'text/html')
+    const result = await scrapeSingleReview(doc)
+    expect(result[0].rating).toBe('')
+  })
+
+  it('builds date from view-date links', async () => {
+    const doc = makeSingleReviewDoc({ day: '15', month: 'Mar', yr: '2026' })
+    const result = await scrapeSingleReview(doc)
+    expect(result[0].date).toBe('Mar 15, 2026')
+  })
+})
+
+// ── fetchImageDataUrl ─────────────────────────────────────────────────────────
+
+/** Build a minimal fake fetch that returns the given responses in sequence. */
+function makeFetchSequence(responses: Array<{ ok: boolean; status?: number; headers?: Record<string,string>; body: string | Blob }>) {
+  let call = 0
+  return vi.fn().mockImplementation(() => {
+    const r = responses[call++] ?? responses[responses.length - 1]
+    const headers = new Map(Object.entries(r.headers ?? {}))
+    return Promise.resolve({
+      ok: r.ok,
+      status: r.status ?? (r.ok ? 200 : 500),
+      headers: { get: (k: string) => headers.get(k.toLowerCase()) ?? null },
+      text: () => Promise.resolve(typeof r.body === 'string' ? r.body : ''),
+      blob: () => Promise.resolve(typeof r.body !== 'string' ? r.body : new Blob([r.body])),
+    })
+  })
+}
+
+const FILM_PAGE_HTML = `<html><head>
+  <script type="application/ld+json">/* <![CDATA[ */
+{"@type":"Movie","image":"https://a.ltrbxd.com/resized/sm/poster.jpg?v=abc"}
+/* ]]> */</script>
+</head><body></body></html>`
+
+const IMAGE_BLOB = new Blob(['fake-image'], { type: 'image/jpeg' })
+
+describe('fetchImageDataUrl', () => {
+  beforeEach(() => vi.unstubAllGlobals())
+
+  it('resolves /image-NNN/ poster URLs via the film page JSON-LD', async () => {
+    const mockFetch = makeFetchSequence([
+      // First call: film page fetch
+      { ok: true, headers: { 'content-type': 'text/html' }, body: FILM_PAGE_HTML },
+      // Second call: CDN image fetch
+      { ok: true, headers: { 'content-type': 'image/jpeg' }, body: IMAGE_BLOB },
+    ])
+    vi.stubGlobal('fetch', mockFetch)
+
+    const result = await fetchImageDataUrl('https://letterboxd.com/film/dune-2021/image-150/')
+    expect(result).toMatch(/^data:image\/jpeg/)
+    // First call should be the proxied film page URL
+    expect((mockFetch.mock.calls[0][0] as string)).toContain('dune-2021')
+    // Second call should be the proxied CDN URL from JSON-LD
+    expect((mockFetch.mock.calls[1][0] as string)).toContain('a.ltrbxd.com')
+  })
+
+  it('fetches CDN URLs directly without a film page hop', async () => {
+    const mockFetch = makeFetchSequence([
+      { ok: true, headers: { 'content-type': 'image/jpeg' }, body: IMAGE_BLOB },
+    ])
+    vi.stubGlobal('fetch', mockFetch)
+
+    await fetchImageDataUrl('https://a.ltrbxd.com/resized/sm/poster.jpg?v=abc')
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('throws when the film page has no JSON-LD', async () => {
+    vi.stubGlobal('fetch', makeFetchSequence([
+      { ok: true, headers: { 'content-type': 'text/html' }, body: '<html><body></body></html>' },
+    ]))
+    await expect(
+      fetchImageDataUrl('https://letterboxd.com/film/unknown/image-150/')
+    ).rejects.toThrow('No JSON-LD')
+  })
+
+  it('throws when the proxy returns a non-image content-type', async () => {
+    vi.stubGlobal('fetch', makeFetchSequence([
+      { ok: true, headers: { 'content-type': 'text/html' }, body: FILM_PAGE_HTML },
+      { ok: true, headers: { 'content-type': 'text/html' }, body: '<html/>' },
+    ]))
+    await expect(
+      fetchImageDataUrl('https://letterboxd.com/film/dune-2021/image-150/')
+    ).rejects.toThrow('Expected image')
   })
 })

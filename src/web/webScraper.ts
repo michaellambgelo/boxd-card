@@ -24,8 +24,10 @@ const PROXY_BASE: string =
   (import.meta.env.VITE_PROXY_URL as string | undefined) ??
   'https://proxy.boxd-card.michaellamb.dev'
 
-export function proxyUrl(target: string): string {
-  return `${PROXY_BASE}?url=${encodeURIComponent(target)}`
+export function proxyUrl(target: string, accept?: 'image'): string {
+  let u = `${PROXY_BASE}?url=${encodeURIComponent(target)}`
+  if (accept) u += `&accept=${accept}`
+  return u
 }
 
 export async function fetchPageDocument(url: string): Promise<Document> {
@@ -35,9 +37,44 @@ export async function fetchPageDocument(url: string): Promise<Document> {
   return new DOMParser().parseFromString(html, 'text/html')
 }
 
+/**
+ * Resolve a Letterboxd /film/<slug>/image-NNN/ path to the actual CDN poster URL.
+ *
+ * Letterboxd's /image-NNN/ endpoints always return an HTML fragment (LazyPoster
+ * component) rather than an image — the CDN URL is resolved by client-side JS.
+ * The actual CDN URL is embedded in JSON-LD on the film's own page.
+ */
+async function resolvePosterCdnUrl(filmSlug: string): Promise<string> {
+  const doc = await fetchPageDocument(`https://letterboxd.com/film/${filmSlug}/`)
+  const jsonLdEl = doc.querySelector('script[type="application/ld+json"]')
+  if (!jsonLdEl) throw new Error(`No JSON-LD found on film page for "${filmSlug}"`)
+  const raw = (jsonLdEl.textContent ?? '')
+    .replace(/^\/\*\s*<!\[CDATA\[[\s\S]*?\*\//m, '')  // strip leading CDATA comment
+    .replace(/\/\*\s*\]\]>[\s\S]*?\*\/\s*$/m, '')      // strip trailing CDATA comment
+    .trim()
+  const data = JSON.parse(raw) as Record<string, unknown>
+  if (typeof data.image !== 'string' || !data.image) {
+    throw new Error(`No image in JSON-LD for "${filmSlug}"`)
+  }
+  return data.image
+}
+
 export async function fetchImageDataUrl(url: string): Promise<string> {
-  const res = await fetch(proxyUrl(url))
+  let resolvedUrl = url
+
+  // /film/<slug>/image-NNN/ is an HTML endpoint, not an image URL.
+  // Fetch the film page and extract the CDN URL from JSON-LD.
+  const filmPageMatch = url.match(/letterboxd\.com\/film\/([^/]+)\/image-\d+\/$/)
+  if (filmPageMatch) {
+    resolvedUrl = await resolvePosterCdnUrl(filmPageMatch[1])
+  }
+
+  const res = await fetch(proxyUrl(resolvedUrl, 'image'))
   if (!res.ok) throw new Error(`HTTP ${res.status} fetching image`)
+  const contentType = res.headers.get('content-type') ?? ''
+  if (!contentType.startsWith('image/')) {
+    throw new Error(`Expected image, got ${contentType}`)
+  }
   const blob = await res.blob()
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader()
@@ -298,6 +335,88 @@ export function scrapeBackdropUrl(doc: Document): string {
   return raw.startsWith('//') ? `https:${raw}` : raw
 }
 
+// ── URL parsing & resolution ──────────────────────────────────────────────────
+
+export interface ParsedLetterboxdUrl {
+  username: string
+  /** null when the URL is a profile page (ambiguous: could be last-four-watched or favorites) */
+  cardType: CardType | null
+  listSlug: string
+  /** true only for /reviews/ list pages; false for single film review pages */
+  isReviewListPage: boolean
+  /** non-empty for single film review pages: the film slug from the URL */
+  filmSlug: string
+}
+
+/**
+ * Parse a letterboxd.com URL into its component parts.
+ * Returns null when the URL is not a recognisable Letterboxd or boxd.it URL.
+ * Returns { cardType: null } for profile-page URLs that are ambiguous between
+ * last-four-watched and favorites.
+ */
+export function parseLetterboxdUrl(input: string): ParsedLetterboxdUrl | null {
+  let parsed: URL
+  try { parsed = new URL(input) } catch { return null }
+
+  const hostname = parsed.hostname.replace(/^www\./, '')
+
+  // Short URL — card type can't be determined without fetching
+  if (hostname === 'boxd.it') {
+    return { username: '', cardType: null, listSlug: '', isReviewListPage: false, filmSlug: '' }
+  }
+
+  if (hostname !== 'letterboxd.com') return null
+
+  // Strip leading/trailing slashes, split path segments
+  const parts = parsed.pathname.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean)
+  const username = parts[0]
+  if (!username) return null
+
+  const section  = parts[1]  // undefined | 'films' | 'diary' | 'list' | 'reviews' | 'film' | ...
+  const subpart  = parts[2]  // undefined | diary-slug | list-slug | ...
+
+  if (!section) {
+    // https://letterboxd.com/username/
+    // Could be last-four-watched or favorites — let caller decide.
+    return { username, cardType: null, listSlug: '', isReviewListPage: false, filmSlug: '' }
+  }
+  if (section === 'films' && !subpart) {
+    return { username, cardType: 'last-four-watched', listSlug: '', isReviewListPage: false, filmSlug: '' }
+  }
+  if (section === 'diary' || (section === 'films' && subpart === 'diary')) {
+    return { username, cardType: 'recent-diary', listSlug: '', isReviewListPage: false, filmSlug: '' }
+  }
+  if (section === 'list' && subpart) {
+    return { username, cardType: 'list', listSlug: subpart, isReviewListPage: false, filmSlug: '' }
+  }
+  if (section === 'reviews') {
+    return { username, cardType: 'review', listSlug: '', isReviewListPage: true, filmSlug: '' }
+  }
+  if (section === 'film' && subpart) {
+    // Single film review: /username/film/slug/ or /username/film/slug/N/
+    return { username, cardType: 'review', listSlug: '', isReviewListPage: false, filmSlug: subpart }
+  }
+
+  return null
+}
+
+/**
+ * Resolve any Letterboxd or boxd.it URL to its canonical form, then parse it.
+ * Use this when parseLetterboxdUrl returns null or { cardType: null } because
+ * the URL is a short link that needs to be fetched first.
+ */
+export async function resolveLetterboxdUrl(input: string): Promise<ParsedLetterboxdUrl> {
+  const doc = await fetchPageDocument(input)
+  // Read the canonical URL that Letterboxd includes in every page <head>.
+  const canonical =
+    doc.querySelector('link[rel="canonical"]')?.getAttribute('href') ?? ''
+  const resolved = canonical ? parseLetterboxdUrl(canonical) : null
+  if (!resolved || !resolved.username) {
+    throw new Error('Could not determine the Letterboxd page from this URL.')
+  }
+  return resolved
+}
+
 // ── Main entry point ──────────────────────────────────────────────────────────
 
 /** Build the canonical Letterboxd URL for a username + card type. */
@@ -305,6 +424,7 @@ export function buildPageUrl(
   username: string,
   cardType: CardType,
   listSlug: string,
+  filmSlug = '',
 ): string {
   const base = `https://letterboxd.com/${username}`
   switch (cardType) {
@@ -312,8 +432,56 @@ export function buildPageUrl(
     case 'favorites':         return `${base}/`
     case 'recent-diary':      return `${base}/diary/`
     case 'list':              return `${base}/list/${listSlug}/`
-    case 'review':            return `${base}/reviews/`
+    case 'review':            return filmSlug ? `${base}/film/${filmSlug}/` : `${base}/reviews/`
   }
+}
+
+/** Scrape a single film review page. Returns a one-element array. */
+export async function scrapeSingleReview(doc: Document): Promise<FilmData[]> {
+  const lazyPoster = doc.querySelector(
+    'section.viewing-poster-container .react-component[data-component-class="LazyPoster"]',
+  )
+  const dataPosterUrl = lazyPoster?.getAttribute('data-poster-url') ?? ''
+  const posterUrl = dataPosterUrl ? `https://letterboxd.com${dataPosterUrl}` : ''
+  const filmId = lazyPoster?.getAttribute('data-film-id') ?? ''
+
+  const title =
+    doc.querySelector('header.inline-production-masthead h2.primaryname a')?.textContent?.trim() ?? ''
+  const year =
+    doc.querySelector('header.inline-production-masthead .releasedate a')?.textContent?.trim() ?? ''
+
+  const rating =
+    doc.querySelector('.content-reactions-strip span.inline-rating svg')
+      ?.getAttribute('aria-label')?.trim() ?? ''
+
+  // view-date has three <a> links: day, month, year
+  const dateLinks = Array.from(doc.querySelectorAll('p.view-date a'))
+  let date = ''
+  if (dateLinks.length >= 3) {
+    const [day, month, yr] = dateLinks.map(a => a.textContent?.trim() ?? '')
+    date = `${month} ${day}, ${yr}`
+  }
+
+  const reviewBodyEl = doc.querySelector('.js-review-body')
+  let reviewText = ''
+  if (reviewBodyEl) {
+    const fullTextUrl = reviewBodyEl.getAttribute('data-full-text-url')
+    if (fullTextUrl) {
+      reviewText = await fetchFullText(fullTextUrl)
+    } else {
+      reviewText = Array.from(reviewBodyEl.querySelectorAll('p'))
+        .map(p => p.textContent?.trim() ?? '')
+        .filter(Boolean)
+        .join('\n\n')
+    }
+  }
+
+  const tags = Array.from(doc.querySelectorAll('ul.tags li a'))
+    .map(a => a.textContent?.trim() ?? '')
+    .filter(Boolean)
+
+  if (!title) return []
+  return [{ title, year, rating, posterUrl, filmId, date, reviewText, tags }]
 }
 
 /**
@@ -326,8 +494,10 @@ export async function scrapeLetterboxdPage(
   listSlug: string,
   listCount: ListCount,
   reviewCount: ReviewCount,
+  isReviewListPage = true,
+  filmSlug = '',
 ): Promise<FilmDataResponse> {
-  const url = buildPageUrl(username, cardType, listSlug)
+  const url = buildPageUrl(username, cardType, listSlug, filmSlug)
   const doc = await fetchPageDocument(url)
 
   const pageUsername   = scrapeUsername(doc)
@@ -360,7 +530,9 @@ export async function scrapeLetterboxdPage(
       break
     }
     case 'review':
-      films = await scrapeReviewsList(doc, reviewCount)
+      films = isReviewListPage
+        ? await scrapeReviewsList(doc, reviewCount)
+        : await scrapeSingleReview(doc)
       break
     default:
       films = []
