@@ -32,7 +32,14 @@ export function proxyUrl(target: string, accept?: 'image'): string {
 
 export async function fetchPageDocument(url: string): Promise<Document> {
   const res = await fetch(proxyUrl(url))
-  if (!res.ok) throw new Error(`HTTP ${res.status} fetching page`)
+  if (!res.ok) {
+    if (res.status === 403) {
+      throw new Error(
+        "Letterboxd's firewall is blocking this request. Try the browser extension for best results.",
+      )
+    }
+    throw new Error(`HTTP ${res.status} fetching page`)
+  }
   const html = await res.text()
   return new DOMParser().parseFromString(html, 'text/html')
 }

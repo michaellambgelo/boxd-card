@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
   proxyUrl,
+  fetchPageDocument,
   fetchImageDataUrl,
   scrapeRecentActivity,
   scrapeFavorites,
@@ -1159,6 +1160,26 @@ describe('scrapeSingleReview', () => {
     const doc = makeSingleReviewDoc({ day: '15', month: 'Mar', yr: '2026' })
     const result = await scrapeSingleReview(doc)
     expect(result[0].date).toBe('Mar 15, 2026')
+  })
+})
+
+// ── fetchPageDocument ─────────────────────────────────────────────────────────
+
+describe('fetchPageDocument', () => {
+  beforeEach(() => vi.restoreAllMocks())
+
+  it('throws a firewall message on 403', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 403 }))
+    await expect(fetchPageDocument('https://letterboxd.com/user/diary/')).rejects.toThrow(
+      "Letterboxd's firewall is blocking this request",
+    )
+    vi.unstubAllGlobals()
+  })
+
+  it('throws a generic HTTP error on other non-ok statuses', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 503 }))
+    await expect(fetchPageDocument('https://letterboxd.com/user/')).rejects.toThrow('HTTP 503')
+    vi.unstubAllGlobals()
   })
 })
 
