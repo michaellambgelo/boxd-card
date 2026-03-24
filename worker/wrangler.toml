@@ -1,0 +1,15 @@
+name = "boxd-card-proxy"
+main = "index.ts"
+compatibility_date = "2024-09-23"
+
+# To deploy:
+#   npx wrangler deploy
+#
+# To run locally (for dev:web):
+#   npx wrangler dev --port 8787
+#
+# After deploying, set the worker URL in .env.local:
+#   VITE_PROXY_URL=https://boxd-card-proxy.<account>.workers.dev
+#
+# Or add a custom domain via the Cloudflare dashboard and use that instead,
+# e.g. VITE_PROXY_URL=https://proxy.boxd-card.michaellamb.dev
