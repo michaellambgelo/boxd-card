@@ -2,6 +2,10 @@ name = "boxd-card-proxy"
 main = "index.ts"
 compatibility_date = "2024-09-23"
 
+[observability]
+[observability.logs]
+enabled = false
+invocation_logs = true
 # To deploy:
 #   npx wrangler deploy
 #
