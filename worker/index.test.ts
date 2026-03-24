@@ -204,8 +204,7 @@ describe('Cloudflare Worker proxy', () => {
       expect(mockFetch).toHaveBeenCalledOnce()
       const [, init] = mockFetch.mock.calls[0]
       expect(init.headers['User-Agent']).toContain('BoxdCard-Web')
-      expect(init.headers['Upgrade-Insecure-Requests']).toBe('1')
-      expect(init.headers['Sec-Fetch-Mode']).toBe('navigate')
+      expect(init.headers['Accept-Encoding']).toBe('gzip, deflate, br')
 
       vi.unstubAllGlobals()
     })
