@@ -13,7 +13,7 @@
  *   npx wrangler dev --port 8787
  */
 
-const ALLOWED_HOSTS = ['letterboxd.com', 'a.ltrbxd.com', 's.ltrbxd.com']
+const ALLOWED_HOSTS = ['letterboxd.com', 'a.ltrbxd.com', 's.ltrbxd.com', 'boxd.it']
 
 function isAllowedHost(hostname: string): boolean {
   return ALLOWED_HOSTS.some(h => hostname === h || hostname.endsWith(`.${h}`))
@@ -61,11 +61,18 @@ export default {
       return new Response('Target host not allowed', { status: 403 })
     }
 
+    // The caller can pass ?accept=image to request an image response.
+    // Without it, we send a browser-like HTML Accept header.
+    const wantsImage = requestUrl.searchParams.get('accept') === 'image'
+    const acceptHeader = wantsImage
+      ? 'image/webp,image/avif,image/png,image/jpeg,*/*;q=0.1'
+      : 'text/html,application/xhtml+xml,*/*;q=0.8'
+
     try {
       const upstream = await fetch(target, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (compatible; BoxdCard-Web/1.0; +https://boxd-card.michaellamb.dev)',
-          Accept: 'text/html,application/xhtml+xml,image/*,*/*;q=0.8',
+          Accept: acceptHeader,
           'Accept-Language': 'en-US,en;q=0.9',
         },
         redirect: 'follow',
