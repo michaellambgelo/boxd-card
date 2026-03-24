@@ -407,9 +407,11 @@ export function parseLetterboxdUrl(input: string): ParsedLetterboxdUrl | null {
  */
 export async function resolveLetterboxdUrl(input: string): Promise<ParsedLetterboxdUrl> {
   const doc = await fetchPageDocument(input)
-  // Read the canonical URL that Letterboxd includes in every page <head>.
+  // Prefer <link rel="canonical">; fall back to og:url (boxd.it pages omit the canonical tag).
   const canonical =
-    doc.querySelector('link[rel="canonical"]')?.getAttribute('href') ?? ''
+    doc.querySelector('link[rel="canonical"]')?.getAttribute('href') ||
+    doc.querySelector('meta[property="og:url"]')?.getAttribute('content') ||
+    ''
   const resolved = canonical ? parseLetterboxdUrl(canonical) : null
   if (!resolved || !resolved.username) {
     throw new Error('Could not determine the Letterboxd page from this URL.')
