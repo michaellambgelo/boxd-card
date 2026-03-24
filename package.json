@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "vite build --watch",
     "build": "vite build",
+    "dev:web": "vite --config vite.web.config.ts",
+    "build:web": "vite build --config vite.web.config.ts",
     "test": "vitest",
     "test:run": "vitest run",
     "coverage": "vitest run --coverage",
