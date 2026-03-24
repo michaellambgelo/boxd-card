@@ -48,26 +48,21 @@ export default function App() {
     ? (detected.cardType ?? profileCardType)
     : profileCardType
 
-  // ── URL paste detection ──────────────────────────────────────────────────────
+  // ── URL detection (shared by paste and generate) ─────────────────────────────
 
-  async function handlePaste(e: React.ClipboardEvent<HTMLInputElement>) {
-    const text = e.clipboardData.getData('text').trim()
-    if (!text) return
-
+  async function detectUrl(text: string): Promise<ParsedLetterboxdUrl | null> {
     setDetected(null)
     setDetectError(null)
 
     const parsed = parseLetterboxdUrl(text)
-
     if (parsed === null) {
       setDetectError("This doesn't look like a supported Letterboxd URL. Try a profile, diary, list, reviews, or film review link.")
-      return
+      return null
     }
 
     if (parsed.username) {
-      // Fully resolved — all info available statically
       setDetected(parsed)
-      return
+      return parsed
     }
 
     // Short URL (boxd.it) — needs a network round-trip
@@ -75,11 +70,18 @@ export default function App() {
     try {
       const resolved = await resolveLetterboxdUrl(text)
       setDetected(resolved)
+      return resolved
     } catch (err) {
       setDetectError(err instanceof Error ? err.message : 'Could not resolve this URL.')
+      return null
     } finally {
       setDetecting(false)
     }
+  }
+
+  async function handlePaste(e: React.ClipboardEvent<HTMLInputElement>) {
+    const text = e.clipboardData.getData('text').trim()
+    if (text) await detectUrl(text)
   }
 
   // ── Generate ────────────────────────────────────────────────────────────────
@@ -87,14 +89,12 @@ export default function App() {
   async function handleGenerate(e: React.FormEvent) {
     e.preventDefault()
 
-    if (!detected) {
-      setError('Paste a Letterboxd URL above to get started.')
-      setStatus('error')
-      return
-    }
+    // If the user typed or edited the URL without pasting, detect it now
+    const resolvedDetected = detected ?? await detectUrl(urlInput.trim())
+    if (!resolvedDetected) return
 
-    const resolvedCardType = effectiveCardType
-    const { username, listSlug, filmSlug, isReviewListPage } = detected
+    const resolvedCardType = resolvedDetected.cardType ?? profileCardType
+    const { username, listSlug, filmSlug, isReviewListPage } = resolvedDetected
 
     setStatus('loading')
     setError(null)
