@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#EF8D22"/>
+      <stop offset="50%"  stop-color="#0EDF52"/>
+      <stop offset="100%" stop-color="#40BCF4"/>
+    </linearGradient>
+    <mask id="m">
+      <circle cx="250" cy="250" r="250" fill="white"/>
+      <text x="250" y="250" text-anchor="middle" dominant-baseline="central"
+        font-family="Arial Black, Arial, sans-serif"
+        font-weight="900" font-size="230" fill="black">BC</text>
+    </mask>
+  </defs>
+  <circle cx="250" cy="250" r="250" fill="url(#g)" mask="url(#m)"/>
+</svg>
