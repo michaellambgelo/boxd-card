@@ -142,6 +142,22 @@
   color: var(--subtext);
 }
 
+/* ── Update banner ──────────────────────────────────────────── */
+.updateBanner {
+  display: block;
+  padding: 6px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  color: var(--warn);
+  font-size: 12px;
+  text-decoration: none;
+  text-align: center;
+}
+
+.updateBanner:hover {
+  text-decoration: underline;
+}
+
 /* ── Body ────────────────────────────────────────────────────── */
 .body {
   padding: 14px 16px 16px;

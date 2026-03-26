@@ -38,9 +38,30 @@ export default function Popup() {
   const [showTags,           setShowTags]           = useState(true)
   const [showBackdrop,       setShowBackdrop]       = useState(true)
   const [layout,        setLayout]        = useState<Layout>('landscape')
+  const [updateAvailable, setUpdateAvailable] = useState<string | null>(null)
   const [cardUrl,       setCardUrl]       = useState<string | null>(null)
   const [cardBlob,      setCardBlob]      = useState<Blob | null>(null)
   const [copied,        setCopied]        = useState(false)
+
+  // On mount: check for newer release on GitHub
+  useEffect(() => {
+    fetch('https://api.github.com/repos/michaellambgelo/boxd-card/releases/latest')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data?.tag_name) return
+        const latest = data.tag_name.replace(/^v/, '')
+        const current = chrome.runtime.getManifest().version
+        const latestParts = latest.split('.').map(Number)
+        const currentParts = current.split('.').map(Number)
+        for (let i = 0; i < Math.max(latestParts.length, currentParts.length); i++) {
+          const l = latestParts[i] ?? 0
+          const c = currentParts[i] ?? 0
+          if (l > c) { setUpdateAvailable(latest); return }
+          if (l < c) return
+        }
+      })
+      .catch(() => {})
+  }, [])
 
   // On mount: load persisted settings + auto-select card type from tab URL
   useEffect(() => {
@@ -253,6 +274,17 @@ export default function Popup() {
           </>
         )}
       </header>
+
+      {updateAvailable && (
+        <a
+          className={styles.updateBanner}
+          href="https://github.com/michaellambgelo/boxd-card/releases/latest"
+          target="_blank"
+          rel="noreferrer"
+        >
+          v{updateAvailable} available — download update
+        </a>
+      )}
 
       {view === 'settings' && (
         <div className={styles.body}>
