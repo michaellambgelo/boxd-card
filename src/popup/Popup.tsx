@@ -174,6 +174,7 @@ export default function Popup() {
         backdropDataUrl,
         footerAvatarDataUrl,
         showShareIcon: !isOwnProfile,
+        layout,
       })
 
       setCardBlob(blob)

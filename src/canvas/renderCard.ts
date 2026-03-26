@@ -1,4 +1,4 @@
-import type { CardType, ListCount, ReviewCount } from '../types'
+import type { CardType, ListCount, ReviewCount, Layout } from '../types'
 import logoUrl from '../assets/letterboxd-logo-h-neg-rgb.svg?url'
 
 export interface FilmEntry {
@@ -32,6 +32,7 @@ export interface CardOptions {
   backdropDataUrl?: string
   footerAvatarDataUrl?: string  // avatar for the footer identity (own avatar or author avatar)
   showShareIcon?: boolean        // true when generating from someone else's profile
+  layout?: Layout
 }
 
 export interface CardLayout {
@@ -62,50 +63,178 @@ const GRID_LINE_GAP    =  4  // gap between consecutive text lines
 const GRID_TEXT_PAD    = 10  // top padding above first text item
 
 /**
- * Compute card layout geometry based on film count and optional title area height.
- * filmCount ≤ 4: single row of 4 at 200px each (base 1200×590)
- * filmCount 5–20: 5-column grid, 208px posters, taller card
- * titleAreaH: extra vertical space between header and posters (list title/description)
+ * Compute card layout geometry based on film count, optional title area height, and layout format.
+ * Layout determines canvas dimensions and grid arrangement:
+ *   landscape: 1200px wide, variable height (existing default)
+ *   square:    1080×1080 fixed (≤4 films, 2×2), 1080px wide 3-col (5-20)
+ *   banner:    1500×750 fixed (≤4 films, 1×4), 1500px wide 5-col (5-20)
+ *   story:     1080×1920 fixed (≤4 films, 2×2 or 1-film showcase), 1080px wide 2-col (5-20)
  */
-export function computeLayout(filmCount: number, titleAreaH = 0): CardLayout {
-  if (filmCount <= 4) {
-    const posterW = 200
-    const posterH = 300
-    const posterGap = 20
-    const effectiveCols = Math.max(1, filmCount)
-    const totalPosterW = effectiveCols * posterW + (effectiveCols - 1) * posterGap
-    const posterLeft = Math.floor((1200 - totalPosterW) / 2)
-    const footerY = POSTER_TOP + posterH + TEXT_AREA_H + 56 + titleAreaH
+export function computeLayout(filmCount: number, titleAreaH = 0, layout: Layout = 'landscape'): CardLayout {
+  const pt = POSTER_TOP + titleAreaH
+
+  // ── Landscape (existing behavior) ────────────────────────────────────────
+  if (layout === 'landscape') {
+    if (filmCount <= 4) {
+      const posterW = 200
+      const posterH = 300
+      const posterGap = 20
+      const effectiveCols = Math.max(1, filmCount)
+      const totalPosterW = effectiveCols * posterW + (effectiveCols - 1) * posterGap
+      const posterLeft = Math.floor((1200 - totalPosterW) / 2)
+      const footerY = pt + posterH + TEXT_AREA_H + 56
+      return {
+        cardWidth: 1200, cardHeight: footerY + 64,
+        posterW, posterH, posterGap,
+        posterLeft, posterTop: pt,
+        cols: effectiveCols, rows: 1,
+        footerY, textAreaH: TEXT_AREA_H,
+      }
+    }
+
+    const cols = 5
+    const rows = Math.ceil(filmCount / cols)
+    const posterW = 208
+    const posterH = 312
+    const footerY = pt + rows * (posterH + TEXT_AREA_H) + 56
     return {
       cardWidth: 1200, cardHeight: footerY + 64,
-      posterW, posterH, posterGap,
-      posterLeft,
-      posterTop: POSTER_TOP + titleAreaH,
-      cols: effectiveCols, rows: 1,
-      footerY,
+      posterW, posterH, posterGap: 20,
+      posterLeft: 40, posterTop: pt,
+      cols, rows, footerY,
       textAreaH: TEXT_AREA_H,
     }
   }
 
-  // 5-column layout for 10 or 20 films
-  // posterLeft=40, gap=20 → 5×208 + 4×20 = 1120 = 1200 − 2×40 ✓
-  const cols = 5
-  const rows = Math.ceil(filmCount / cols)
-  const posterW = 208
-  const posterH = 312
-  const rowH = posterH + TEXT_AREA_H   // 372
-  const pt = POSTER_TOP + titleAreaH
-  const footerY = pt + rows * rowH + 56
-  const cardHeight = footerY + 64
+  // ── Square (1080×1080 fixed for ≤4, 3-col variable for 5-20) ────────────
+  if (layout === 'square') {
+    const cardWidth = 1080
+    if (filmCount <= 4) {
+      const cardHeight = 1080
+      const footerY = cardHeight - 64
+      const cols = Math.min(Math.max(1, filmCount), 2)
+      const rows = Math.ceil(filmCount / cols)
+      const textAreaH = 80
+      const available = footerY - pt - 56
+      const posterH = Math.floor(available / rows) - textAreaH
+      const posterW = Math.round(posterH * 2 / 3)
+      const posterGap = 20
+      const totalW = cols * posterW + (cols - 1) * posterGap
+      const posterLeft = Math.floor((cardWidth - totalW) / 2)
+      return {
+        cardWidth, cardHeight,
+        posterW, posterH, posterGap,
+        posterLeft, posterTop: pt,
+        cols, rows, footerY, textAreaH,
+      }
+    }
 
+    const cols = 3
+    const posterW = 320
+    const posterH = 480
+    const rows = Math.ceil(filmCount / cols)
+    const footerY = pt + rows * (posterH + TEXT_AREA_H) + 56
+    const posterLeft = Math.floor((cardWidth - (cols * posterW + (cols - 1) * 20)) / 2)
+    return {
+      cardWidth, cardHeight: footerY + 64,
+      posterW, posterH, posterGap: 20,
+      posterLeft, posterTop: pt,
+      cols, rows, footerY,
+      textAreaH: TEXT_AREA_H,
+    }
+  }
+
+  // ── Banner (1500×750 fixed for ≤4, 5-col variable for 5-20) ─────────────
+  if (layout === 'banner') {
+    const cardWidth = 1500
+    if (filmCount <= 4) {
+      const cardHeight = 750
+      const footerY = cardHeight - 64
+      const textAreaH = 90
+      const posterH = footerY - pt - 56 - textAreaH
+      const posterW = Math.round(posterH * 2 / 3)
+      const effectiveCols = Math.max(1, filmCount)
+      const totalPosterW = effectiveCols * posterW
+      const gapSpace = cardWidth - 2 * 40 - totalPosterW
+      const posterGap = effectiveCols > 1 ? Math.round(gapSpace / (effectiveCols - 1)) : 0
+      const gridW = totalPosterW + (effectiveCols - 1) * posterGap
+      const posterLeft = Math.floor((cardWidth - gridW) / 2)
+      return {
+        cardWidth, cardHeight,
+        posterW, posterH, posterGap,
+        posterLeft, posterTop: pt,
+        cols: effectiveCols, rows: 1,
+        footerY, textAreaH,
+      }
+    }
+
+    const cols = 5
+    const posterW = Math.floor((cardWidth - 80 - 4 * 20) / cols)
+    const posterH = Math.round(posterW * 3 / 2)
+    const rows = Math.ceil(filmCount / cols)
+    const footerY = pt + rows * (posterH + TEXT_AREA_H) + 56
+    return {
+      cardWidth, cardHeight: footerY + 64,
+      posterW, posterH, posterGap: 20,
+      posterLeft: 40, posterTop: pt,
+      cols, rows, footerY,
+      textAreaH: TEXT_AREA_H,
+    }
+  }
+
+  // ── Story (1080×1920 fixed for ≤4, 2-col variable for 5-20) ─────────────
+  const cardWidth = 1080
+  if (filmCount === 1) {
+    // Single-film showcase: large poster filling most of the canvas
+    const cardHeight = 1920
+    const footerY = cardHeight - 64
+    const posterW = 900
+    const posterH = Math.round(posterW * 3 / 2)
+    const posterLeft = Math.floor((cardWidth - posterW) / 2)
+    const textAreaH = footerY - pt - posterH - 56
+    return {
+      cardWidth, cardHeight,
+      posterW, posterH, posterGap: 0,
+      posterLeft, posterTop: pt,
+      cols: 1, rows: 1,
+      footerY, textAreaH,
+    }
+  }
+
+  if (filmCount <= 4) {
+    // 2×2 grid with large posters
+    const cardHeight = 1920
+    const footerY = cardHeight - 64
+    const cols = Math.min(filmCount, 2)
+    const rows = Math.ceil(filmCount / cols)
+    const textAreaH = 120
+    const available = footerY - pt - 56
+    const posterH = Math.floor(available / rows) - textAreaH
+    const posterW = Math.round(posterH * 2 / 3)
+    const posterGap = 20
+    const totalW = cols * posterW + (cols - 1) * posterGap
+    const posterLeft = Math.floor((cardWidth - totalW) / 2)
+    return {
+      cardWidth, cardHeight,
+      posterW, posterH, posterGap,
+      posterLeft, posterTop: pt,
+      cols, rows, footerY, textAreaH,
+    }
+  }
+
+  // 5-20 films: 2-col variable height
+  const cols = 2
+  const posterW = Math.floor((cardWidth - 80 - 20) / cols)
+  const posterH = Math.round(posterW * 3 / 2)
+  const textAreaH = 120
+  const rows = Math.ceil(filmCount / cols)
+  const footerY = pt + rows * (posterH + textAreaH) + 56
+  const posterLeft = Math.floor((cardWidth - (cols * posterW + 20)) / 2)
   return {
-    cardWidth: 1200, cardHeight,
+    cardWidth, cardHeight: footerY + 64,
     posterW, posterH, posterGap: 20,
-    posterLeft: 40,
-    posterTop: pt,
-    cols, rows,
-    footerY,
-    textAreaH: TEXT_AREA_H,
+    posterLeft, posterTop: pt,
+    cols, rows, footerY, textAreaH,
   }
 }
 
@@ -257,12 +386,18 @@ async function drawBackground(
   }
 }
 
+/** Returns the base canvas width for a given layout. */
+function layoutCardWidth(layout: Layout): number {
+  if (layout === 'banner') return 1500
+  if (layout === 'landscape') return 1200
+  return 1080  // square and story
+}
+
 // ── Review card layout constants ─────────────────────────────────────────────
 const RV_POSTER_W      = 200
 const RV_POSTER_H      = 300
 const RV_POSTER_X      = 40
 const RV_CONTENT_X     = RV_POSTER_X + RV_POSTER_W + 30  // 270
-const RV_CONTENT_W     = 1200 - RV_CONTENT_X - 40        // 890
 const RV_TITLE_H       = 54   // bold 39px title line height
 const RV_META_H        = 45   // rating / date line height
 const RV_META_GAP      = 9    // gap between consecutive meta lines
@@ -286,6 +421,7 @@ function measureReviewRows(
   showDate: boolean,
   showTags: boolean,
   measureCtx: CanvasRenderingContext2D,
+  rvContentW: number,
 ): { rows: ReviewRowMeasure[]; footerY: number; cardHeight: number } {
   const rows: ReviewRowMeasure[] = []
   let currentY = HEADER_H + RV_TOP_PAD
@@ -305,7 +441,7 @@ function measureReviewRows(
     if (showRating && film.rating) addMetaLine(RV_META_H)
     if (showDate && film.date) addMetaLine(RV_META_H)
     if (showTags && film.tags?.length) {
-      const tagsH = drawTagPills(measureCtx, film.tags, 0, 0, RV_CONTENT_W, false)
+      const tagsH = drawTagPills(measureCtx, film.tags, 0, 0, rvContentW, false)
       if (!firstMeta) contentH += RV_META_GAP
       contentH += tagsH
       firstMeta = false
@@ -314,7 +450,7 @@ function measureReviewRows(
     if (film.reviewText) {
       if (!firstMeta) contentH += 21  // gap before review text
       measureCtx.font = `${RV_REVIEW_FS}px sans-serif`
-      contentH += wrapText(measureCtx, film.reviewText, 0, 0, RV_CONTENT_W, RV_REVIEW_LINE_H, false)
+      contentH += wrapText(measureCtx, film.reviewText, 0, 0, rvContentW, RV_REVIEW_LINE_H, false)
     }
 
     const rowH = Math.max(RV_POSTER_H, contentH)
@@ -341,6 +477,10 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
 
   // ── Review card ──────────────────────────────────────────────────────────
   if (cardType === 'review') {
+    const effectiveLayout = options.layout ?? 'landscape'
+    const cardWidth = layoutCardWidth(effectiveLayout)
+    const rvContentW = cardWidth - RV_CONTENT_X - 40
+
     const count = Math.min(films.length, reviewCount ?? 1)
     if (count === 0) throw new Error('No films found to render.')
 
@@ -348,16 +488,16 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
     const measureCanvas = document.createElement('canvas')
     const measureCtx = measureCanvas.getContext('2d')!
     const { rows, footerY, cardHeight } = measureReviewRows(
-      films, count, showTitle, showRating, showDate, showTags ?? false, measureCtx
+      films, count, showTitle, showRating, showDate, showTags ?? false, measureCtx, rvContentW
     )
 
     // Pass 2: draw
     const canvas = document.createElement('canvas')
-    canvas.width  = 1200
+    canvas.width  = cardWidth
     canvas.height = cardHeight
     const ctx = canvas.getContext('2d')!
 
-    await drawBackground(ctx, 1200, cardHeight, backdropDataUrl)
+    await drawBackground(ctx, cardWidth, cardHeight, backdropDataUrl)
 
     await drawLogo(ctx, 40, HEADER_H / 2)
 
@@ -394,7 +534,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
           ctx.font = 'bold 39px sans-serif'
           ctx.textAlign = 'left'
           ctx.textBaseline = 'top'
-          ctx.fillText(truncate(ctx, displayTitle, RV_CONTENT_W), RV_CONTENT_X, contentY)
+          ctx.fillText(truncate(ctx, displayTitle, rvContentW), RV_CONTENT_X, contentY)
         })
       }
 
@@ -420,7 +560,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
 
       if (showTags && film.tags?.length) {
         if (!firstMeta) contentY += RV_META_GAP
-        contentY += drawTagPills(ctx, film.tags, RV_CONTENT_X, contentY, RV_CONTENT_W, true)
+        contentY += drawTagPills(ctx, film.tags, RV_CONTENT_X, contentY, rvContentW, true)
         firstMeta = false
       }
 
@@ -430,12 +570,12 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
         ctx.font = `${RV_REVIEW_FS}px sans-serif`
         ctx.textAlign = 'left'
         ctx.textBaseline = 'top'
-        wrapText(ctx, film.reviewText, RV_CONTENT_X, contentY, RV_CONTENT_W, RV_REVIEW_LINE_H, true)
+        wrapText(ctx, film.reviewText, RV_CONTENT_X, contentY, rvContentW, RV_REVIEW_LINE_H, true)
       }
     }
 
     // Footer
-    await drawFooter(ctx, footerY, 1200, username, footerAvatarDataUrl, showShareIcon)
+    await drawFooter(ctx, footerY, cardWidth, username, footerAvatarDataUrl, showShareIcon)
 
     return new Promise((resolve, reject) => {
       canvas.toBlob(
@@ -446,6 +586,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
   }
 
   // ── Poster-grid cards (existing logic) ───────────────────────────────────
+  const effectiveLayout = options.layout ?? 'landscape'
   const filmCount = Math.min(
     films.length,
     (cardType === 'list' || cardType === 'recent-diary') ? (listCount ?? 4) : 4,
@@ -455,6 +596,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
     throw new Error('No films found to render.')
   }
 
+  const baseCardWidth = layoutCardWidth(effectiveLayout)
   const showingListTitle = cardType === 'list' && !!showListTitle && !!listTitle
   const showingListDesc  = cardType === 'list' && !!showListDescription && !!listDescription
   const showingCardTypeLabel = cardType !== 'list' && !!showCardTypeLabel && !!cardTypeLabel
@@ -465,7 +607,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
   if (showingListTags && listTags) {
     const mCanvas = document.createElement('canvas')
     const mCtx = mCanvas.getContext('2d')!
-    listTagsAreaH = LIST_PADDING + drawTagPills(mCtx, listTags, 0, 0, 1200 - 80, false)
+    listTagsAreaH = LIST_PADDING + drawTagPills(mCtx, listTags, 0, 0, baseCardWidth - 80, false)
   }
 
   const titleAreaH = (showingListTitle || showingListDesc || showingCardTypeLabel || showingListTags)
@@ -476,7 +618,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
       + LIST_BOTTOM
     : 0
 
-  const layout = computeLayout(filmCount, titleAreaH)
+  const layout = computeLayout(filmCount, titleAreaH, effectiveLayout)
 
   const canvas = document.createElement('canvas')
   canvas.width  = layout.cardWidth

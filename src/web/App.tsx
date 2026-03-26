@@ -199,6 +199,7 @@ export default function App() {
         backdropDataUrl,
         footerAvatarDataUrl,
         showShareIcon:       !isOwnProfile,
+        layout,
       })
 
       setCardBlob(blob)
