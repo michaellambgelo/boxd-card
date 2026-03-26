@@ -47,3 +47,20 @@ export const CARD_TYPE_CONFIGS: Record<CardType, CardTypeConfig> = {
 }
 
 export const CARD_TYPES = Object.keys(CARD_TYPE_CONFIGS) as CardType[]
+
+export type Layout = 'landscape' | 'square' | 'story' | 'banner'
+
+export interface LayoutConfig {
+  label: string
+  /** Shown as secondary text in the settings layout picker. */
+  description: string
+}
+
+export const LAYOUT_CONFIGS: Record<Layout, LayoutConfig> = {
+  landscape: { label: 'Landscape', description: '1200px wide · Twitter, Discord' },
+  square:    { label: 'Square',    description: '1080 × 1080 · Instagram grid' },
+  story:     { label: 'Story',     description: '1080 × 1920 · Instagram, TikTok' },
+  banner:    { label: 'Banner',    description: '1500 × 750 · Twitter header' },
+}
+
+export const LAYOUTS = Object.keys(LAYOUT_CONFIGS) as Layout[]

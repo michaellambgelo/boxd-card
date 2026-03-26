@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { renderCard } from '../canvas/renderCard'
-import { CARD_TYPE_CONFIGS } from '../types'
-import type { CardType, ListCount, ReviewCount } from '../types'
+import { CARD_TYPE_CONFIGS, LAYOUTS, LAYOUT_CONFIGS } from '../types'
+import type { CardType, ListCount, ReviewCount, Layout } from '../types'
+import { loadSettings, saveSettings } from '../storage/settings'
 import {
   scrapeLetterboxdPage,
   fetchImageDataUrl,
@@ -13,8 +14,10 @@ import type { FilmData } from '../content/index'
 import styles from './App.module.css'
 
 type Status = 'idle' | 'loading' | 'ready' | 'error'
+type View = 'main' | 'settings'
 
 export default function App() {
+  const [view,        setView]        = useState<View>('main')
   const [status,      setStatus]      = useState<Status>('idle')
   const [error,       setError]       = useState<string | null>(null)
 
@@ -38,10 +41,29 @@ export default function App() {
   const [showCardTypeLabel,  setShowCardTypeLabel]  = useState(true)
   const [showTags,           setShowTags]           = useState(true)
   const [showBackdrop,       setShowBackdrop]       = useState(true)
+  const [layout,       setLayout]       = useState<Layout>('landscape')
 
   const [cardUrl,  setCardUrl]  = useState<string | null>(null)
   const [cardBlob, setCardBlob] = useState<Blob | null>(null)
   const [copied,   setCopied]   = useState(false)
+
+  // On mount: load persisted settings
+  useEffect(() => {
+    loadSettings().then(s => {
+      setListCount(s.listCount)
+      setReviewCount(s.reviewCount)
+      setShowTitle(s.showTitle)
+      setShowYear(s.showYear)
+      setShowRating(s.showRating)
+      setShowDate(s.showDate)
+      setShowListTitle(s.showListTitle)
+      setShowListDesc(s.showListDesc)
+      setShowCardTypeLabel(s.showCardTypeLabel)
+      setShowTags(s.showTags)
+      setShowBackdrop(s.showBackdrop)
+      setLayout(s.layout)
+    })
+  }, [])
 
   // Effective card type after detection + profile-page override
   const effectiveCardType: CardType = detected
@@ -231,28 +253,71 @@ export default function App() {
       <div className={styles.page}>
         {/* Header */}
         <header className={styles.header}>
-          <a href="https://boxd-card.michaellamb.dev" className={styles.headerLink}>
-            <svg viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg" width="40" height="40" aria-hidden="true">
-              <defs>
-                <linearGradient id="bc-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%"   stopColor="#EF8D22" />
-                  <stop offset="50%"  stopColor="#0EDF52" />
-                  <stop offset="100%" stopColor="#40BCF4" />
-                </linearGradient>
-                <mask id="bc-mask">
-                  <circle cx="250" cy="250" r="250" fill="white" />
-                  <text x="250" y="250" textAnchor="middle" dominantBaseline="central"
-                    fontFamily="Arial Black, Arial, Helvetica, sans-serif"
-                    fontWeight="900" fontSize="230" fill="black">BC</text>
-                </mask>
-              </defs>
-              <circle cx="250" cy="250" r="250" fill="url(#bc-grad)" mask="url(#bc-mask)" />
-            </svg>
-            <h1>Boxd Card</h1>
-          </a>
+          {view === 'settings' ? (
+            <>
+              <button className={styles.backBtn} onClick={() => setView('main')} aria-label="Back to main">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+                Back
+              </button>
+              <span className={styles.settingsTitle}>Settings</span>
+            </>
+          ) : (
+            <>
+              <a href="https://boxd-card.michaellamb.dev" className={styles.headerLink}>
+                <svg viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg" width="40" height="40" aria-hidden="true">
+                  <defs>
+                    <linearGradient id="bc-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%"   stopColor="#EF8D22" />
+                      <stop offset="50%"  stopColor="#0EDF52" />
+                      <stop offset="100%" stopColor="#40BCF4" />
+                    </linearGradient>
+                    <mask id="bc-mask">
+                      <circle cx="250" cy="250" r="250" fill="white" />
+                      <text x="250" y="250" textAnchor="middle" dominantBaseline="central"
+                        fontFamily="Arial Black, Arial, Helvetica, sans-serif"
+                        fontWeight="900" fontSize="230" fill="black">BC</text>
+                    </mask>
+                  </defs>
+                  <circle cx="250" cy="250" r="250" fill="url(#bc-grad)" mask="url(#bc-mask)" />
+                </svg>
+                <h1>Boxd Card</h1>
+              </a>
+              <button className={styles.gearBtn} onClick={() => setView('settings')} aria-label="Settings">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+              </button>
+            </>
+          )}
         </header>
 
+        {/* Settings panel */}
+        {view === 'settings' && (
+          <div className={styles.settingsPanel}>
+            <div className={styles.settingsSection}>
+              <span className={styles.fieldLabel}>Default layout</span>
+              {LAYOUTS.map(l => (
+                <label key={l} className={styles.layoutOption}>
+                  <input
+                    type="radio"
+                    name="layout"
+                    value={l}
+                    checked={layout === l}
+                    onChange={() => { setLayout(l); saveSettings({ layout: l }) }}
+                  />
+                  <span className={styles.layoutOptionText}>
+                    <span>{LAYOUT_CONFIGS[l].label}</span>
+                    <span className={styles.layoutOptionDesc}>{LAYOUT_CONFIGS[l].description}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Form */}
+        {view === 'main' && (
         <form className={styles.form} onSubmit={handleGenerate}>
 
           {/* URL input */}
@@ -318,7 +383,7 @@ export default function App() {
                     {([4, 10, 20] as ListCount[]).map(n => (
                       <label key={n} className={styles.radioLabel}>
                         <input type="radio" name="listCount" value={n}
-                          checked={listCount === n} onChange={() => setListCount(n)} />
+                          checked={listCount === n} onChange={() => { setListCount(n); saveSettings({ listCount: n }) }} />
                         {n} films
                       </label>
                     ))}
@@ -334,7 +399,7 @@ export default function App() {
                     {([1, 2, 3, 4] as ReviewCount[]).map(n => (
                       <label key={n} className={styles.radioLabel}>
                         <input type="radio" name="reviewCount" value={n}
-                          checked={reviewCount === n} onChange={() => setReviewCount(n)} />
+                          checked={reviewCount === n} onChange={() => { setReviewCount(n); saveSettings({ reviewCount: n }) }} />
                         {n}
                       </label>
                     ))}
@@ -349,19 +414,19 @@ export default function App() {
                 {effectiveCardType === 'list' && (
                   <div className={styles.checkboxGrid}>
                     <label className={styles.checkboxLabel}>
-                      <input type="checkbox" checked={showListTitle} onChange={e => setShowListTitle(e.target.checked)} />
+                      <input type="checkbox" checked={showListTitle} onChange={e => { setShowListTitle(e.target.checked); saveSettings({ showListTitle: e.target.checked }) }} />
                       List title
                     </label>
                     <label className={styles.checkboxLabel}>
-                      <input type="checkbox" checked={showListDesc} onChange={e => setShowListDesc(e.target.checked)} />
+                      <input type="checkbox" checked={showListDesc} onChange={e => { setShowListDesc(e.target.checked); saveSettings({ showListDesc: e.target.checked }) }} />
                       Description
                     </label>
                     <label className={styles.checkboxLabel}>
-                      <input type="checkbox" checked={showTags} onChange={e => setShowTags(e.target.checked)} />
+                      <input type="checkbox" checked={showTags} onChange={e => { setShowTags(e.target.checked); saveSettings({ showTags: e.target.checked }) }} />
                       Tags
                     </label>
                     <label className={styles.checkboxLabel}>
-                      <input type="checkbox" checked={showBackdrop} onChange={e => setShowBackdrop(e.target.checked)} />
+                      <input type="checkbox" checked={showBackdrop} onChange={e => { setShowBackdrop(e.target.checked); saveSettings({ showBackdrop: e.target.checked }) }} />
                       Backdrop
                     </label>
                   </div>
@@ -369,36 +434,36 @@ export default function App() {
 
                 {effectiveCardType !== 'list' && effectiveCardType !== 'review' && (
                   <label className={styles.checkboxLabel}>
-                    <input type="checkbox" checked={showCardTypeLabel} onChange={e => setShowCardTypeLabel(e.target.checked)} />
+                    <input type="checkbox" checked={showCardTypeLabel} onChange={e => { setShowCardTypeLabel(e.target.checked); saveSettings({ showCardTypeLabel: e.target.checked }) }} />
                     Card type label
                   </label>
                 )}
 
                 <div className={styles.checkboxGrid}>
                   <label className={styles.checkboxLabel}>
-                    <input type="checkbox" checked={showTitle} onChange={e => setShowTitle(e.target.checked)} />
+                    <input type="checkbox" checked={showTitle} onChange={e => { setShowTitle(e.target.checked); saveSettings({ showTitle: e.target.checked }) }} />
                     Film title
                   </label>
                   <label className={styles.checkboxLabel}>
-                    <input type="checkbox" checked={showYear} onChange={e => setShowYear(e.target.checked)} disabled={!showTitle} />
+                    <input type="checkbox" checked={showYear} onChange={e => { setShowYear(e.target.checked); saveSettings({ showYear: e.target.checked }) }} disabled={!showTitle} />
                     Year
                   </label>
                   <label className={styles.checkboxLabel}>
-                    <input type="checkbox" checked={showRating} onChange={e => setShowRating(e.target.checked)} />
+                    <input type="checkbox" checked={showRating} onChange={e => { setShowRating(e.target.checked); saveSettings({ showRating: e.target.checked }) }} />
                     Star rating
                   </label>
                   <label className={styles.checkboxLabel}>
-                    <input type="checkbox" checked={showDate} onChange={e => setShowDate(e.target.checked)} />
+                    <input type="checkbox" checked={showDate} onChange={e => { setShowDate(e.target.checked); saveSettings({ showDate: e.target.checked }) }} />
                     {(effectiveCardType === 'recent-diary' || effectiveCardType === 'review') ? 'Watch date' : 'Date'}
                   </label>
                   {effectiveCardType === 'review' && (
                     <>
                       <label className={styles.checkboxLabel}>
-                        <input type="checkbox" checked={showTags} onChange={e => setShowTags(e.target.checked)} />
+                        <input type="checkbox" checked={showTags} onChange={e => { setShowTags(e.target.checked); saveSettings({ showTags: e.target.checked }) }} />
                         Tags
                       </label>
                       <label className={styles.checkboxLabel}>
-                        <input type="checkbox" checked={showBackdrop} onChange={e => setShowBackdrop(e.target.checked)} />
+                        <input type="checkbox" checked={showBackdrop} onChange={e => { setShowBackdrop(e.target.checked); saveSettings({ showBackdrop: e.target.checked }) }} />
                         Backdrop
                       </label>
                     </>
@@ -420,6 +485,7 @@ export default function App() {
             <p className={styles.error}>{error}</p>
           )}
         </form>
+        )}
 
         {/* Preview */}
         {status === 'ready' && cardUrl && (

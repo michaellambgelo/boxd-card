@@ -63,6 +63,7 @@
 .header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 14px;
   padding: 24px 0 20px;
   border-bottom: 1px solid var(--border);
@@ -90,6 +91,83 @@
 
 .headerSubtitle {
   margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--subtext);
+}
+
+/* ── Gear / back buttons ─────────────────────────────────────── */
+.gearBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--subtext);
+  border-radius: var(--radius);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.15s, background 0.15s;
+}
+
+.gearBtn:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+
+.backBtn {
+  background: transparent;
+  border: none;
+  color: var(--subtext);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 4px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: color 0.15s;
+}
+
+.backBtn:hover {
+  color: var(--text);
+}
+
+.settingsTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--subtext);
+}
+
+/* ── Settings panel ──────────────────────────────────────────── */
+.settingsPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.settingsSection {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.layoutOption {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.layoutOptionText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.layoutOptionDesc {
   font-size: 13px;
   color: var(--subtext);
 }
