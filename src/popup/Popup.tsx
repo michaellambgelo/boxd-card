@@ -59,7 +59,7 @@ export default function Popup() {
       setLayout(s.layout)
     })
     chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
-      const url = tab?.url ?? ''
+      const url = (tab?.url ?? '').replace(/#.*$/, '')
       const match = CARD_TYPES.find(t => CARD_TYPE_CONFIGS[t].urlPattern.test(url))
       if (match) setCardType(match)
     })
@@ -69,7 +69,7 @@ export default function Popup() {
   useEffect(() => {
     setIsValidPage(null)
     chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
-      const url = tab?.url ?? ''
+      const url = (tab?.url ?? '').replace(/#.*$/, '')
       setIsValidPage(CARD_TYPE_CONFIGS[cardType].urlPattern.test(url))
       setIsReviewListPage(cardType === 'review' && /\/reviews\/?$/.test(url))
     })
@@ -88,7 +88,7 @@ export default function Popup() {
       if (!tab?.id) throw new Error('No active tab')
 
       // Defensive re-check for race condition (user navigates away after button enabled)
-      const url = tab.url ?? ''
+      const url = (tab.url ?? '').replace(/#.*$/, '')
       if (!CARD_TYPE_CONFIGS[cardType].urlPattern.test(url)) {
         throw new Error(`Navigate to ${CARD_TYPE_CONFIGS[cardType].urlHint} first.`)
       }
