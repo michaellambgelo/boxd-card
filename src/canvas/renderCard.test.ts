@@ -126,11 +126,11 @@ describe('renderCard', () => {
 })
 
 describe('computeLayout', () => {
-  it('4 films → cols=4, cardHeight=630', () => {
+  it('4 films → cols=4, cardHeight=650', () => {
     const layout = computeLayout(4)
     expect(layout.cols).toBe(4)
     expect(layout.rows).toBe(1)
-    expect(layout.cardHeight).toBe(630)
+    expect(layout.cardHeight).toBe(650)
     expect(layout.posterW).toBe(200)
   })
 
