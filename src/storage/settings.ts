@@ -13,6 +13,8 @@ export interface UserSettings {
   showTags: boolean
   showBackdrop: boolean
   layout: Layout
+  generateAltText: boolean
+  previewAltText: boolean
 }
 
 export const DEFAULT_SETTINGS: UserSettings = {
@@ -28,6 +30,8 @@ export const DEFAULT_SETTINGS: UserSettings = {
   showTags: true,
   showBackdrop: true,
   layout: 'landscape',
+  generateAltText: false,
+  previewAltText: false,
 }
 
 const STORAGE_KEY = 'boxd-card-settings'

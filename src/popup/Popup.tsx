@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import type { FilmData, FilmDataResponse, GetFilmDataRequest } from '../content/index'
 import type { FetchImageResponse } from '../background/service-worker'
 import { renderCard } from '../canvas/renderCard'
+import { generateAltText } from '../altText'
 import { CARD_TYPES, CARD_TYPE_CONFIGS, LAYOUTS, LAYOUT_CONFIGS } from '../types'
 import type { CardType, ListCount, ReviewCount, Layout } from '../types'
 import { loadSettings, saveSettings } from '../storage/settings'
@@ -38,10 +39,14 @@ export default function Popup() {
   const [showTags,           setShowTags]           = useState(true)
   const [showBackdrop,       setShowBackdrop]       = useState(true)
   const [layout,        setLayout]        = useState<Layout>('landscape')
+  const [altTextEnabled,        setAltTextEnabled]        = useState(false)
+  const [previewAltTextEnabled, setPreviewAltTextEnabled] = useState(false)
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null)
   const [cardUrl,       setCardUrl]       = useState<string | null>(null)
   const [cardBlob,      setCardBlob]      = useState<Blob | null>(null)
   const [copied,        setCopied]        = useState(false)
+  const [altText,       setAltText]       = useState<string | null>(null)
+  const [altTextCopied, setAltTextCopied] = useState(false)
 
   // On mount: check for newer release on GitHub
   useEffect(() => {
@@ -78,6 +83,8 @@ export default function Popup() {
       setShowTags(s.showTags)
       setShowBackdrop(s.showBackdrop)
       setLayout(s.layout)
+      setAltTextEnabled(s.generateAltText)
+      setPreviewAltTextEnabled(s.previewAltText)
     })
     chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
       const url = (tab?.url ?? '').replace(/#.*$/, '')
@@ -103,6 +110,7 @@ export default function Popup() {
     if (cardUrl) URL.revokeObjectURL(cardUrl)
     setCardUrl(null)
     setCardBlob(null)
+    setAltText(null)
 
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
@@ -200,6 +208,27 @@ export default function Popup() {
 
       setCardBlob(blob)
       setCardUrl(URL.createObjectURL(blob))
+
+      if (altTextEnabled) {
+        setAltText(generateAltText({
+          films: films.map(f => ({ title: f.title, year: f.year, rating: f.rating, date: f.date, reviewText: f.reviewText, tags: f.tags })),
+          username: filmData.username,
+          cardType,
+          showTitle,
+          showYear,
+          showRating,
+          showDate,
+          showCardTypeLabel: (cardType !== 'list' && cardType !== 'review') ? showCardTypeLabel : undefined,
+          cardTypeLabel:     (cardType !== 'list' && cardType !== 'review') ? CARD_TYPE_CONFIGS[cardType].label : undefined,
+          showListTitle:       cardType === 'list' ? showListTitle : undefined,
+          listTitle:           cardType === 'list' ? filmData.listTitle : undefined,
+          showListDescription: cardType === 'list' ? showListDesc : undefined,
+          listDescription:     cardType === 'list' ? filmData.listDescription : undefined,
+          showTags:            (cardType === 'list' || cardType === 'review') ? showTags : undefined,
+          listTags:            cardType === 'list' ? filmData.listTags : undefined,
+        }))
+      }
+
       setStatus('ready')
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -222,6 +251,13 @@ export default function Popup() {
     ])
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
+  }
+
+  async function handleCopyAltText() {
+    if (!altText) return
+    await navigator.clipboard.writeText(altText)
+    setAltTextCopied(true)
+    setTimeout(() => setAltTextCopied(false), 1500)
   }
 
   const buttonDisabled = status === 'loading' || isValidPage !== true
@@ -305,6 +341,19 @@ export default function Popup() {
                 </span>
               </label>
             ))}
+          </div>
+          <div className={styles.field}>
+            <span className={styles.fieldLabel}>Accessibility</span>
+            <label className={styles.checkboxLabel}>
+              <input type="checkbox" checked={altTextEnabled} onChange={e => { setAltTextEnabled(e.target.checked); saveSettings({ generateAltText: e.target.checked }) }} />
+              Generate alt text
+            </label>
+            {altTextEnabled && (
+              <label className={styles.checkboxLabel}>
+                <input type="checkbox" checked={previewAltTextEnabled} onChange={e => { setPreviewAltTextEnabled(e.target.checked); saveSettings({ previewAltText: e.target.checked }) }} />
+                Preview alt text
+              </label>
+            )}
           </div>
         </div>
       )}
@@ -458,7 +507,15 @@ export default function Popup() {
               <button className={`${styles.actionBtn}${copied ? ` ${styles.actionBtnCopied}` : ''}`} onClick={handleCopy}>
                 {copied ? 'Copied!' : 'Copy'}
               </button>
+              {altText && (
+                <button className={`${styles.actionBtn}${altTextCopied ? ` ${styles.actionBtnCopied}` : ''}`} onClick={handleCopyAltText}>
+                  {altTextCopied ? 'Copied!' : 'Alt Text'}
+                </button>
+              )}
             </div>
+            {altText && previewAltTextEnabled && (
+              <textarea className={styles.altTextArea} readOnly rows={3} value={altText} />
+            )}
           </>
         )}
       </div>
