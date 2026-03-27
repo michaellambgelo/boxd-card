@@ -56,10 +56,10 @@ const POSTER_TOP  = 110  // = HEADER_H + 20
 const TEXT_AREA_H = 120  // space below each poster for title + year + rating + date
 
 // Font sizes for poster-grid card text (title/rating/date under each poster)
-const GRID_TITLE_FS    = 28
+const GRID_TITLE_FS    = 24
 const GRID_META_FS     = 24
 const GRID_DATE_FS     = 21
-const GRID_LINE_H      = 32  // line height for 28px title / 24px meta
+const GRID_LINE_H      = 28  // line height for 24px text
 const GRID_DATE_LINE_H = 25  // line height for 21px text
 const GRID_LINE_GAP    =  4  // gap between consecutive text lines
 const GRID_TEXT_PAD    = 10  // top padding above first text item
@@ -483,7 +483,7 @@ function measureReviewRows(
 }
 
 const LIST_PADDING = 12
-const LIST_TITLE_H = 32
+const LIST_TITLE_H = 40
 const LIST_DESC_H  = 24
 const LIST_BOTTOM  = 8
 
@@ -674,7 +674,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
   // ── List title / description / card type label ────────────
   if (showingListTitle && listTitle) {
     ctx.fillStyle = TEXT_COLOR
-    ctx.font = 'bold 30px sans-serif'
+    ctx.font = 'bold 36px sans-serif'
     ctx.textAlign = 'left'
     ctx.textBaseline = 'top'
     ctx.fillText(truncate(ctx, listTitle, layout.cardWidth - 80), 40, POSTER_TOP + LIST_PADDING)
@@ -696,7 +696,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
   }
   if (showingCardTypeLabel && cardTypeLabel) {
     ctx.fillStyle = TEXT_COLOR
-    ctx.font = 'bold 30px sans-serif'
+    ctx.font = 'bold 36px sans-serif'
     ctx.textAlign = 'left'
     ctx.textBaseline = 'top'
     ctx.fillText(cardTypeLabel, 40, POSTER_TOP + LIST_PADDING)
@@ -740,32 +740,28 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
       ctx.fillStyle = TEXT_COLOR
       ctx.textAlign = 'left'
       ctx.textBaseline = 'top'
-      if (layout.sideLayout) {
-        const sideTitleLH = 38  // line height for 34px bold
-        ctx.font = 'bold 34px sans-serif'
-        // Word-wrap title, max 2 lines; truncate last line if still overflows
-        const words = film.title.split(' ')
-        let line1 = ''
-        let remaining = ''
-        for (let w = 0; w < words.length; w++) {
-          const test = line1 ? `${line1} ${words[w]}` : words[w]
-          if (line1 && ctx.measureText(test).width > maxTextW) {
-            remaining = words.slice(w).join(' ')
-            break
-          }
-          line1 = test
+      const titleFS = layout.sideLayout ? 34 : GRID_TITLE_FS
+      const titleLH = layout.sideLayout ? 38 : GRID_LINE_H
+      ctx.font = `bold ${titleFS}px sans-serif`
+      // Word-wrap title, max 2 lines; truncate last line if still overflows
+      const words = film.title.split(' ')
+      let line1 = ''
+      let remaining = ''
+      for (let w = 0; w < words.length; w++) {
+        const test = line1 ? `${line1} ${words[w]}` : words[w]
+        if (line1 && ctx.measureText(test).width > maxTextW) {
+          remaining = words.slice(w).join(' ')
+          break
         }
-        ctx.fillText(line1 || film.title, textX, textY)
-        textY += sideTitleLH
-        if (remaining) {
-          ctx.fillText(truncate(ctx, remaining, maxTextW), textX, textY)
-          textY += sideTitleLH
-        }
-      } else {
-        ctx.font = `bold ${GRID_TITLE_FS}px sans-serif`
-        ctx.fillText(truncate(ctx, film.title, maxTextW), textX, textY)
-        textY += GRID_LINE_H + GRID_LINE_GAP
+        line1 = test
       }
+      ctx.fillText(line1 || film.title, textX, textY)
+      textY += titleLH
+      if (remaining) {
+        ctx.fillText(truncate(ctx, remaining, maxTextW), textX, textY)
+        textY += titleLH
+      }
+      if (!layout.sideLayout && !remaining) textY += GRID_LINE_GAP
     }
 
     if (showYear && film.year) {
