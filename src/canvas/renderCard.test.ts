@@ -402,6 +402,31 @@ describe('renderCard — review type', () => {
     })
     expect(blob).toBeInstanceOf(Blob)
   })
+
+  it.each(['square', 'story', 'banner'] as const)('renders a single review in %s layout', async (layout) => {
+    const blob = await renderCard({
+      films: [reviewFilm],
+      username: 'michaellamb',
+      showTitle: true, showYear: true, showRating: true, showDate: true,
+      cardType: 'review',
+      reviewCount: 1,
+      layout,
+    })
+    expect(blob).toBeInstanceOf(Blob)
+    expect(blob.type).toBe('image/png')
+  })
+
+  it.each(['square', 'story', 'banner'] as const)('renders 4-review card in %s layout', async (layout) => {
+    const blob = await renderCard({
+      films: Array.from({ length: 4 }, () => reviewFilm),
+      username: 'test',
+      showTitle: true, showYear: true, showRating: true, showDate: true,
+      cardType: 'review',
+      reviewCount: 4,
+      layout,
+    })
+    expect(blob).toBeInstanceOf(Blob)
+  })
 })
 
 describe('renderCard — backdrop', () => {
