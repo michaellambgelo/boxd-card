@@ -253,6 +253,20 @@
   cursor: not-allowed;
 }
 
+/* ── Alt text textarea ──────────────────────────────────────── */
+.altTextArea {
+  width: 100%;
+  background: var(--input-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+  font-size: 12px;
+  font-family: system-ui, sans-serif;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
 /* ── Error ───────────────────────────────────────────────────── */
 .error {
   color: var(--error);

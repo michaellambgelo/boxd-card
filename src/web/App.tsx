@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { renderCard } from '../canvas/renderCard'
+import { generateAltText } from '../altText'
 import { CARD_TYPE_CONFIGS, LAYOUTS, LAYOUT_CONFIGS } from '../types'
 import type { CardType, ListCount, ReviewCount, Layout } from '../types'
 import { loadSettings, saveSettings } from '../storage/settings'
@@ -42,10 +43,14 @@ export default function App() {
   const [showTags,           setShowTags]           = useState(true)
   const [showBackdrop,       setShowBackdrop]       = useState(true)
   const [layout,       setLayout]       = useState<Layout>('landscape')
+  const [altTextEnabled,        setAltTextEnabled]        = useState(false)
+  const [previewAltTextEnabled, setPreviewAltTextEnabled] = useState(false)
 
   const [cardUrl,  setCardUrl]  = useState<string | null>(null)
   const [cardBlob, setCardBlob] = useState<Blob | null>(null)
   const [copied,   setCopied]   = useState(false)
+  const [altText,       setAltText]       = useState<string | null>(null)
+  const [altTextCopied, setAltTextCopied] = useState(false)
 
   // On mount: load persisted settings
   useEffect(() => {
@@ -62,6 +67,8 @@ export default function App() {
       setShowTags(s.showTags)
       setShowBackdrop(s.showBackdrop)
       setLayout(s.layout)
+      setAltTextEnabled(s.generateAltText)
+      setPreviewAltTextEnabled(s.previewAltText)
     })
   }, [])
 
@@ -123,6 +130,7 @@ export default function App() {
     if (cardUrl) URL.revokeObjectURL(cardUrl)
     setCardUrl(null)
     setCardBlob(null)
+    setAltText(null)
 
     try {
       const filmData = await scrapeLetterboxdPage(
@@ -204,6 +212,27 @@ export default function App() {
 
       setCardBlob(blob)
       setCardUrl(URL.createObjectURL(blob))
+
+      if (altTextEnabled) {
+        setAltText(generateAltText({
+          films: films.map(f => ({ title: f.title, year: f.year, rating: f.rating, date: f.date, reviewText: f.reviewText, tags: f.tags })),
+          username: filmData.username,
+          cardType: resolvedCardType,
+          showTitle,
+          showYear,
+          showRating,
+          showDate,
+          showCardTypeLabel: (resolvedCardType !== 'list' && resolvedCardType !== 'review') ? showCardTypeLabel : undefined,
+          cardTypeLabel:     (resolvedCardType !== 'list' && resolvedCardType !== 'review') ? CARD_TYPE_CONFIGS[resolvedCardType].label : undefined,
+          showListTitle:       resolvedCardType === 'list' ? showListTitle : undefined,
+          listTitle:           resolvedCardType === 'list' ? filmData.listTitle : undefined,
+          showListDescription: resolvedCardType === 'list' ? showListDesc : undefined,
+          listDescription:     resolvedCardType === 'list' ? filmData.listDescription : undefined,
+          showTags:            (resolvedCardType === 'list' || resolvedCardType === 'review') ? showTags : undefined,
+          listTags:            resolvedCardType === 'list' ? filmData.listTags : undefined,
+        }))
+      }
+
       setStatus('ready')
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -231,6 +260,13 @@ export default function App() {
   async function handleShare() {
     if (!cardBlob) return
     await navigator.share({ files: [new File([cardBlob], 'boxd-card.png', { type: 'image/png' })] })
+  }
+
+  async function handleCopyAltText() {
+    if (!altText) return
+    await navigator.clipboard.writeText(altText)
+    setAltTextCopied(true)
+    setTimeout(() => setAltTextCopied(false), 1500)
   }
 
   const canShare = typeof navigator !== 'undefined' && 'share' in navigator
@@ -313,6 +349,19 @@ export default function App() {
                   </span>
                 </label>
               ))}
+            </div>
+            <div className={styles.settingsSection}>
+              <span className={styles.fieldLabel}>Accessibility</span>
+              <label className={styles.checkboxLabel}>
+                <input type="checkbox" checked={altTextEnabled} onChange={e => { setAltTextEnabled(e.target.checked); saveSettings({ generateAltText: e.target.checked }) }} />
+                Generate alt text
+              </label>
+              {altTextEnabled && (
+                <label className={styles.checkboxLabel}>
+                  <input type="checkbox" checked={previewAltTextEnabled} onChange={e => { setPreviewAltTextEnabled(e.target.checked); saveSettings({ previewAltText: e.target.checked }) }} />
+                  Preview alt text
+                </label>
+              )}
             </div>
           </div>
         )}
@@ -506,7 +555,15 @@ export default function App() {
               {canShare && (
                 <button className={styles.actionBtn} onClick={handleShare}>Share</button>
               )}
+              {altText && (
+                <button className={`${styles.actionBtn}${altTextCopied ? ` ${styles.actionBtnCopied}` : ''}`} onClick={handleCopyAltText}>
+                  {altTextCopied ? 'Copied!' : 'Alt Text'}
+                </button>
+              )}
             </div>
+            {altText && previewAltTextEnabled && (
+              <textarea className={styles.altTextArea} readOnly rows={3} value={altText} />
+            )}
           </section>
         )}
 

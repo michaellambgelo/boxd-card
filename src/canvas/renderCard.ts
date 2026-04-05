@@ -47,11 +47,13 @@ export interface CardLayout {
   rows: number
   footerY: number
   textAreaH: number
+  /** When true, text is drawn to the right of each poster instead of below. */
+  sideLayout: boolean
 }
 
 const HEADER_H    = 90
 const POSTER_TOP  = 110  // = HEADER_H + 20
-const TEXT_AREA_H = 100  // space below each poster for title + rating + date
+const TEXT_AREA_H = 120  // space below each poster for title + year + rating + date
 
 // Font sizes for poster-grid card text (title/rating/date under each poster)
 const GRID_TITLE_FS    = 24
@@ -89,6 +91,7 @@ export function computeLayout(filmCount: number, titleAreaH = 0, layout: Layout 
         posterLeft, posterTop: pt,
         cols: effectiveCols, rows: 1,
         footerY, textAreaH: TEXT_AREA_H,
+        sideLayout: false,
       }
     }
 
@@ -103,29 +106,38 @@ export function computeLayout(filmCount: number, titleAreaH = 0, layout: Layout 
       posterLeft: 40, posterTop: pt,
       cols, rows, footerY,
       textAreaH: TEXT_AREA_H,
+      sideLayout: false,
     }
   }
 
-  // ── Square (1080×1080 fixed for ≤4, 3-col variable for 5-20) ────────────
+  // ── Square (2×2 side-by-side for ≤4, 3-col grid for 5-20) ─────────────
   if (layout === 'square') {
     const cardWidth = 1080
     if (filmCount <= 4) {
+      // 2×2 grid with text beside each poster (side-by-side within each cell)
       const cardHeight = 1080
       const footerY = cardHeight - 64
       const cols = Math.min(Math.max(1, filmCount), 2)
       const rows = Math.ceil(filmCount / cols)
-      const textAreaH = 80
+      const margin = 30
+      const interCellGap = 24
+      const cellW = Math.floor((cardWidth - 2 * margin - (cols - 1) * interCellGap) / cols)
+      const posterH = 340
+      const posterW = Math.round(posterH * 2 / 3)   // ~227
+      // posterGap = stride from one cell's poster left to next cell's poster left - posterW
+      // equals the text area + interCellGap
+      const posterGap = cols > 1 ? cellW + interCellGap - posterW : 0
+      const posterLeft = margin  // left-align cells to margin
+      // Center rows vertically in available space
       const available = footerY - pt - 56
-      const posterH = Math.floor(available / rows) - textAreaH
-      const posterW = Math.round(posterH * 2 / 3)
-      const posterGap = 20
-      const totalW = cols * posterW + (cols - 1) * posterGap
-      const posterLeft = Math.floor((cardWidth - totalW) / 2)
+      const totalRowH = rows * posterH + (rows - 1) * interCellGap
+      const posterTop2 = pt + Math.floor((available - totalRowH) / 2)
       return {
         cardWidth, cardHeight,
         posterW, posterH, posterGap,
-        posterLeft, posterTop: pt,
-        cols, rows, footerY, textAreaH,
+        posterLeft, posterTop: posterTop2,
+        cols, rows, footerY, textAreaH: 0,
+        sideLayout: true,
       }
     }
 
@@ -141,6 +153,7 @@ export function computeLayout(filmCount: number, titleAreaH = 0, layout: Layout 
       posterLeft, posterTop: pt,
       cols, rows, footerY,
       textAreaH: TEXT_AREA_H,
+      sideLayout: false,
     }
   }
 
@@ -165,6 +178,7 @@ export function computeLayout(filmCount: number, titleAreaH = 0, layout: Layout 
         posterLeft, posterTop: pt,
         cols: effectiveCols, rows: 1,
         footerY, textAreaH,
+        sideLayout: false,
       }
     }
 
@@ -179,6 +193,7 @@ export function computeLayout(filmCount: number, titleAreaH = 0, layout: Layout 
       posterLeft: 40, posterTop: pt,
       cols, rows, footerY,
       textAreaH: TEXT_AREA_H,
+      sideLayout: false,
     }
   }
 
@@ -198,6 +213,7 @@ export function computeLayout(filmCount: number, titleAreaH = 0, layout: Layout 
       posterLeft, posterTop: pt,
       cols: 1, rows: 1,
       footerY, textAreaH,
+      sideLayout: false,
     }
   }
 
@@ -219,6 +235,7 @@ export function computeLayout(filmCount: number, titleAreaH = 0, layout: Layout 
       posterW, posterH, posterGap,
       posterLeft, posterTop: pt,
       cols, rows, footerY, textAreaH,
+      sideLayout: false,
     }
   }
 
@@ -235,6 +252,7 @@ export function computeLayout(filmCount: number, titleAreaH = 0, layout: Layout 
     posterW, posterH, posterGap: 20,
     posterLeft, posterTop: pt,
     cols, rows, footerY, textAreaH,
+    sideLayout: false,
   }
 }
 
@@ -373,11 +391,45 @@ async function drawBackground(
   if (!backdropDataUrl) return
   try {
     const img = await loadImage(backdropDataUrl)
-    // Draw oversized to avoid transparent fringe from the blur kernel.
     const pad = BACKDROP_BLUR * 3
+
+    // Cover-fit: maintain aspect ratio, center, and crop to fill the canvas.
+    const imgAspect = img.width / img.height
+    const canvasAspect = width / height
+    let drawW: number, drawH: number, drawX: number, drawY: number
+    if (imgAspect > canvasAspect) {
+      // Image is wider than canvas — fit height, crop sides
+      drawH = height + pad * 2
+      drawW = drawH * imgAspect
+      drawX = -(drawW - width) / 2
+      drawY = -pad
+    } else {
+      // Image is taller/equal — fit width, crop top/bottom
+      drawW = width + pad * 2
+      drawH = drawW / imgAspect
+      drawX = -pad
+      drawY = -(drawH - height) / 2
+    }
+
     ctx.filter = `blur(${BACKDROP_BLUR}px)`
-    ctx.drawImage(img, -pad, -pad, width + pad * 2, height + pad * 2)
+    ctx.drawImage(img, drawX, drawY, drawW, drawH)
     ctx.filter = 'none'
+
+    // Fade edges into BG_COLOR so the backdrop blends naturally on tall/wide cards
+    const fadeSize = Math.min(200, Math.floor(Math.min(width, height) * 0.25))
+    // Bottom edge fade
+    const bottomGrad = ctx.createLinearGradient(0, height - fadeSize, 0, height)
+    bottomGrad.addColorStop(0, 'rgba(26, 26, 26, 0)')
+    bottomGrad.addColorStop(1, BG_COLOR)
+    ctx.fillStyle = bottomGrad
+    ctx.fillRect(0, height - fadeSize, width, fadeSize)
+    // Top edge fade
+    const topGrad = ctx.createLinearGradient(0, fadeSize, 0, 0)
+    topGrad.addColorStop(0, 'rgba(26, 26, 26, 0)')
+    topGrad.addColorStop(1, BG_COLOR)
+    ctx.fillStyle = topGrad
+    ctx.fillRect(0, 0, width, fadeSize)
+
     // Dark overlay so text and other content remain legible.
     ctx.fillStyle = 'rgba(0, 0, 0, 0.72)'
     ctx.fillRect(0, 0, width, height)
@@ -393,19 +445,57 @@ function layoutCardWidth(layout: Layout): number {
   return 1080  // square and story
 }
 
-// ── Review card layout constants ─────────────────────────────────────────────
-const RV_POSTER_W      = 200
-const RV_POSTER_H      = 300
-const RV_POSTER_X      = 40
-const RV_CONTENT_X     = RV_POSTER_X + RV_POSTER_W + 30  // 270
-const RV_TITLE_H       = 54   // bold 39px title line height
-const RV_META_H        = 45   // rating / date line height
-const RV_META_GAP      = 9    // gap between consecutive meta lines
-const RV_REVIEW_FS     = 30   // review text font-size (px)
-const RV_REVIEW_LINE_H = 42   // review text line height
-const RV_TOP_PAD       = 28   // gap below header, above first review
-const RV_ROW_GAP       = 28   // gap between consecutive review rows
-const RV_FOOTER_GAP    = 44   // gap below last review, above footer
+// ── Review card layout config ────────────────────────────────────────────────
+interface ReviewLayoutConfig {
+  posterW: number; posterH: number; posterX: number; contentX: number
+  titleFs: number; titleH: number; metaFs: number; metaH: number; metaGap: number
+  reviewFs: number; reviewLineH: number
+  topPad: number; rowGap: number; footerGap: number
+  fixedHeight: number | null   // null = dynamic (landscape), number = clamped
+  stacked: boolean             // poster above text (story) vs side-by-side
+}
+
+function reviewLayoutConfig(layout: Layout): ReviewLayoutConfig {
+  if (layout === 'square') {
+    return {
+      posterW: 160, posterH: 240, posterX: 40,
+      contentX: 40 + 160 + 30,  // 230
+      titleFs: 32, titleH: 46, metaFs: 26, metaH: 38, metaGap: 7,
+      reviewFs: 26, reviewLineH: 36,
+      topPad: 24, rowGap: 24, footerGap: 36,
+      fixedHeight: 1080, stacked: false,
+    }
+  }
+  if (layout === 'banner') {
+    return {
+      posterW: 160, posterH: 240, posterX: 40,
+      contentX: 40 + 160 + 30,  // 230
+      titleFs: 32, titleH: 46, metaFs: 26, metaH: 38, metaGap: 7,
+      reviewFs: 26, reviewLineH: 36,
+      topPad: 24, rowGap: 24, footerGap: 36,
+      fixedHeight: 750, stacked: false,
+    }
+  }
+  if (layout === 'story') {
+    return {
+      posterW: 280, posterH: 420, posterX: 0,  // centered dynamically
+      contentX: 40,                             // full-width text below poster
+      titleFs: 39, titleH: 54, metaFs: 32, metaH: 45, metaGap: 9,
+      reviewFs: 30, reviewLineH: 42,
+      topPad: 28, rowGap: 36, footerGap: 44,
+      fixedHeight: 1920, stacked: true,
+    }
+  }
+  // landscape (default)
+  return {
+    posterW: 200, posterH: 300, posterX: 40,
+    contentX: 40 + 200 + 30,  // 270
+    titleFs: 39, titleH: 54, metaFs: 32, metaH: 45, metaGap: 9,
+    reviewFs: 30, reviewLineH: 42,
+    topPad: 28, rowGap: 28, footerGap: 44,
+    fixedHeight: null, stacked: false,
+  }
+}
 
 interface ReviewRowMeasure {
   y: number
@@ -417,14 +507,16 @@ function measureReviewRows(
   films: FilmEntry[],
   count: number,
   showTitle: boolean,
+  showYear: boolean,
   showRating: boolean,
   showDate: boolean,
   showTags: boolean,
   measureCtx: CanvasRenderingContext2D,
   rvContentW: number,
+  cfg: ReviewLayoutConfig,
 ): { rows: ReviewRowMeasure[]; footerY: number; cardHeight: number } {
   const rows: ReviewRowMeasure[] = []
-  let currentY = HEADER_H + RV_TOP_PAD
+  let currentY = HEADER_H + cfg.topPad
 
   for (let i = 0; i < count; i++) {
     const film = films[i]
@@ -432,38 +524,43 @@ function measureReviewRows(
     let firstMeta = true
 
     function addMetaLine(lineH: number) {
-      if (!firstMeta) contentH += RV_META_GAP
+      if (!firstMeta) contentH += cfg.metaGap
       contentH += lineH
       firstMeta = false
     }
 
-    if (showTitle) addMetaLine(RV_TITLE_H)
-    if (showRating && film.rating) addMetaLine(RV_META_H)
-    if (showDate && film.date) addMetaLine(RV_META_H)
+    if (showTitle) addMetaLine(cfg.titleH)
+    if (showYear && film.year) addMetaLine(cfg.metaH)
+    if (showRating && film.rating) addMetaLine(cfg.metaH)
+    if (showDate && film.date) addMetaLine(cfg.metaH)
     if (showTags && film.tags?.length) {
       const tagsH = drawTagPills(measureCtx, film.tags, 0, 0, rvContentW, false)
-      if (!firstMeta) contentH += RV_META_GAP
+      if (!firstMeta) contentH += cfg.metaGap
       contentH += tagsH
       firstMeta = false
     }
 
     if (film.reviewText) {
       if (!firstMeta) contentH += 21  // gap before review text
-      measureCtx.font = `${RV_REVIEW_FS}px sans-serif`
-      contentH += wrapText(measureCtx, film.reviewText, 0, 0, rvContentW, RV_REVIEW_LINE_H, false)
+      measureCtx.font = `${cfg.reviewFs}px sans-serif`
+      contentH += wrapText(measureCtx, film.reviewText, 0, 0, rvContentW, cfg.reviewLineH, false)
     }
 
-    const rowH = Math.max(RV_POSTER_H, contentH)
+    // Stacked layouts put poster above text; side-by-side puts them adjacent
+    const stackedPosterH = cfg.stacked ? cfg.posterH + 16 : 0
+    const rowH = cfg.stacked ? stackedPosterH + contentH : Math.max(cfg.posterH, contentH)
     rows.push({ y: currentY, rowH })
-    currentY += rowH + (i < count - 1 ? RV_ROW_GAP : 0)
+    currentY += rowH + (i < count - 1 ? cfg.rowGap : 0)
   }
 
-  const footerY = currentY + RV_FOOTER_GAP
-  return { rows, footerY, cardHeight: footerY + 64 }
+  const footerY = currentY + cfg.footerGap
+  const dynamicH = footerY + 64
+  const cardHeight = cfg.fixedHeight != null ? cfg.fixedHeight : dynamicH
+  return { rows, footerY: cfg.fixedHeight != null ? cfg.fixedHeight - 64 : footerY, cardHeight }
 }
 
 const LIST_PADDING = 12
-const LIST_TITLE_H = 32
+const LIST_TITLE_H = 40
 const LIST_DESC_H  = 24
 const LIST_BOTTOM  = 8
 
@@ -478,8 +575,12 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
   // ── Review card ──────────────────────────────────────────────────────────
   if (cardType === 'review') {
     const effectiveLayout = options.layout ?? 'landscape'
+    const cfg = reviewLayoutConfig(effectiveLayout)
     const cardWidth = layoutCardWidth(effectiveLayout)
-    const rvContentW = cardWidth - RV_CONTENT_X - 40
+    // For stacked layouts, text spans full width below the poster
+    const rvContentW = cfg.stacked
+      ? cardWidth - 2 * cfg.contentX
+      : cardWidth - cfg.contentX - 40
 
     const count = Math.min(films.length, reviewCount ?? 1)
     if (count === 0) throw new Error('No films found to render.')
@@ -488,7 +589,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
     const measureCanvas = document.createElement('canvas')
     const measureCtx = measureCanvas.getContext('2d')!
     const { rows, footerY, cardHeight } = measureReviewRows(
-      films, count, showTitle, showRating, showDate, showTags ?? false, measureCtx, rvContentW
+      films, count, showTitle, showYear, showRating, showDate, showTags ?? false, measureCtx, rvContentW, cfg
     )
 
     // Pass 2: draw
@@ -499,79 +600,102 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
 
     await drawBackground(ctx, cardWidth, cardHeight, backdropDataUrl)
 
+    // Clip to footer boundary for fixed-height layouts
+    if (cfg.fixedHeight != null) {
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(0, 0, cardWidth, footerY)
+      ctx.clip()
+    }
+
     await drawLogo(ctx, 40, HEADER_H / 2)
 
     for (let i = 0; i < count; i++) {
       const film = films[i]
       const rowY = rows[i].y
 
-      // Poster
+      // Poster position: centered for stacked, fixed-x for side-by-side
+      const posterX = cfg.stacked ? Math.floor((cardWidth - cfg.posterW) / 2) : cfg.posterX
+
       try {
         const img = await loadImage(film.posterDataUrl)
-        ctx.drawImage(img, RV_POSTER_X, rowY, RV_POSTER_W, RV_POSTER_H)
+        ctx.drawImage(img, posterX, rowY, cfg.posterW, cfg.posterH)
       } catch {
         ctx.fillStyle = '#333344'
-        ctx.fillRect(RV_POSTER_X, rowY, RV_POSTER_W, RV_POSTER_H)
+        ctx.fillRect(posterX, rowY, cfg.posterW, cfg.posterH)
       }
 
-      // Right column
-      let contentY = rowY
+      // Text column: below poster (stacked) or beside poster (side-by-side)
+      const textX = cfg.stacked ? cfg.contentX : cfg.contentX
+      let contentY = cfg.stacked ? rowY + cfg.posterH + 16 : rowY
       let firstMeta = true
 
       function drawMetaLine(lineH: number, drawFn: () => void) {
-        if (!firstMeta) contentY += RV_META_GAP
+        if (!firstMeta) contentY += cfg.metaGap
         drawFn()
         contentY += lineH
         firstMeta = false
       }
 
       if (showTitle) {
-        drawMetaLine(RV_TITLE_H, () => {
-          const displayTitle = showYear && film.year
-            ? `${film.title} (${film.year})`
-            : film.title
+        drawMetaLine(cfg.titleH, () => {
           ctx.fillStyle = TEXT_COLOR
-          ctx.font = 'bold 39px sans-serif'
+          ctx.font = `bold ${cfg.titleFs}px sans-serif`
           ctx.textAlign = 'left'
           ctx.textBaseline = 'top'
-          ctx.fillText(truncate(ctx, displayTitle, rvContentW), RV_CONTENT_X, contentY)
+          ctx.fillText(truncate(ctx, film.title, rvContentW), textX, contentY)
+        })
+      }
+
+      if (showYear && film.year) {
+        drawMetaLine(cfg.metaH, () => {
+          ctx.fillStyle = SUBTEXT_COLOR
+          ctx.font = `${cfg.metaFs}px sans-serif`
+          ctx.textAlign = 'left'
+          ctx.textBaseline = 'top'
+          ctx.fillText(film.year, textX, contentY)
         })
       }
 
       if (showRating && film.rating) {
-        drawMetaLine(RV_META_H, () => {
+        drawMetaLine(cfg.metaH, () => {
           ctx.fillStyle = '#FFB020'
-          ctx.font = '35px sans-serif'
+          ctx.font = `${cfg.metaFs + 3}px sans-serif`
           ctx.textAlign = 'left'
           ctx.textBaseline = 'top'
-          ctx.fillText(film.rating, RV_CONTENT_X, contentY)
+          ctx.fillText(film.rating, textX, contentY)
         })
       }
 
       if (showDate && film.date) {
-        drawMetaLine(RV_META_H, () => {
+        drawMetaLine(cfg.metaH, () => {
           ctx.fillStyle = SUBTEXT_COLOR
-          ctx.font = '32px sans-serif'
+          ctx.font = `${cfg.metaFs}px sans-serif`
           ctx.textAlign = 'left'
           ctx.textBaseline = 'top'
-          ctx.fillText(film.date!, RV_CONTENT_X, contentY)
+          ctx.fillText(film.date!, textX, contentY)
         })
       }
 
       if (showTags && film.tags?.length) {
-        if (!firstMeta) contentY += RV_META_GAP
-        contentY += drawTagPills(ctx, film.tags, RV_CONTENT_X, contentY, rvContentW, true)
+        if (!firstMeta) contentY += cfg.metaGap
+        contentY += drawTagPills(ctx, film.tags, textX, contentY, rvContentW, true)
         firstMeta = false
       }
 
       if (film.reviewText) {
         if (!firstMeta) contentY += 21
         ctx.fillStyle = TEXT_COLOR
-        ctx.font = `${RV_REVIEW_FS}px sans-serif`
+        ctx.font = `${cfg.reviewFs}px sans-serif`
         ctx.textAlign = 'left'
         ctx.textBaseline = 'top'
-        wrapText(ctx, film.reviewText, RV_CONTENT_X, contentY, rvContentW, RV_REVIEW_LINE_H, true)
+        wrapText(ctx, film.reviewText, textX, contentY, rvContentW, cfg.reviewLineH, true)
       }
+    }
+
+    // Restore clip before drawing footer
+    if (cfg.fixedHeight != null) {
+      ctx.restore()
     }
 
     // Footer
@@ -647,7 +771,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
   // ── List title / description / card type label ────────────
   if (showingListTitle && listTitle) {
     ctx.fillStyle = TEXT_COLOR
-    ctx.font = 'bold 30px sans-serif'
+    ctx.font = 'bold 36px sans-serif'
     ctx.textAlign = 'left'
     ctx.textBaseline = 'top'
     ctx.fillText(truncate(ctx, listTitle, layout.cardWidth - 80), 40, POSTER_TOP + LIST_PADDING)
@@ -669,7 +793,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
   }
   if (showingCardTypeLabel && cardTypeLabel) {
     ctx.fillStyle = TEXT_COLOR
-    ctx.font = 'bold 30px sans-serif'
+    ctx.font = 'bold 36px sans-serif'
     ctx.textAlign = 'left'
     ctx.textBaseline = 'top'
     ctx.fillText(cardTypeLabel, 40, POSTER_TOP + LIST_PADDING)
@@ -681,7 +805,10 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
     const col = i % layout.cols
     const row = Math.floor(i / layout.cols)
     const x = layout.posterLeft + col * (layout.posterW + layout.posterGap)
-    const y = layout.posterTop  + row * (layout.posterH + layout.textAreaH)
+    const sideRowGap = 20  // vertical gap between rows in sideLayout
+    const y = layout.sideLayout
+      ? layout.posterTop + row * (layout.posterH + sideRowGap)
+      : layout.posterTop + row * (layout.posterH + layout.textAreaH)
 
     try {
       const img = await loadImage(film.posterDataUrl)
@@ -691,36 +818,74 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
       ctx.fillRect(x, y, layout.posterW, layout.posterH)
     }
 
-    let textY = y + layout.posterH + GRID_TEXT_PAD
+    // Text position: beside poster (sideLayout) or below poster (grid)
+    const sideTextPad = 16  // gap between poster and text in sideLayout
+    const textX = layout.sideLayout ? x + layout.posterW + sideTextPad : x
+    let maxTextW: number
+    if (layout.sideLayout) {
+      const isLastCol = col === layout.cols - 1
+      const rightEdge = isLastCol
+        ? layout.cardWidth - layout.posterLeft         // mirror left margin
+        : x + layout.posterW + layout.posterGap - 12   // stop before next poster
+      maxTextW = rightEdge - textX
+    } else {
+      maxTextW = layout.posterW
+    }
+    let textY = layout.sideLayout ? y : y + layout.posterH + GRID_TEXT_PAD
 
     if (showTitle) {
-      const displayTitle = showYear && film.year
-        ? `${film.title} (${film.year})`
-        : film.title
       ctx.fillStyle = TEXT_COLOR
-      ctx.font = `${GRID_TITLE_FS}px sans-serif`
       ctx.textAlign = 'left'
       ctx.textBaseline = 'top'
-      ctx.fillText(truncate(ctx, displayTitle, layout.posterW), x, textY)
+      const titleFS = layout.sideLayout ? 34 : GRID_TITLE_FS
+      const titleLH = layout.sideLayout ? 38 : GRID_LINE_H
+      ctx.font = `bold ${titleFS}px sans-serif`
+      // Word-wrap title, max 2 lines; truncate last line if still overflows
+      const words = film.title.split(' ')
+      let line1 = ''
+      let remaining = ''
+      for (let w = 0; w < words.length; w++) {
+        const test = line1 ? `${line1} ${words[w]}` : words[w]
+        if (line1 && ctx.measureText(test).width > maxTextW) {
+          remaining = words.slice(w).join(' ')
+          break
+        }
+        line1 = test
+      }
+      ctx.fillText(line1 || film.title, textX, textY)
+      textY += titleLH
+      if (remaining) {
+        ctx.fillText(truncate(ctx, remaining, maxTextW), textX, textY)
+        textY += titleLH
+      }
+      if (!layout.sideLayout && !remaining) textY += GRID_LINE_GAP
+    }
+
+    if (showYear && film.year) {
+      ctx.fillStyle = SUBTEXT_COLOR
+      ctx.font = layout.sideLayout ? '26px sans-serif' : `${GRID_META_FS}px sans-serif`
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'top'
+      ctx.fillText(film.year, textX, textY)
       textY += GRID_LINE_H + GRID_LINE_GAP
     }
 
     if (showRating && film.rating) {
       ctx.fillStyle = '#FFB020'
-      ctx.font = `${GRID_META_FS}px sans-serif`
+      ctx.font = layout.sideLayout ? '30px sans-serif' : `${GRID_META_FS}px sans-serif`
       ctx.textAlign = 'left'
       ctx.textBaseline = 'top'
-      ctx.fillText(film.rating, x, textY)
+      ctx.fillText(film.rating, textX, textY)
       textY += GRID_LINE_H + GRID_LINE_GAP
     }
 
     // For diary type: show per-film watch date under the rating when showDate is on
     if (cardType === 'recent-diary' && showDate && film.date) {
       ctx.fillStyle = SUBTEXT_COLOR
-      ctx.font = `${GRID_DATE_FS}px sans-serif`
+      ctx.font = layout.sideLayout ? '26px sans-serif' : `${GRID_DATE_FS}px sans-serif`
       ctx.textAlign = 'left'
       ctx.textBaseline = 'top'
-      ctx.fillText(film.date, x, textY)
+      ctx.fillText(film.date, textX, textY)
     }
   }
 

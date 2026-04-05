@@ -126,11 +126,11 @@ describe('renderCard', () => {
 })
 
 describe('computeLayout', () => {
-  it('4 films → cols=4, cardHeight=630', () => {
+  it('4 films → cols=4, cardHeight=650', () => {
     const layout = computeLayout(4)
     expect(layout.cols).toBe(4)
     expect(layout.rows).toBe(1)
-    expect(layout.cardHeight).toBe(630)
+    expect(layout.cardHeight).toBe(650)
     expect(layout.posterW).toBe(200)
   })
 
@@ -399,6 +399,31 @@ describe('renderCard — review type', () => {
       reviewCount: 1,
       footerAvatarDataUrl: 'data:image/png;base64,abc',
       showShareIcon: false,
+    })
+    expect(blob).toBeInstanceOf(Blob)
+  })
+
+  it.each(['square', 'story', 'banner'] as const)('renders a single review in %s layout', async (layout) => {
+    const blob = await renderCard({
+      films: [reviewFilm],
+      username: 'michaellamb',
+      showTitle: true, showYear: true, showRating: true, showDate: true,
+      cardType: 'review',
+      reviewCount: 1,
+      layout,
+    })
+    expect(blob).toBeInstanceOf(Blob)
+    expect(blob.type).toBe('image/png')
+  })
+
+  it.each(['square', 'story', 'banner'] as const)('renders 4-review card in %s layout', async (layout) => {
+    const blob = await renderCard({
+      films: Array.from({ length: 4 }, () => reviewFilm),
+      username: 'test',
+      showTitle: true, showYear: true, showRating: true, showDate: true,
+      cardType: 'review',
+      reviewCount: 4,
+      layout,
     })
     expect(blob).toBeInstanceOf(Blob)
   })

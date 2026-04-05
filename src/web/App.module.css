@@ -407,6 +407,20 @@
   color: #ffffff;
 }
 
+/* ── Alt text textarea ──────────────────────────────────────── */
+.altTextArea {
+  width: 100%;
+  background: var(--input-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: system-ui, sans-serif;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
 /* ── Footer ──────────────────────────────────────────────────── */
 .footer {
   margin-top: 48px;
