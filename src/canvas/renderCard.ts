@@ -110,34 +110,32 @@ export function computeLayout(filmCount: number, titleAreaH = 0, layout: Layout 
     }
   }
 
-  // ── Square (2×2 side-by-side for ≤4, 3-col grid for 5-20) ─────────────
-  if (layout === 'square') {
+  // ── Square / 4:5 / 3:4 (2×2 grid for ≤4, 3-col grid for 5-20) ──────────
+  const portraitHeights: Partial<Record<Layout, number>> = {
+    'square': 1080, '4:5': 1350, '3:4': 1440,
+  }
+  const fixedH = portraitHeights[layout]
+  if (fixedH !== undefined) {
     const cardWidth = 1080
     if (filmCount <= 4) {
-      // 2×2 grid with text beside each poster (side-by-side within each cell)
-      const cardHeight = 1080
+      // 2×2 grid with text below each poster
+      const cardHeight = fixedH
       const footerY = cardHeight - 64
       const cols = Math.min(Math.max(1, filmCount), 2)
       const rows = Math.ceil(filmCount / cols)
-      const margin = 30
-      const interCellGap = 24
-      const cellW = Math.floor((cardWidth - 2 * margin - (cols - 1) * interCellGap) / cols)
-      const posterH = 340
-      const posterW = Math.round(posterH * 2 / 3)   // ~227
-      // posterGap = stride from one cell's poster left to next cell's poster left - posterW
-      // equals the text area + interCellGap
-      const posterGap = cols > 1 ? cellW + interCellGap - posterW : 0
-      const posterLeft = margin  // left-align cells to margin
-      // Center rows vertically in available space
+      const posterGap = 20
+      // Derive poster size from available vertical space
       const available = footerY - pt - 56
-      const totalRowH = rows * posterH + (rows - 1) * interCellGap
-      const posterTop2 = pt + Math.floor((available - totalRowH) / 2)
+      const posterH = Math.floor((available - rows * TEXT_AREA_H) / rows)
+      const posterW = Math.round(posterH * 2 / 3)
+      const totalW = cols * posterW + (cols - 1) * posterGap
+      const posterLeft = Math.floor((cardWidth - totalW) / 2)
       return {
         cardWidth, cardHeight,
         posterW, posterH, posterGap,
-        posterLeft, posterTop: posterTop2,
-        cols, rows, footerY, textAreaH: 0,
-        sideLayout: true,
+        posterLeft, posterTop: pt,
+        cols, rows, footerY, textAreaH: TEXT_AREA_H,
+        sideLayout: false,
       }
     }
 
@@ -442,7 +440,7 @@ async function drawBackground(
 function layoutCardWidth(layout: Layout): number {
   if (layout === 'banner') return 1500
   if (layout === 'landscape') return 1200
-  return 1080  // square and story
+  return 1080  // square, 4:5, 3:4, story
 }
 
 // ── Review card layout config ────────────────────────────────────────────────
@@ -456,14 +454,15 @@ interface ReviewLayoutConfig {
 }
 
 function reviewLayoutConfig(layout: Layout): ReviewLayoutConfig {
-  if (layout === 'square') {
+  if (layout === 'square' || layout === '4:5' || layout === '3:4') {
+    const heights: Record<string, number> = { 'square': 1080, '4:5': 1350, '3:4': 1440 }
     return {
       posterW: 160, posterH: 240, posterX: 40,
       contentX: 40 + 160 + 30,  // 230
       titleFs: 32, titleH: 46, metaFs: 26, metaH: 38, metaGap: 7,
       reviewFs: 26, reviewLineH: 36,
       topPad: 24, rowGap: 24, footerGap: 36,
-      fixedHeight: 1080, stacked: false,
+      fixedHeight: heights[layout], stacked: false,
     }
   }
   if (layout === 'banner') {
