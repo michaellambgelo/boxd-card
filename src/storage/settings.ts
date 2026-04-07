@@ -1,4 +1,4 @@
-import type { ListCount, ReviewCount, Layout } from '../types'
+import type { ListCount, ReviewCount, Layout, StatsCategory, StatsSubCategory } from '../types'
 
 export interface UserSettings {
   listCount: ListCount
@@ -15,6 +15,9 @@ export interface UserSettings {
   layout: Layout
   generateAltText: boolean
   previewAltText: boolean
+  letterboxdPro: boolean
+  statsCategory: StatsCategory
+  statsSubCategory: StatsSubCategory
 }
 
 export const DEFAULT_SETTINGS: UserSettings = {
@@ -32,6 +35,9 @@ export const DEFAULT_SETTINGS: UserSettings = {
   layout: 'landscape',
   generateAltText: false,
   previewAltText: false,
+  letterboxdPro: false,
+  statsCategory: 'most-watched',
+  statsSubCategory: 'most-watched',
 }
 
 const STORAGE_KEY = 'boxd-card-settings'

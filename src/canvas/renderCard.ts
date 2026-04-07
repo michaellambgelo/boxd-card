@@ -1,4 +1,5 @@
-import type { CardType, ListCount, ReviewCount, Layout } from '../types'
+import type { CardType, ListCount, ReviewCount, Layout, StatsCategory } from '../types'
+import type { StatEntry, ChartDataSet, BreakdownData, BarChartData, MilestonesData } from '../content/index'
 import logoUrl from '../assets/letterboxd-logo-h-neg-rgb.svg?url'
 
 export interface FilmEntry {
@@ -33,6 +34,15 @@ export interface CardOptions {
   footerAvatarDataUrl?: string  // avatar for the footer identity (own avatar or author avatar)
   showShareIcon?: boolean        // true when generating from someone else's profile
   layout?: Layout
+  statsCategory?: StatsCategory
+  statsSummary?: StatEntry[]
+  statsTitle?: string
+  statsSubtitle?: string
+  chartData?: ChartDataSet
+  breakdownData?: BreakdownData
+  barChartData?: BarChartData
+  milestonesData?: MilestonesData
+  milestonePosterDataUrls?: Map<string, string>  // filmId → dataUrl for milestone posters
 }
 
 export interface CardLayout {
@@ -377,6 +387,56 @@ export function drawTagPills(
 // ── Background (solid or blurred backdrop) ───────────────────────────────────
 const BACKDROP_BLUR = 20
 
+// Letterboxd brand dot colors — used for randomized gradient backgrounds
+const LB_BRAND_COLORS = [
+  '#00E054',  // green
+  '#40BCF4',  // blue
+  '#FF8000',  // orange
+  '#E9A000',  // warm yellow
+  '#00C030',  // dark green
+  '#20A0E0',  // mid blue
+]
+
+/**
+ * Draw a subtle, randomized gradient using Letterboxd brand colors.
+ * Two random colors are picked and a gradient angle is randomized,
+ * then heavily darkened so text remains legible over the dark card.
+ */
+function drawBrandGradient(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+): void {
+  // Pick two distinct random brand colors
+  const i = Math.floor(Math.random() * LB_BRAND_COLORS.length)
+  let j = Math.floor(Math.random() * (LB_BRAND_COLORS.length - 1))
+  if (j >= i) j++
+  const c1 = LB_BRAND_COLORS[i]
+  const c2 = LB_BRAND_COLORS[j]
+
+  // Random angle (radians)
+  const angle = Math.random() * Math.PI * 2
+  const cos = Math.cos(angle)
+  const sin = Math.sin(angle)
+  const halfDiag = Math.sqrt(width * width + height * height) / 2
+  const cx = width / 2
+  const cy = height / 2
+
+  const grad = ctx.createLinearGradient(
+    cx - cos * halfDiag, cy - sin * halfDiag,
+    cx + cos * halfDiag, cy + sin * halfDiag,
+  )
+  grad.addColorStop(0, c1)
+  grad.addColorStop(1, c2)
+
+  ctx.fillStyle = grad
+  ctx.fillRect(0, 0, width, height)
+
+  // Heavy dark overlay — keeps the gradient visible as a subtle tint
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.82)'
+  ctx.fillRect(0, 0, width, height)
+}
+
 async function drawBackground(
   ctx: CanvasRenderingContext2D,
   width: number,
@@ -386,7 +446,10 @@ async function drawBackground(
   // Solid fill is always drawn first — acts as fallback if backdrop load fails.
   ctx.fillStyle = BG_COLOR
   ctx.fillRect(0, 0, width, height)
-  if (!backdropDataUrl) return
+  if (!backdropDataUrl) {
+    drawBrandGradient(ctx, width, height)
+    return
+  }
   try {
     const img = await loadImage(backdropDataUrl)
     const pad = BACKDROP_BLUR * 3
@@ -563,6 +626,511 @@ const LIST_TITLE_H = 40
 const LIST_DESC_H  = 24
 const LIST_BOTTOM  = 8
 
+const LB_GREEN = '#00E054'
+
+// ── Stats card layout helpers ────────────────────────────────────────────────
+
+function layoutCardHeight(layout: Layout): number {
+  switch (layout) {
+    case 'landscape': return 630
+    case 'square':    return 1080
+    case '4:5':       return 1350
+    case '3:4':       return 1440
+    case 'story':     return 1920
+    case 'banner':    return 750
+    default:          return 630
+  }
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      blob => { if (blob) resolve(blob); else reject(new Error('canvas.toBlob returned null')) },
+      'image/png'
+    )
+  })
+}
+
+function drawStatsHeader(
+  ctx: CanvasRenderingContext2D,
+  cardWidth: number,
+  statsTitle: string | undefined,
+  statsSubtitle: string | undefined,
+  startY: number,
+): number {
+  let y = startY
+  if (statsTitle) {
+    ctx.fillStyle = TEXT_COLOR
+    ctx.font = 'bold 48px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'top'
+    ctx.fillText(statsTitle, cardWidth / 2, y)
+    y += 58
+  }
+  if (statsSubtitle) {
+    ctx.fillStyle = SUBTEXT_COLOR
+    ctx.font = '28px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'top'
+    ctx.fillText(statsSubtitle, cardWidth / 2, y)
+    y += 42
+  }
+  return y
+}
+
+// ── Summary renderer (3x2 number grid) ──────────────────────────────────────
+
+async function renderStatsSummary(
+  cardWidth: number, layout: Layout, options: CardOptions,
+): Promise<Blob> {
+  const { username, footerAvatarDataUrl, showShareIcon, backdropDataUrl } = options
+  const stats = options.statsSummary!
+  const cardHeight = layoutCardHeight(layout)
+
+  const canvas = document.createElement('canvas')
+  canvas.width = cardWidth
+  canvas.height = cardHeight
+  const ctx = canvas.getContext('2d')!
+
+  await drawBackground(ctx, cardWidth, cardHeight, backdropDataUrl)
+  await drawLogo(ctx, 40, HEADER_H / 2)
+
+  let y = drawStatsHeader(ctx, cardWidth, options.statsTitle, options.statsSubtitle, HEADER_H + 20)
+  y += 20
+
+  // Grid: 3 columns, dynamic rows
+  const cols = 3
+  const rows = Math.ceil(stats.length / cols)
+  const cellW = Math.floor((cardWidth - 80) / cols)
+  const cellH = Math.floor(Math.min(120, (cardHeight - y - 100) / rows))
+
+  for (let i = 0; i < stats.length; i++) {
+    const col = i % cols
+    const row = Math.floor(i / cols)
+    const cx = 40 + col * cellW + cellW / 2
+    const cy = y + row * cellH
+
+    ctx.fillStyle = TEXT_COLOR
+    ctx.font = 'bold 56px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'top'
+    ctx.fillText(stats[i].value, cx, cy)
+
+    ctx.fillStyle = SUBTEXT_COLOR
+    ctx.font = '24px sans-serif'
+    ctx.fillText(stats[i].label, cx, cy + 64)
+  }
+
+  const footerY = cardHeight - 64
+  await drawFooter(ctx, footerY, cardWidth, username, footerAvatarDataUrl, showShareIcon)
+  return canvasToBlob(canvas)
+}
+
+// ── By-Week renderer (weekly bar chart + day-of-week + summary) ─────────────
+
+async function renderByWeekChart(
+  cardWidth: number, layout: Layout, options: CardOptions,
+): Promise<Blob> {
+  const { username, footerAvatarDataUrl, showShareIcon, backdropDataUrl, chartData } = options
+  const cardHeight = layoutCardHeight(layout)
+
+  const canvas = document.createElement('canvas')
+  canvas.width = cardWidth
+  canvas.height = cardHeight
+  const ctx = canvas.getContext('2d')!
+
+  await drawBackground(ctx, cardWidth, cardHeight, backdropDataUrl)
+  await drawLogo(ctx, 40, HEADER_H / 2)
+
+  let y = drawStatsHeader(ctx, cardWidth, options.statsTitle, options.statsSubtitle, HEADER_H + 20)
+  y += 10
+
+  // Weekly films bar chart
+  const weeklyFilms = chartData?.weeklyFilms ?? []
+  if (weeklyFilms.length > 0) {
+    const chartLeft = 60
+    const chartRight = cardWidth - 60
+    const chartW = chartRight - chartLeft
+    const chartH = Math.min(200, Math.floor((cardHeight - y - 260) * 0.55))
+    const maxCount = Math.max(1, ...weeklyFilms.map(w => w.count))
+    const barW = Math.max(2, Math.floor(chartW / weeklyFilms.length) - 1)
+
+    for (let i = 0; i < weeklyFilms.length; i++) {
+      const w = weeklyFilms[i]
+      const barH = w.count > 0 ? Math.max(2, Math.round((w.count / maxCount) * chartH)) : 2
+      const bx = chartLeft + Math.floor((i / weeklyFilms.length) * chartW)
+      const by = y + chartH - barH
+      ctx.fillStyle = w.count > 0 ? LB_GREEN : '#445566'
+      ctx.fillRect(bx, by, barW, barH)
+    }
+
+    // X-axis labels
+    ctx.fillStyle = DIM_COLOR
+    ctx.font = '20px sans-serif'
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'top'
+    ctx.fillText('Jan', chartLeft, y + chartH + 8)
+    ctx.textAlign = 'right'
+    ctx.fillText('Dec', chartRight, y + chartH + 8)
+
+    y += chartH + 40
+  }
+
+  // Summary numbers row
+  const summaryNumbers = chartData?.summaryNumbers ?? []
+  if (summaryNumbers.length > 0) {
+    const segW = Math.floor((cardWidth - 80) / summaryNumbers.length)
+    for (let i = 0; i < summaryNumbers.length; i++) {
+      const cx = 40 + i * segW + segW / 2
+      ctx.fillStyle = TEXT_COLOR
+      ctx.font = 'bold 40px sans-serif'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'top'
+      ctx.fillText(summaryNumbers[i].value, cx, y)
+      ctx.fillStyle = SUBTEXT_COLOR
+      ctx.font = '22px sans-serif'
+      ctx.fillText(summaryNumbers[i].label, cx, y + 48)
+    }
+    y += 90
+  }
+
+  // Day-of-week mini chart
+  const dayOfWeek = chartData?.dayOfWeek ?? []
+  if (dayOfWeek.length > 0) {
+    const daysH = 80
+    const dayW = Math.floor((cardWidth - 160) / 7)
+    const maxD = Math.max(1, ...dayOfWeek.map(d => d.count))
+    const daysLeft = Math.floor((cardWidth - 7 * dayW) / 2)
+
+    for (let i = 0; i < dayOfWeek.length; i++) {
+      const bx = daysLeft + i * dayW + Math.floor(dayW * 0.2)
+      const bw = Math.floor(dayW * 0.6)
+      const bh = Math.max(2, Math.round((dayOfWeek[i].count / maxD) * (daysH - 24)))
+      const by = y + daysH - 24 - bh
+      ctx.fillStyle = DIM_COLOR
+      ctx.fillRect(bx, by, bw, bh)
+
+      ctx.fillStyle = DIM_COLOR
+      ctx.font = '18px sans-serif'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'top'
+      ctx.fillText(dayOfWeek[i].day.charAt(0), bx + bw / 2, y + daysH - 20)
+    }
+    y += daysH + 10
+  }
+
+  const footerY = cardHeight - 64
+  await drawFooter(ctx, footerY, cardWidth, username, footerAvatarDataUrl, showShareIcon)
+  return canvasToBlob(canvas)
+}
+
+// ── Breakdown renderer (pie ratios + rating histogram + watchlist) ───────────
+
+async function renderBreakdownCard(
+  cardWidth: number, layout: Layout, options: CardOptions,
+): Promise<Blob> {
+  const { username, footerAvatarDataUrl, showShareIcon, backdropDataUrl, breakdownData } = options
+  const bd = breakdownData!
+
+  const barH = 30
+  const barGap = 12
+  const histH = 100
+  const countH = 20 // space for count labels above bars
+
+  // Pre-calculate content height so the canvas is tall enough
+  const headerBlock = HEADER_H + 20 + (options.statsTitle ? 58 : 0) + (options.statsSubtitle ? 42 : 0) + 10
+  const ratioBlock = 3 * (24 + barH + barGap) - barGap // 3 ratio bars
+  const histBlock = bd.ratingSpread.length > 0 ? (16 + 32 + countH + histH + 24) : 0
+  const watchlistBlock = (bd.watchlist.watched > 0 || bd.watchlist.added > 0) ? 36 : 0
+  const footerBlock = 64
+  const neededH = headerBlock + ratioBlock + histBlock + watchlistBlock + footerBlock
+  const cardHeight = Math.max(layoutCardHeight(layout), neededH)
+
+  const canvas = document.createElement('canvas')
+  canvas.width = cardWidth
+  canvas.height = cardHeight
+  const ctx = canvas.getContext('2d')!
+
+  await drawBackground(ctx, cardWidth, cardHeight, backdropDataUrl)
+  await drawLogo(ctx, 40, HEADER_H / 2)
+
+  let y = drawStatsHeader(ctx, cardWidth, options.statsTitle, options.statsSubtitle, HEADER_H + 20)
+  y += 10
+
+  const barLeft = 60
+  const barRight = cardWidth - 60
+  const barW = barRight - barLeft
+
+  // Ratio bars
+  const ratios: { label: string; primary: number; total: number; primaryLabel: string; secondaryLabel: string }[] = [
+    {
+      label: `${bd.year ?? 'New'} Premieres vs Older`,
+      primary: bd.pieRatios.releasedThisYear,
+      total: bd.pieRatios.total,
+      primaryLabel: `${bd.pieRatios.releasedThisYear}`,
+      secondaryLabel: `${bd.pieRatios.total - bd.pieRatios.releasedThisYear}`,
+    },
+    {
+      label: 'Watches vs Re-watches',
+      primary: bd.pieRatios.total - bd.pieRatios.rewatched,
+      total: bd.pieRatios.total,
+      primaryLabel: `${bd.pieRatios.total - bd.pieRatios.rewatched}`,
+      secondaryLabel: `${bd.pieRatios.rewatched}`,
+    },
+    {
+      label: 'Reviewed vs Not Reviewed',
+      primary: bd.pieRatios.reviewed,
+      total: bd.pieRatios.total,
+      primaryLabel: `${bd.pieRatios.reviewed}`,
+      secondaryLabel: `${bd.pieRatios.total - bd.pieRatios.reviewed}`,
+    },
+  ]
+
+  for (const r of ratios) {
+    ctx.fillStyle = SUBTEXT_COLOR
+    ctx.font = '20px sans-serif'
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'top'
+    ctx.fillText(r.label, barLeft, y)
+    y += 24
+
+    const prim = r.total > 0 ? (r.primary / r.total) * barW : 0
+    ctx.fillStyle = LB_GREEN
+    ctx.fillRect(barLeft, y, prim, barH)
+    ctx.fillStyle = '#445566'
+    ctx.fillRect(barLeft + prim, y, barW - prim, barH)
+
+    ctx.fillStyle = TEXT_COLOR
+    ctx.font = 'bold 16px sans-serif'
+    ctx.textBaseline = 'middle'
+    if (prim > 40) {
+      ctx.textAlign = 'left'
+      ctx.fillText(r.primaryLabel, barLeft + 8, y + barH / 2)
+    }
+    if (barW - prim > 40) {
+      ctx.textAlign = 'right'
+      ctx.fillText(r.secondaryLabel, barRight - 8, y + barH / 2)
+    }
+    y += barH + barGap
+  }
+
+  // Rating histogram
+  y += 16
+  if (bd.ratingSpread.length > 0) {
+    ctx.fillStyle = SUBTEXT_COLOR
+    ctx.font = '20px sans-serif'
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'top'
+    ctx.fillText('Rating Spread', barLeft, y)
+    y += 32
+
+    const maxR = Math.max(1, ...bd.ratingSpread)
+    const ratingW = Math.floor(barW / bd.ratingSpread.length)
+    const starLabels = ['½', '★', '★½', '★★', '★★½', '★★★', '★★★½', '★★★★', '★★★★½', '★★★★★']
+
+    // Leave room for count labels above the tallest bar
+    const countH = 20
+    const barsTop = y + countH
+
+    for (let i = 0; i < bd.ratingSpread.length; i++) {
+      const bx = barLeft + i * ratingW + Math.floor(ratingW * 0.15)
+      const bw = Math.floor(ratingW * 0.7)
+      const bh = bd.ratingSpread[i] > 0 ? Math.max(2, Math.round((bd.ratingSpread[i] / maxR) * histH)) : 2
+      const by = barsTop + histH - bh
+
+      ctx.fillStyle = LB_GREEN
+      ctx.fillRect(bx, by, bw, bh)
+
+      // Star label below bars
+      ctx.fillStyle = DIM_COLOR
+      ctx.font = '14px sans-serif'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'top'
+      ctx.fillText(starLabels[i] ?? '', bx + bw / 2, barsTop + histH + 4)
+
+      // Count above bar
+      if (bd.ratingSpread[i] > 0) {
+        ctx.fillStyle = SUBTEXT_COLOR
+        ctx.font = '14px sans-serif'
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'bottom'
+        ctx.fillText(String(bd.ratingSpread[i]), bx + bw / 2, by - 2)
+      }
+    }
+    y = barsTop + histH + 24
+  }
+
+  // Watchlist
+  if (bd.watchlist.watched > 0 || bd.watchlist.added > 0) {
+    ctx.fillStyle = SUBTEXT_COLOR
+    ctx.font = '22px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'top'
+    ctx.fillText(
+      `Watchlist: ${bd.watchlist.watched} watched · ${bd.watchlist.added} added`,
+      cardWidth / 2, y,
+    )
+  }
+
+  const footerY = cardHeight - 64
+  await drawFooter(ctx, footerY, cardWidth, username, footerAvatarDataUrl, showShareIcon)
+  return canvasToBlob(canvas)
+}
+
+// ── Bar chart renderer (genres / countries / languages) ─────────────────────
+
+async function renderBarChartCard(
+  cardWidth: number, layout: Layout, options: CardOptions,
+): Promise<Blob> {
+  const { username, footerAvatarDataUrl, showShareIcon, backdropDataUrl, barChartData } = options
+  const cardHeight = layoutCardHeight(layout)
+
+  const canvas = document.createElement('canvas')
+  canvas.width = cardWidth
+  canvas.height = cardHeight
+  const ctx = canvas.getContext('2d')!
+
+  await drawBackground(ctx, cardWidth, cardHeight, backdropDataUrl)
+  await drawLogo(ctx, 40, HEADER_H / 2)
+
+  let y = drawStatsHeader(ctx, cardWidth, options.statsTitle, options.statsSubtitle, HEADER_H + 20)
+  y += 10
+
+  const bd = barChartData!
+  const subLabel = bd.subCategory === 'highest-rated' ? 'Highest Rated' : 'Most Watched'
+  const categoryLabel = bd.category.charAt(0).toUpperCase() + bd.category.slice(1)
+
+  ctx.fillStyle = TEXT_COLOR
+  ctx.font = 'bold 30px sans-serif'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'top'
+  ctx.fillText(`${categoryLabel} — ${subLabel}`, cardWidth / 2, y)
+  y += 48
+
+  const barLeft = 60
+  const barRight = cardWidth - 120
+  const maxBarW = barRight - barLeft
+  const rowH = 44
+  const bars = bd.bars.slice(0, 12) // limit to ~12 bars
+
+  for (const bar of bars) {
+    // Label
+    ctx.fillStyle = TEXT_COLOR
+    ctx.font = '22px sans-serif'
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'top'
+    ctx.fillText(bar.label, barLeft, y)
+
+    // Count on far right
+    ctx.fillStyle = SUBTEXT_COLOR
+    ctx.font = '22px sans-serif'
+    ctx.textAlign = 'right'
+    ctx.fillText(String(bar.count), cardWidth - 60, y)
+
+    // Bar
+    y += 26
+    const bw = Math.max(4, Math.round((bar.percent / 100) * maxBarW))
+    ctx.fillStyle = LB_GREEN
+    ctx.fillRect(barLeft, y, bw, 10)
+    y += rowH - 26
+  }
+
+  const footerY = cardHeight - 64
+  await drawFooter(ctx, footerY, cardWidth, username, footerAvatarDataUrl, showShareIcon)
+  return canvasToBlob(canvas)
+}
+
+// ── Milestones renderer ─────────────────────────────────────────────────────
+
+async function renderMilestonesCard(
+  cardWidth: number, layout: Layout, options: CardOptions,
+): Promise<Blob> {
+  const { username, footerAvatarDataUrl, showShareIcon, backdropDataUrl, milestonesData } = options
+  const posterMap = options.milestonePosterDataUrls ?? new Map<string, string>()
+  const cardHeight = layoutCardHeight(layout)
+  const md = milestonesData!
+
+  // Collect all milestone entries in order: first, diary milestones..., last
+  const entries = [
+    ...(md.firstFilm ? [md.firstFilm] : []),
+    ...md.diaryMilestones,
+    ...(md.lastFilm ? [md.lastFilm] : []),
+  ]
+
+  const canvas = document.createElement('canvas')
+  canvas.width = cardWidth
+  canvas.height = cardHeight
+  const ctx = canvas.getContext('2d')!
+
+  await drawBackground(ctx, cardWidth, cardHeight, backdropDataUrl)
+  await drawLogo(ctx, 40, HEADER_H / 2)
+
+  let y = drawStatsHeader(ctx, cardWidth, options.statsTitle, options.statsSubtitle, HEADER_H + 20)
+
+  // "Milestones" section title
+  ctx.fillStyle = TEXT_COLOR
+  ctx.font = 'bold 32px sans-serif'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'top'
+  ctx.fillText('Milestones', cardWidth / 2, y)
+  y += 50
+
+  // Layout: evenly space entries across the card width
+  const count = entries.length
+  if (count === 0) {
+    const footerY = cardHeight - 64
+    await drawFooter(ctx, footerY, cardWidth, username, footerAvatarDataUrl, showShareIcon)
+    return canvasToBlob(canvas)
+  }
+
+  const margin = 40
+  const availW = cardWidth - 2 * margin
+  const slotW = Math.floor(availW / count)
+  const posterW = Math.min(160, slotW - 20)
+  const posterH = Math.round(posterW * 1.5)
+
+  for (let i = 0; i < count; i++) {
+    const entry = entries[i]
+    const cx = margin + i * slotW + slotW / 2 // center of this slot
+
+    // Section label (First Film / 50th / Last Film)
+    ctx.fillStyle = SUBTEXT_COLOR
+    ctx.font = 'bold 20px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'top'
+    ctx.fillText(entry.label, cx, y)
+
+    // Poster
+    const posterX = cx - posterW / 2
+    const posterY = y + 28
+    const dataUrl = posterMap.get(entry.filmId)
+    if (dataUrl) {
+      try {
+        const img = await loadImage(dataUrl)
+        ctx.drawImage(img, posterX, posterY, posterW, posterH)
+      } catch {
+        ctx.fillStyle = '#333344'
+        ctx.fillRect(posterX, posterY, posterW, posterH)
+      }
+    } else {
+      ctx.fillStyle = '#333344'
+      ctx.fillRect(posterX, posterY, posterW, posterH)
+    }
+
+    // Date below poster
+    const textY = posterY + posterH + 10
+    ctx.fillStyle = SUBTEXT_COLOR
+    ctx.font = '20px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'top'
+    ctx.fillText(entry.date, cx, textY)
+  }
+
+  const footerY = cardHeight - 64
+  await drawFooter(ctx, footerY, cardWidth, username, footerAvatarDataUrl, showShareIcon)
+  return canvasToBlob(canvas)
+}
+
 export async function renderCard(options: CardOptions): Promise<Blob> {
   const {
     films, username, showTitle, showYear, showRating, showDate, cardType, listCount,
@@ -706,6 +1274,28 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
         'image/png'
       )
     })
+  }
+
+  // ── Stats cards (non-poster categories) ──────────────────────────────────
+  if (cardType === 'stats' && options.statsCategory && options.statsCategory !== 'most-watched' && options.statsCategory !== 'highest-rated') {
+    const effectiveLayout = options.layout ?? 'landscape'
+    const cardWidth = layoutCardWidth(effectiveLayout)
+
+    if (options.statsCategory === 'summary' && options.statsSummary?.length) {
+      return renderStatsSummary(cardWidth, effectiveLayout, options)
+    }
+    if (options.statsCategory === 'by-week' && options.chartData) {
+      return renderByWeekChart(cardWidth, effectiveLayout, options)
+    }
+    if (options.statsCategory === 'breakdown' && options.breakdownData) {
+      return renderBreakdownCard(cardWidth, effectiveLayout, options)
+    }
+    if (options.barChartData?.bars.length) {
+      return renderBarChartCard(cardWidth, effectiveLayout, options)
+    }
+    if (options.statsCategory === 'milestones' && options.milestonesData) {
+      return renderMilestonesCard(cardWidth, effectiveLayout, options)
+    }
   }
 
   // ── Poster-grid cards (existing logic) ───────────────────────────────────

@@ -12,8 +12,8 @@
  * - Full-review text fetches also go through the proxy
  */
 
-import type { CardType, ListCount, ReviewCount } from '../types'
-import type { FilmData, FilmDataResponse } from '../content/index'
+import type { CardType, ListCount, ReviewCount, StatsCategory, StatsSubCategory } from '../types'
+import type { FilmData, FilmDataResponse, StatEntry, ChartDataSet, BreakdownData, BarChartData, WeekEntry } from '../content/index'
 
 // ── Proxy ─────────────────────────────────────────────────────────────────────
 
@@ -405,6 +405,12 @@ export function parseLetterboxdUrl(input: string): ParsedLetterboxdUrl | null {
     const filmSlug = entryNum ? `${subpart}/${entryNum}` : subpart
     return { username, cardType: 'review', listSlug: '', isReviewListPage: false, filmSlug }
   }
+  if (section === 'stats') {
+    return { username, cardType: 'stats', listSlug: '', isReviewListPage: false, filmSlug: '' }
+  }
+  if (section === 'year' && subpart && /^\d{4}$/.test(subpart)) {
+    return { username, cardType: 'stats', listSlug: '', isReviewListPage: false, filmSlug: '' }
+  }
 
   return null
 }
@@ -444,6 +450,7 @@ export function buildPageUrl(
     case 'recent-diary':      return `${base}/diary/`
     case 'list':              return `${base}/list/${listSlug}/`
     case 'review':            return filmSlug ? `${base}/film/${filmSlug}/` : `${base}/reviews/`
+    case 'stats':             return `${base}/stats/`
   }
 }
 
@@ -495,6 +502,111 @@ export async function scrapeSingleReview(doc: Document): Promise<FilmData[]> {
   return [{ title, year, rating, posterUrl, filmId, date, reviewText, tags }]
 }
 
+// ── Stats scrapers (web app versions) ────────────────────────────────────────
+
+function webScrapeStatsHeader(doc: Document): { statsTitle: string; statsSubtitle: string } {
+  const titleEl = doc.querySelector('h1.yir-member-title')
+  const statsTitle = titleEl?.childNodes[0]?.textContent?.trim() ?? ''
+  const subtitleEl = doc.querySelector('h3.yir-member-subtitle')
+  const statsSubtitle = (subtitleEl?.textContent ?? '')
+    .replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim()
+  return { statsTitle, statsSubtitle }
+}
+
+export function webScrapeStatsSummary(doc: Document): Partial<FilmDataResponse> {
+  const stats = Array.from(doc.querySelectorAll('.yir-member-stats .yir-member-statistic'))
+  const statsSummary: StatEntry[] = stats.map(el => ({
+    value: el.querySelector('span.value')?.textContent?.trim() ?? '',
+    label: el.querySelector('span.definition')?.textContent?.trim() ?? '',
+  })).filter(s => s.value && s.label)
+  return { statsSummary, ...webScrapeStatsHeader(doc) }
+}
+
+function webParseChartOptions(doc: Document, selector: string): { item: string; name: string; y: number; value: number }[] {
+  const el = doc.querySelector(selector)
+  if (!el) return []
+  try {
+    const opts = JSON.parse(el.getAttribute('data-column-chart-options') ?? '{}')
+    return Array.isArray(opts.data) ? opts.data : []
+  } catch { return [] }
+}
+
+export function webScrapeByWeek(doc: Document): Partial<FilmDataResponse> {
+  const weeklyFilmsRaw = webParseChartOptions(doc, '#entries-by-week-films .js-viewings-per-week-of-year-chart[data-column-chart-options]')
+  const weeklyFilms: WeekEntry[] = weeklyFilmsRaw.map(w => ({
+    week: w.item,
+    label: w.name.replace(/<br\/?>/g, ' ').replace(/\u2014/g, '–'),
+    count: w.y,
+  }))
+
+  const weeklyListsRaw = webParseChartOptions(doc, '#entries-by-week-lists .js-film-lists-per-week-of-year-chart[data-column-chart-options]')
+  const weeklyLists: WeekEntry[] = weeklyListsRaw.map(w => ({
+    week: w.item,
+    label: w.name.replace(/<br\/?>/g, ' ').replace(/\u2014/g, '–'),
+    count: w.y,
+  }))
+
+  const dayOfWeekRaw = webParseChartOptions(doc, '#entries-by-week-films .js-viewings-per-day-of-the-week-chart[data-column-chart-options]')
+  const dayOfWeek = dayOfWeekRaw.map(d => ({ day: d.name, count: d.y }))
+
+  const summaryItems = Array.from(doc.querySelectorAll('#entries-by-week-films .yir-time-data .yir-numbers ul li'))
+  const summaryNumbers: StatEntry[] = summaryItems.map(li => ({
+    value: li.querySelector('strong')?.textContent?.trim() ?? '',
+    label: li.querySelector('span.yir-label')?.textContent?.trim() ?? '',
+  })).filter(s => s.value && s.label)
+
+  const chartData: ChartDataSet = { weeklyFilms, weeklyLists, dayOfWeek, summaryNumbers }
+  return { chartData, ...webScrapeStatsHeader(doc) }
+}
+
+export function webScrapeBreakdown(doc: Document): Partial<FilmDataResponse> {
+  const piesEl = doc.querySelector('.js-personal-pies[data-ratios]')
+  let pieRatios = { total: 0, rewatched: 0, releasedThisYear: 0, reviewed: 0 }
+  if (piesEl) {
+    try { pieRatios = JSON.parse(piesEl.getAttribute('data-ratios') ?? '{}') } catch { /* */ }
+  }
+
+  const ratingEl = doc.querySelector('#ratingspread[data-column-chart-options]')
+  let ratingSpread: number[] = []
+  if (ratingEl) {
+    try {
+      const opts = JSON.parse(ratingEl.getAttribute('data-column-chart-options') ?? '{}')
+      ratingSpread = Array.isArray(opts.data) ? opts.data : []
+    } catch { /* */ }
+  }
+
+  const watchlistPanel = doc.querySelector('.yir-watchlist .yir-watchlist-panel')
+  const watchedText = watchlistPanel?.querySelector('strong.yir-number')?.textContent ?? ''
+  const watched = parseInt(watchedText.replace(/\D/g, ''), 10) || 0
+  const addedText = watchlistPanel?.querySelector('.yir-watchlist-added .yir-number')?.textContent ?? ''
+  const added = parseInt(addedText.replace(/\D/g, ''), 10) || 0
+
+  const header = webScrapeStatsHeader(doc)
+  const year = header.statsTitle.match(/^\d{4}$/)?.[0]
+
+  const breakdownData: BreakdownData = { pieRatios, ratingSpread, watchlist: { watched, added }, year }
+  return { breakdownData, ...header }
+}
+
+export function webScrapeBarChart(doc: Document, category: string, subCategory: string): Partial<FilmDataResponse> {
+  const tabId = `#${category}-${subCategory}`
+  const section = doc.querySelector(tabId)
+  const header = webScrapeStatsHeader(doc)
+  if (!section) return { barChartData: { category, subCategory, bars: [] }, ...header }
+
+  const bars = Array.from(section.querySelectorAll(`.yir-${category} .film-breakdown-graph-bar`))
+    .map(bar => {
+      const label = bar.querySelector('.film-breakdown-graph-bar-label')?.textContent?.trim() ?? ''
+      const valueEl = bar.querySelector('.film-breakdown-graph-bar-value')
+      const count = parseInt(valueEl?.getAttribute('data-count') ?? '0', 10)
+      const percent = parseFloat(valueEl?.getAttribute('data-normalised-percent') ?? '0')
+      return { label, count, percent }
+    }).filter(b => b.label)
+
+  const barChartData: BarChartData = { category, subCategory, bars }
+  return { barChartData, ...header }
+}
+
 /**
  * Fetch and scrape a Letterboxd page, returning structured film data ready
  * for renderCard().
@@ -507,6 +619,8 @@ export async function scrapeLetterboxdPage(
   reviewCount: ReviewCount,
   isReviewListPage = true,
   filmSlug = '',
+  statsCategory?: StatsCategory,
+  statsSubCategory?: StatsSubCategory,
 ): Promise<FilmDataResponse> {
   const url = buildPageUrl(username, cardType, listSlug, filmSlug)
   const doc = await fetchPageDocument(url)
@@ -521,6 +635,7 @@ export async function scrapeLetterboxdPage(
   let listTitle: string | undefined
   let listDescription: string | undefined
   let listTags: string[] | undefined
+  let statsExtra: Partial<FilmDataResponse> = {}
 
   switch (cardType) {
     case 'last-four-watched':
@@ -545,14 +660,36 @@ export async function scrapeLetterboxdPage(
         ? await scrapeReviewsList(doc, reviewCount)
         : await scrapeSingleReview(doc)
       break
+    case 'stats': {
+      films = []
+      const cat = statsCategory ?? 'summary'
+      switch (cat) {
+        case 'summary':
+          statsExtra = webScrapeStatsSummary(doc)
+          break
+        case 'by-week':
+          statsExtra = webScrapeByWeek(doc)
+          break
+        case 'breakdown':
+          statsExtra = webScrapeBreakdown(doc)
+          break
+        case 'genres':
+        case 'countries':
+        case 'languages':
+          statsExtra = webScrapeBarChart(doc, cat, statsSubCategory ?? 'most-watched')
+          break
+        default:
+          // poster-grid categories (most-watched, highest-rated) not supported in web
+          break
+      }
+      break
+    }
     default:
       films = []
   }
 
   return {
     films,
-    // Use the scraped username (from body[data-owner]) as the authoritative
-    // value; fall back to the user-supplied username if scraping fails.
     username:         pageUsername || username,
     listTitle,
     listDescription,
@@ -561,5 +698,6 @@ export async function scrapeLetterboxdPage(
     loggedInUsername,
     loggedInAvatarUrl,
     authorAvatarUrl,
+    ...statsExtra,
   }
 }

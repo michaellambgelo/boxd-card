@@ -37,7 +37,10 @@
         "https://letterboxd.com/*/list/*/",
         "https://letterboxd.com/*/reviews/",
         "https://letterboxd.com/*/film/*/",
-        "https://letterboxd.com/*/film/*/*/"
+        "https://letterboxd.com/*/film/*/*/",
+        "https://letterboxd.com/*/stats/",
+        "https://letterboxd.com/*/stats/*/",
+        "https://letterboxd.com/*/year/*/"
       ],
       "js": [
         "src/content/index.ts"
