@@ -91,6 +91,11 @@ export default function App() {
       return null
     }
 
+    if (parsed.cardType === 'stats') {
+      setDetectError('Stats cards are only available in the Chrome extension. Letterboxd blocks stats page requests from external services.')
+      return null
+    }
+
     if (parsed.username) {
       setDetected(parsed)
       return parsed
