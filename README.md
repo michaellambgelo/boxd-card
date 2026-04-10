@@ -64,6 +64,18 @@ On `/username/reviews/` the count selector lets you include 1-4 reviews in a sin
 
 Toggleable elements: film title, year (requires title), star rating, card date / watch date, card type label, list title, list description, tags (Review and List), backdrop (Review and List).
 
+## Install
+
+**[Get Boxd Card from the Chrome Web Store](https://chromewebstore.google.com/detail/boxd-card/kcholfdhfcojahebmneeeikelffkokdj)** — one-click install with auto-updates.
+
+Prefer to sideload? Download the [latest release](https://github.com/michaellambgelo/boxd-card/releases) ZIP, unzip it, then:
+
+1. Open `chrome://extensions`
+2. Enable **Developer mode**
+3. Click **Load unpacked** → select the unzipped folder
+
+Sideloaded installs don't auto-update, but the extension popup shows an *update available* banner whenever a newer release is published so you'll know when to download a fresh ZIP.
+
 ## Development
 
 **Prerequisites:** Node.js 18+
@@ -85,13 +97,6 @@ npm run coverage # v8 coverage report
 4. Click **Load unpacked** → select the `dist/` folder
 
 After each subsequent `npm run build`, click the **↺ reload** button on the extension card. For content script changes, also refresh the Letterboxd tab.
-
-### Don't want to build from source?
-
-1. Download the [latest release](https://github.com/michaellambgelo/boxd-card/releases) and unzip the contents
-2. Open `chrome://extensions`
-3. Enable **Developer mode**
-4. Click **Load unpacked** → select the `dist/` folder
 
 ## Tech stack
 
