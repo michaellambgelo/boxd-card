@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type MouseEvent } from 'react'
 import type { FilmData, FilmDataResponse, GetFilmDataRequest } from '../content/index'
 import type { FetchImageResponse } from '../background/service-worker'
 import { renderCard } from '../canvas/renderCard'
 import { generateAltText } from '../altText'
-import { CARD_TYPES, CARD_TYPE_CONFIGS, LAYOUTS, LAYOUT_CONFIGS, STATS_CATEGORIES, STATS_CATEGORY_CONFIGS } from '../types'
+import { CARD_TYPES, CARD_TYPE_CONFIGS, LAYOUTS, LAYOUT_CONFIGS, STATS_CATEGORIES, STATS_CATEGORY_CONFIGS, formatUrlHint, formatUrlHintSegments } from '../types'
 import type { CardType, ListCount, ReviewCount, Layout, StatsCategory, StatsSubCategory } from '../types'
 import { loadSettings, saveSettings } from '../storage/settings'
 import styles from './Popup.module.css'
@@ -29,6 +29,7 @@ export default function Popup() {
   const [reviewCount, setReviewCount] = useState<ReviewCount>(1)
   const [isValidPage,      setIsValidPage]      = useState<boolean | null>(null)
   const [isReviewListPage, setIsReviewListPage] = useState(false)
+  const [loggedInUsername, setLoggedInUsername] = useState<string>('')
   const [showTitle,     setShowTitle]     = useState(true)
   const [showYear,      setShowYear]      = useState(true)
   const [showRating,    setShowRating]    = useState(true)
@@ -109,6 +110,28 @@ export default function Popup() {
     })
   }, [cardType])
 
+  // On mount: read Letterboxd's page-level `window.person.username` directly
+  // from the active tab's MAIN world. Works on any letterboxd.com URL —
+  // doesn't depend on the content script being injected.
+  useEffect(() => {
+    chrome.tabs.query({ active: true, currentWindow: true }).then(async ([tab]) => {
+      if (!tab?.id || !tab.url?.startsWith('https://letterboxd.com/')) return
+      try {
+        const [result] = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          world: 'MAIN',
+          func: () => {
+            const p = (globalThis as unknown as { person?: { loggedIn?: boolean; username?: string } }).person
+            return p?.loggedIn && p.username ? p.username : ''
+          },
+        })
+        if (result?.result) setLoggedInUsername(result.result)
+      } catch {
+        // activeTab not yet granted, or tab navigated away — keep generic hint.
+      }
+    })
+  }, [])
+
   async function handleGenerate() {
     setStatus('loading')
     setError(null)
@@ -125,7 +148,7 @@ export default function Popup() {
       // Defensive re-check for race condition (user navigates away after button enabled)
       const url = (tab.url ?? '').replace(/#.*$/, '')
       if (!CARD_TYPE_CONFIGS[cardType].urlPattern.test(url)) {
-        throw new Error(`Navigate to ${CARD_TYPE_CONFIGS[cardType].urlHint} first.`)
+        throw new Error(`Navigate to ${formatUrlHint(cardType, loggedInUsername)} first.`)
       }
 
       const statsRenderMode = cardType === 'stats' ? STATS_CATEGORY_CONFIGS[statsCategory].renderMode : undefined
@@ -527,11 +550,28 @@ export default function Popup() {
         )}
 
         {/* Navigation hint when on wrong page */}
-        {isValidPage === false && (
-          <p className={styles.hint}>
-            Navigate to {CARD_TYPE_CONFIGS[cardType].urlHint} first.
-          </p>
-        )}
+        {isValidPage === false && (() => {
+          const segments = formatUrlHintSegments(cardType, loggedInUsername)
+          const handleHintClick = async (e: MouseEvent, href: string) => {
+            e.preventDefault()
+            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+            if (tab?.id) {
+              await chrome.tabs.update(tab.id, { url: href })
+              window.close()
+            }
+          }
+          return (
+            <p className={styles.hint}>
+              Navigate to{' '}
+              {segments.map((seg, i) =>
+                seg.kind === 'link'
+                  ? <a key={i} href={seg.href} className={styles.hintLink} onClick={e => handleHintClick(e, seg.href)}>{seg.text}</a>
+                  : <span key={i}>{seg.text}</span>
+              )}
+              {' '}first.
+            </p>
+          )
+        })()}
 
         {/* List title / description / tags / backdrop checkboxes */}
         {cardType === 'list' && (

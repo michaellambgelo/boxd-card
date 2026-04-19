@@ -112,6 +112,7 @@ After each subsequent `npm run build`, click the **↺ reload** button on the ex
 | `activeTab` | Read the URL of the current tab to validate it's a supported Letterboxd page |
 | `clipboardWrite` | Copy the generated card image to the clipboard |
 | `declarativeContent` | Control Generate button availability based on the active tab URL |
+| `scripting` | Read the logged-in Letterboxd username from the active tab to personalize the navigation hint (e.g. "Navigate to letterboxd.com/&lt;you&gt;/diary/") |
 | `https://letterboxd.com/*` | Fetch poster redirects from the Letterboxd CDN |
 | `https://a.ltrbxd.com/*` | Fetch poster images from the primary Letterboxd image CDN |
 | `https://s.ltrbxd.com/*` | Fetch static assets (logo) |

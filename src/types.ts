@@ -9,12 +9,21 @@ export type CardType =
 export type ListCount = 4 | 10 | 20
 export type ReviewCount = 1 | 2 | 3 | 4
 
+export interface HintHref {
+  /** Substring of urlHint (with `{user}` placeholder) that should become a clickable link. */
+  text: string
+  /** Target URL template (with `{user}` placeholder). */
+  href: string
+}
+
 export interface CardTypeConfig {
   label: string
   /** Regex tested against the full tab URL to validate the page. */
   urlPattern: RegExp
-  /** Human-readable example URL shown in the navigation hint. */
+  /** Human-readable example URL shown in the navigation hint. `{user}` is substituted with the logged-in username when known. */
   urlHint: string
+  /** Ordered list of substrings within `urlHint` that become individual clickable links when the user is logged in. Substrings must appear in `urlHint` in the same order. */
+  hintHrefs?: HintHref[]
   /** When true, this card type is only available to Letterboxd Pro/Patron members. */
   proOnly?: boolean
 }
@@ -25,37 +34,92 @@ export const CARD_TYPE_CONFIGS: Record<CardType, CardTypeConfig> = {
   'last-four-watched': {
     label: 'Last Four Watched',
     urlPattern: new RegExp(`^https://letterboxd\\.com/${U}/(?:films/)?$`),
-    urlHint: 'letterboxd.com/username/ or /username/films/',
+    urlHint: 'letterboxd.com/{user}/ or letterboxd.com/{user}/films/',
+    hintHrefs: [
+      { text: 'letterboxd.com/{user}/',       href: 'https://letterboxd.com/{user}/' },
+      { text: 'letterboxd.com/{user}/films/', href: 'https://letterboxd.com/{user}/films/' },
+    ],
   },
   'favorites': {
     label: 'Favorites',
     urlPattern: new RegExp(`^https://letterboxd\\.com/${U}/?$`),
-    urlHint: 'letterboxd.com/username/',
+    urlHint: 'letterboxd.com/{user}/',
+    hintHrefs: [
+      { text: 'letterboxd.com/{user}/', href: 'https://letterboxd.com/{user}/' },
+    ],
   },
   'recent-diary': {
     label: 'Recent Diary',
     urlPattern: new RegExp(`^https://letterboxd\\.com/${U}/(?:films/)?diary/?$`),
-    urlHint: 'letterboxd.com/username/diary/',
+    urlHint: 'letterboxd.com/{user}/diary/',
+    hintHrefs: [
+      { text: 'letterboxd.com/{user}/diary/', href: 'https://letterboxd.com/{user}/diary/' },
+    ],
   },
   'list': {
     label: 'List',
     urlPattern: new RegExp(`^https://letterboxd\\.com/${U}/list/${U}/(?:detail/?)?$`),
-    urlHint: 'letterboxd.com/username/list/list-name/',
+    urlHint: 'letterboxd.com/{user}/list/',
+    // Link to the user's lists index so they can pick one.
+    hintHrefs: [
+      { text: 'letterboxd.com/{user}/list/', href: 'https://letterboxd.com/{user}/lists/' },
+    ],
   },
   'review': {
     label: 'Review',
     urlPattern: new RegExp(`^https://letterboxd\\.com/${U}/(?:reviews|film/${U}(?:/\\d+)?)/?$`),
-    urlHint: 'letterboxd.com/username/reviews/ or /film/slug/',
+    urlHint: 'letterboxd.com/{user}/reviews/',
+    hintHrefs: [
+      { text: 'letterboxd.com/{user}/reviews/', href: 'https://letterboxd.com/{user}/reviews/' },
+    ],
   },
   'stats': {
     label: 'Stats',
     urlPattern: new RegExp(`^https://letterboxd\\.com/${U}/(?:stats(?:/\\d{4})?|year/\\d{4})/?$`),
-    urlHint: 'letterboxd.com/username/stats/ or /year/2026/',
+    urlHint: 'letterboxd.com/{user}/stats/',
+    hintHrefs: [
+      { text: 'letterboxd.com/{user}/stats/', href: 'https://letterboxd.com/{user}/stats/' },
+    ],
     proOnly: true,
   },
 }
 
 export const CARD_TYPES = Object.keys(CARD_TYPE_CONFIGS) as CardType[]
+
+export function formatUrlHint(cardType: CardType, loggedInUsername?: string): string {
+  const name = loggedInUsername?.trim() || 'username'
+  return CARD_TYPE_CONFIGS[cardType].urlHint.replaceAll('{user}', name)
+}
+
+export type HintSegment =
+  | { kind: 'text'; text: string }
+  | { kind: 'link'; text: string; href: string }
+
+/**
+ * Splits the personalized hint into an ordered list of plain-text and link segments.
+ * Only produces link segments when the user is logged in. Matches in `hintHrefs` must
+ * appear in left-to-right order within `urlHint`.
+ */
+export function formatUrlHintSegments(cardType: CardType, loggedInUsername?: string): HintSegment[] {
+  const hint = formatUrlHint(cardType, loggedInUsername)
+  const name = loggedInUsername?.trim()
+  const hrefs = CARD_TYPE_CONFIGS[cardType].hintHrefs ?? []
+  if (!name || hrefs.length === 0) return [{ kind: 'text', text: hint }]
+
+  const segments: HintSegment[] = []
+  let remaining = hint
+  for (const { text: textTemplate, href: hrefTemplate } of hrefs) {
+    const matchText = textTemplate.replaceAll('{user}', name)
+    const matchHref = hrefTemplate.replaceAll('{user}', name)
+    const idx = remaining.indexOf(matchText)
+    if (idx < 0) continue
+    if (idx > 0) segments.push({ kind: 'text', text: remaining.slice(0, idx) })
+    segments.push({ kind: 'link', text: matchText, href: matchHref })
+    remaining = remaining.slice(idx + matchText.length)
+  }
+  if (remaining) segments.push({ kind: 'text', text: remaining })
+  return segments
+}
 
 export type Layout = 'landscape' | 'square' | '4:5' | '3:4' | 'story' | 'banner'
 
