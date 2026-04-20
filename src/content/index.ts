@@ -1,5 +1,16 @@
 import type { CardType, ListCount, ReviewCount, StatsCategory, StatsSubCategory } from '../types'
 
+// Letterboxd injects a `person` global on profile pages. It is reachable from
+// the MAIN world / JSDOM but not from the isolated content-script world, where
+// referencing it throws ReferenceError — hence the `typeof person !== 'undefined'`
+// guards plus the surrounding try/catch in scrapeLoggedInUser. The declaration
+// here just tells TS the shape so we don't need @ts-ignore at every access.
+declare const person: {
+  loggedIn?: boolean
+  username?: string
+  avatarURL24?: string
+}
+
 export interface FilmData {
   title: string
   year: string
@@ -464,11 +475,8 @@ export function scrapeFilmsPage(): FilmData[] {
 export function scrapeLoggedInUser(): { username: string; avatarUrl: string } {
   // Pass 1: direct access (succeeds in JSDOM / MAIN world).
   try {
-    // @ts-ignore
-    if (typeof person !== 'undefined' && person?.loggedIn && person?.username) {
-      // @ts-ignore
+    if (typeof person !== 'undefined' && person.loggedIn && person.username) {
       const u: string = person.username
-      // @ts-ignore
       const a: string = (person.avatarURL24 || '').replace('0-48-0-48-crop', '0-80-0-80-crop')
       return { username: u, avatarUrl: a }
     }
