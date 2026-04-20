@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type MouseEvent } from 'react'
 import type { FilmData, FilmDataResponse, GetFilmDataRequest } from '../content/index'
 import type { FetchImageResponse } from '../background/service-worker'
 import { renderCard } from '../canvas/renderCard'
 import { generateAltText } from '../altText'
-import { CARD_TYPES, CARD_TYPE_CONFIGS, LAYOUTS, LAYOUT_CONFIGS } from '../types'
-import type { CardType, ListCount, ReviewCount, Layout } from '../types'
+import { CARD_TYPES, CARD_TYPE_CONFIGS, LAYOUTS, LAYOUT_CONFIGS, STATS_CATEGORIES, STATS_CATEGORY_CONFIGS, formatUrlHint, formatUrlHintSegments } from '../types'
+import type { CardType, ListCount, ReviewCount, Layout, StatsCategory, StatsSubCategory } from '../types'
 import { loadSettings, saveSettings } from '../storage/settings'
 import styles from './Popup.module.css'
 
@@ -29,6 +29,7 @@ export default function Popup() {
   const [reviewCount, setReviewCount] = useState<ReviewCount>(1)
   const [isValidPage,      setIsValidPage]      = useState<boolean | null>(null)
   const [isReviewListPage, setIsReviewListPage] = useState(false)
+  const [loggedInUsername, setLoggedInUsername] = useState<string>('')
   const [showTitle,     setShowTitle]     = useState(true)
   const [showYear,      setShowYear]      = useState(true)
   const [showRating,    setShowRating]    = useState(true)
@@ -39,6 +40,9 @@ export default function Popup() {
   const [showTags,           setShowTags]           = useState(true)
   const [showBackdrop,       setShowBackdrop]       = useState(true)
   const [layout,        setLayout]        = useState<Layout>('landscape')
+  const [letterboxdPro, setLetterboxdPro] = useState(false)
+  const [statsCategory, setStatsCategory] = useState<StatsCategory>('most-watched')
+  const [statsSubCategory, setStatsSubCategory] = useState<StatsSubCategory>('most-watched')
   const [altTextEnabled,        setAltTextEnabled]        = useState(false)
   const [previewAltTextEnabled, setPreviewAltTextEnabled] = useState(false)
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null)
@@ -83,15 +87,18 @@ export default function Popup() {
       setShowTags(s.showTags)
       setShowBackdrop(s.showBackdrop)
       setLayout(s.layout)
+      setLetterboxdPro(s.letterboxdPro)
+      setStatsCategory(s.statsCategory)
+      setStatsSubCategory(s.statsSubCategory)
       setAltTextEnabled(s.generateAltText)
       setPreviewAltTextEnabled(s.previewAltText)
     })
     chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
       const url = (tab?.url ?? '').replace(/#.*$/, '')
       const match = CARD_TYPES.find(t => CARD_TYPE_CONFIGS[t].urlPattern.test(url))
-      if (match) setCardType(match)
+      if (match && (!CARD_TYPE_CONFIGS[match].proOnly || letterboxdPro)) setCardType(match)
     })
-  }, [])
+  }, [letterboxdPro])
 
   // Validate current tab URL whenever the card type changes
   useEffect(() => {
@@ -102,6 +109,28 @@ export default function Popup() {
       setIsReviewListPage(cardType === 'review' && /\/reviews\/?$/.test(url))
     })
   }, [cardType])
+
+  // On mount: read Letterboxd's page-level `window.person.username` directly
+  // from the active tab's MAIN world. Works on any letterboxd.com URL —
+  // doesn't depend on the content script being injected.
+  useEffect(() => {
+    chrome.tabs.query({ active: true, currentWindow: true }).then(async ([tab]) => {
+      if (!tab?.id || !tab.url?.startsWith('https://letterboxd.com/')) return
+      try {
+        const [result] = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          world: 'MAIN',
+          func: () => {
+            const p = (globalThis as unknown as { person?: { loggedIn?: boolean; username?: string } }).person
+            return p?.loggedIn && p.username ? p.username : ''
+          },
+        })
+        if (result?.result) setLoggedInUsername(result.result)
+      } catch {
+        // activeTab not yet granted, or tab navigated away — keep generic hint.
+      }
+    })
+  }, [])
 
   async function handleGenerate() {
     setStatus('loading')
@@ -119,30 +148,63 @@ export default function Popup() {
       // Defensive re-check for race condition (user navigates away after button enabled)
       const url = (tab.url ?? '').replace(/#.*$/, '')
       if (!CARD_TYPE_CONFIGS[cardType].urlPattern.test(url)) {
-        throw new Error(`Navigate to ${CARD_TYPE_CONFIGS[cardType].urlHint} first.`)
+        throw new Error(`Navigate to ${formatUrlHint(cardType, loggedInUsername)} first.`)
       }
+
+      const statsRenderMode = cardType === 'stats' ? STATS_CATEGORY_CONFIGS[statsCategory].renderMode : undefined
 
       const filmData: FilmDataResponse = await chrome.tabs.sendMessage(tab.id, {
         type: 'GET_FILM_DATA',
         cardType,
-        listCount: (cardType === 'list' || cardType === 'recent-diary') ? listCount : undefined,
+        listCount: (cardType === 'list' || cardType === 'recent-diary' || cardType === 'stats') ? listCount : undefined,
         reviewCount: cardType === 'review' ? reviewCount : undefined,
+        statsCategory: cardType === 'stats' ? statsCategory : undefined,
+        statsSubCategory: cardType === 'stats' ? statsSubCategory : undefined,
       } satisfies GetFilmDataRequest)
 
-      if (!filmData.films.length) {
+      // Non-poster stats categories (summary, chart, bar-chart, milestones) don't need films
+      const needsFilms = statsRenderMode === undefined || statsRenderMode === 'poster-grid'
+      if (needsFilms && !filmData.films.length) {
         throw new Error('No films found on this page.')
       }
-
-      const posterResults = await Promise.allSettled(
-        filmData.films.map((f: FilmData) => fetchPosterDataUrl(f.posterUrl))
-      )
-      const failedCount = posterResults.filter(r => r.status === 'rejected').length
-      if (failedCount > 0) {
-        throw new Error(
-          `${failedCount} poster${failedCount === 1 ? '' : 's'} failed to load. Try refreshing the page.`
-        )
+      if (!needsFilms && !filmData.statsSummary?.length && !filmData.chartData && !filmData.breakdownData && !filmData.barChartData && !filmData.milestonesData) {
+        throw new Error('No stats data found on this page.')
       }
-      const posterDataUrls = posterResults.map(r => (r as PromiseFulfilledResult<string>).value)
+
+      let posterDataUrls: string[] = []
+      if (needsFilms) {
+        const posterResults = await Promise.allSettled(
+          filmData.films.map((f: FilmData) => fetchPosterDataUrl(f.posterUrl))
+        )
+        const failedCount = posterResults.filter(r => r.status === 'rejected').length
+        if (failedCount > 0) {
+          throw new Error(
+            `${failedCount} poster${failedCount === 1 ? '' : 's'} failed to load. Try refreshing the page.`
+          )
+        }
+        posterDataUrls = posterResults.map(r => (r as PromiseFulfilledResult<string>).value)
+      }
+
+      // Fetch milestone posters
+      let milestonePosterDataUrls: Map<string, string> | undefined
+      if (filmData.milestonesData) {
+        const md = filmData.milestonesData
+        const allMilestoneFilms = [
+          ...(md.firstFilm ? [md.firstFilm] : []),
+          ...md.diaryMilestones,
+          ...(md.lastFilm ? [md.lastFilm] : []),
+        ]
+        const map = new Map<string, string>()
+        const results = await Promise.allSettled(
+          allMilestoneFilms.map(f => fetchPosterDataUrl(f.posterUrl))
+        )
+        allMilestoneFilms.forEach((f, i) => {
+          if (results[i].status === 'fulfilled') {
+            map.set(f.filmId, (results[i] as PromiseFulfilledResult<string>).value)
+          }
+        })
+        milestonePosterDataUrls = map
+      }
 
       let backdropDataUrl: string | undefined
       if (showBackdrop && filmData.backdropUrl && (cardType === 'review' || cardType === 'list')) {
@@ -190,7 +252,7 @@ export default function Popup() {
         showRating,
         showDate,
         cardType,
-        listCount: (cardType === 'list' || cardType === 'recent-diary') ? listCount : undefined,
+        listCount: (cardType === 'list' || cardType === 'recent-diary' || cardType === 'stats') ? listCount : undefined,
         reviewCount: cardType === 'review' ? reviewCount : undefined,
         showListTitle:       cardType === 'list' ? showListTitle : undefined,
         showListDescription: cardType === 'list' ? showListDesc  : undefined,
@@ -204,6 +266,15 @@ export default function Popup() {
         footerAvatarDataUrl,
         showShareIcon: !isOwnProfile,
         layout,
+        statsCategory: cardType === 'stats' ? statsCategory : undefined,
+        statsSummary: filmData.statsSummary,
+        statsTitle: filmData.statsTitle,
+        statsSubtitle: filmData.statsSubtitle,
+        chartData: filmData.chartData,
+        breakdownData: filmData.breakdownData,
+        barChartData: filmData.barChartData,
+        milestonesData: filmData.milestonesData,
+        milestonePosterDataUrls,
       })
 
       setCardBlob(blob)
@@ -325,6 +396,13 @@ export default function Popup() {
       {view === 'settings' && (
         <div className={styles.body}>
           <div className={styles.field}>
+            <span className={styles.fieldLabel}>Letterboxd membership</span>
+            <label className={styles.checkboxLabel}>
+              <input type="checkbox" checked={letterboxdPro} onChange={e => { setLetterboxdPro(e.target.checked); saveSettings({ letterboxdPro: e.target.checked }) }} />
+              I'm a Pro or Patron member
+            </label>
+          </div>
+          <div className={styles.field}>
             <span className={styles.fieldLabel}>Default layout</span>
             {LAYOUTS.map(l => (
               <label key={l} className={styles.layoutOption}>
@@ -368,7 +446,9 @@ export default function Popup() {
             value={cardType}
             onChange={e => setCardType(e.target.value as CardType)}
           >
-            {CARD_TYPES.map(type => (
+            {CARD_TYPES
+              .filter(t => !CARD_TYPE_CONFIGS[t].proOnly || letterboxdPro)
+              .map(type => (
               <option key={type} value={type}>
                 {CARD_TYPE_CONFIGS[type].label}
               </option>
@@ -412,12 +492,86 @@ export default function Popup() {
           </div>
         )}
 
-        {/* Navigation hint when on wrong page */}
-        {isValidPage === false && (
-          <p className={styles.hint}>
-            Navigate to {CARD_TYPE_CONFIGS[cardType].urlHint} first.
-          </p>
+        {/* Stats category selector */}
+        {cardType === 'stats' && (
+          <div className={styles.radioGroup}>
+            <select
+              value={statsCategory}
+              onChange={e => {
+                const cat = e.target.value as StatsCategory
+                setStatsCategory(cat)
+                saveSettings({ statsCategory: cat })
+              }}
+              className={styles.select}
+            >
+              {STATS_CATEGORIES.map(cat => (
+                <option key={cat} value={cat} disabled={!STATS_CATEGORY_CONFIGS[cat].implemented}>
+                  {STATS_CATEGORY_CONFIGS[cat].label}{!STATS_CATEGORY_CONFIGS[cat].implemented ? ' (coming soon)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
         )}
+
+        {/* Sub-category toggle for genres/countries/languages */}
+        {cardType === 'stats' && STATS_CATEGORY_CONFIGS[statsCategory].hasSubToggle && (
+          <div className={styles.radioGroup}>
+            {(['most-watched', 'highest-rated'] as StatsSubCategory[]).map(sub => (
+              <label key={sub} className={styles.checkboxLabel}>
+                <input
+                  type="radio"
+                  name="statsSubCategory"
+                  value={sub}
+                  checked={statsSubCategory === sub}
+                  onChange={() => { setStatsSubCategory(sub); saveSettings({ statsSubCategory: sub }) }}
+                />
+                {sub === 'most-watched' ? 'Most Watched' : 'Highest Rated'}
+              </label>
+            ))}
+          </div>
+        )}
+
+        {/* Film count selector — for poster-grid Stats only */}
+        {cardType === 'stats' && STATS_CATEGORY_CONFIGS[statsCategory].renderMode === 'poster-grid' && (
+          <div className={styles.radioGroup}>
+            {([4, 10, 20] as ListCount[]).map(n => (
+              <label key={n} className={styles.checkboxLabel}>
+                <input
+                  type="radio"
+                  name="listCount"
+                  value={n}
+                  checked={listCount === n}
+                  onChange={() => { setListCount(n); saveSettings({ listCount: n }) }}
+                />
+                {n} films
+              </label>
+            ))}
+          </div>
+        )}
+
+        {/* Navigation hint when on wrong page */}
+        {isValidPage === false && (() => {
+          const segments = formatUrlHintSegments(cardType, loggedInUsername)
+          const handleHintClick = async (e: MouseEvent, href: string) => {
+            e.preventDefault()
+            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+            if (tab?.id) {
+              await chrome.tabs.update(tab.id, { url: href })
+              window.close()
+            }
+          }
+          return (
+            <p className={styles.hint}>
+              Navigate to{' '}
+              {segments.map((seg, i) =>
+                seg.kind === 'link'
+                  ? <a key={i} href={seg.href} className={styles.hintLink} onClick={e => handleHintClick(e, seg.href)}>{seg.text}</a>
+                  : <span key={i}>{seg.text}</span>
+              )}
+              {' '}first.
+            </p>
+          )
+        })()}
 
         {/* List title / description / tags / backdrop checkboxes */}
         {cardType === 'list' && (

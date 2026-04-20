@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { renderCard } from '../canvas/renderCard'
 import { generateAltText } from '../altText'
-import { CARD_TYPE_CONFIGS, LAYOUTS, LAYOUT_CONFIGS } from '../types'
-import type { CardType, ListCount, ReviewCount, Layout } from '../types'
+import { CARD_TYPE_CONFIGS, LAYOUTS, LAYOUT_CONFIGS, STATS_CATEGORIES, STATS_CATEGORY_CONFIGS } from '../types'
+import type { CardType, ListCount, ReviewCount, Layout, StatsCategory, StatsSubCategory } from '../types'
 import { loadSettings, saveSettings } from '../storage/settings'
 import {
   scrapeLetterboxdPage,
@@ -32,6 +32,8 @@ export default function App() {
 
   const [listCount,   setListCount]   = useState<ListCount>(4)
   const [reviewCount, setReviewCount] = useState<ReviewCount>(1)
+  const [statsCategory,    setStatsCategory]    = useState<StatsCategory>('summary')
+  const [statsSubCategory, setStatsSubCategory] = useState<StatsSubCategory>('most-watched')
 
   const [showTitle,          setShowTitle]          = useState(true)
   const [showYear,           setShowYear]           = useState(true)
@@ -89,6 +91,11 @@ export default function App() {
       return null
     }
 
+    if (parsed.cardType === 'stats') {
+      setDetectError('Stats cards are only available in the Chrome extension. Letterboxd blocks stats page requests from external services.')
+      return null
+    }
+
     if (parsed.username) {
       setDetected(parsed)
       return parsed
@@ -133,6 +140,11 @@ export default function App() {
     setAltText(null)
 
     try {
+      const statsRenderMode = resolvedCardType === 'stats'
+        ? STATS_CATEGORY_CONFIGS[statsCategory].renderMode
+        : undefined
+      const needsFilms = statsRenderMode === undefined || statsRenderMode === 'poster-grid'
+
       const filmData = await scrapeLetterboxdPage(
         username,
         resolvedCardType,
@@ -141,25 +153,33 @@ export default function App() {
         (resolvedCardType === 'review' && isReviewListPage) ? reviewCount : 1,
         isReviewListPage,
         filmSlug,
+        resolvedCardType === 'stats' ? statsCategory : undefined,
+        resolvedCardType === 'stats' ? statsSubCategory : undefined,
       )
 
-      if (!filmData.films.length) {
+      if (needsFilms && !filmData.films.length) {
         throw new Error('No films found on this page. Check the URL and try again.')
       }
-
-      const posterResults = await Promise.allSettled(
-        filmData.films.map((f: FilmData) =>
-          f.posterUrl ? fetchImageDataUrl(f.posterUrl) : Promise.reject(new Error('empty poster URL')),
-        ),
-      )
-      const failures = posterResults.filter((r): r is PromiseRejectedResult => r.status === 'rejected')
-      if (failures.length === filmData.films.length) {
-        const reason = String(failures[0]?.reason ?? 'unknown')
-        throw new Error(`All poster images failed to load. (${reason})`)
+      if (!needsFilms && !filmData.statsSummary?.length && !filmData.chartData && !filmData.breakdownData && !filmData.barChartData && !filmData.milestonesData) {
+        throw new Error('No stats data found on this page. Check the URL and try again.')
       }
-      const posterDataUrls = posterResults.map(r =>
-        r.status === 'fulfilled' ? r.value : '',
-      )
+
+      let posterDataUrls: string[] = []
+      if (needsFilms) {
+        const posterResults = await Promise.allSettled(
+          filmData.films.map((f: FilmData) =>
+            f.posterUrl ? fetchImageDataUrl(f.posterUrl) : Promise.reject(new Error('empty poster URL')),
+          ),
+        )
+        const failures = posterResults.filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+        if (failures.length === filmData.films.length) {
+          const reason = String(failures[0]?.reason ?? 'unknown')
+          throw new Error(`All poster images failed to load. (${reason})`)
+        }
+        posterDataUrls = posterResults.map(r =>
+          r.status === 'fulfilled' ? r.value : '',
+        )
+      }
 
       let backdropDataUrl: string | undefined
       if (showBackdrop && filmData.backdropUrl && (resolvedCardType === 'review' || resolvedCardType === 'list')) {
@@ -208,6 +228,14 @@ export default function App() {
         footerAvatarDataUrl,
         showShareIcon:       !isOwnProfile,
         layout,
+        statsCategory:       resolvedCardType === 'stats' ? statsCategory : undefined,
+        statsSummary:        filmData.statsSummary,
+        statsTitle:          filmData.statsTitle,
+        statsSubtitle:       filmData.statsSubtitle,
+        chartData:           filmData.chartData,
+        breakdownData:       filmData.breakdownData,
+        barChartData:        filmData.barChartData,
+        milestonesData:      filmData.milestonesData,
       })
 
       setCardBlob(blob)
@@ -451,6 +479,50 @@ export default function App() {
                         <input type="radio" name="reviewCount" value={n}
                           checked={reviewCount === n} onChange={() => { setReviewCount(n); saveSettings({ reviewCount: n }) }} />
                         {n}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Stats category selector */}
+              {effectiveCardType === 'stats' && (
+                <div className={styles.field}>
+                  <span className={styles.fieldLabel}>Stats category</span>
+                  <select
+                    value={statsCategory}
+                    onChange={e => {
+                      const cat = e.target.value as StatsCategory
+                      setStatsCategory(cat)
+                      saveSettings({ statsCategory: cat })
+                    }}
+                    className={styles.select}
+                  >
+                    {STATS_CATEGORIES.filter(cat => {
+                      const cfg = STATS_CATEGORY_CONFIGS[cat]
+                      // In web app, hide poster-grid categories (extension-only)
+                      return cfg.implemented && cfg.renderMode !== 'poster-grid'
+                    }).map(cat => (
+                      <option key={cat} value={cat}>
+                        {STATS_CATEGORY_CONFIGS[cat].label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Sub-category toggle for genres/countries/languages */}
+              {effectiveCardType === 'stats' && STATS_CATEGORY_CONFIGS[statsCategory].hasSubToggle && (
+                <div className={styles.field}>
+                  <div className={styles.radioGroup}>
+                    {(['most-watched', 'highest-rated'] as StatsSubCategory[]).map(sub => (
+                      <label key={sub} className={styles.radioLabel}>
+                        <input
+                          type="radio" name="statsSubCategory" value={sub}
+                          checked={statsSubCategory === sub}
+                          onChange={() => { setStatsSubCategory(sub); saveSettings({ statsSubCategory: sub }) }}
+                        />
+                        {sub === 'most-watched' ? 'Most Watched' : 'Highest Rated'}
                       </label>
                     ))}
                   </div>

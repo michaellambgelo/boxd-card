@@ -1,0 +1,46 @@
+#!/bin/bash
+# Tracked pre-commit hook. Activated via `git config core.hooksPath .githooks`,
+# which the package.json `prepare` script runs automatically on `npm install`.
+#
+# Responsibilities:
+#   1. Rebuild docs/app/ when web app sources are staged, and stage the output
+#      so the build artifact lands in the same commit as the source change.
+#   2. When package.json is staged, reconcile package-lock.json so the lockfile
+#      can't drift out of sync with package.json (e.g., version bumps that
+#      forget to re-run npm install).
+
+set -e
+
+cd "$(git rev-parse --show-toplevel)"
+
+# ── 1. Rebuild docs/app/ if web sources changed ─────────────────────────────
+WEB_SOURCES=$(git diff --cached --name-only | grep -E '^(src/web/|vite\.web\.config\.ts|\.env\.production)' || true)
+
+if [ -n "$WEB_SOURCES" ]; then
+  echo "▶ Web source changed — rebuilding docs/app/..."
+  if ! npm run build:web; then
+    echo "✗ build:web failed — commit aborted." >&2
+    exit 1
+  fi
+  git add docs/app/
+  echo "✓ docs/app/ rebuilt and staged."
+fi
+
+# ── 2. Reconcile package-lock.json when package.json is staged ──────────────
+PKG_JSON=$(git diff --cached --name-only | grep -E '^package\.json$' || true)
+
+if [ -n "$PKG_JSON" ]; then
+  echo "▶ package.json staged — reconciling package-lock.json..."
+  if ! npm install --package-lock-only --ignore-scripts --silent; then
+    echo "✗ npm install --package-lock-only failed — commit aborted." >&2
+    exit 1
+  fi
+  if ! git diff --quiet package-lock.json; then
+    git add package-lock.json
+    echo "✓ package-lock.json re-synced and staged."
+  else
+    echo "✓ package-lock.json already in sync."
+  fi
+fi
+
+exit 0

@@ -155,6 +155,29 @@ describe('computeLayout', () => {
     expect(layout.posterLeft * 2 + usedWidth).toBe(layout.cardWidth)
   })
 
+  it.each([
+    ['4:5' as const, 1350],
+    ['3:4' as const, 1440],
+  ])('%s layout: 4 films → 1080×%i fixed, text below poster', (layout, expectedH) => {
+    const l = computeLayout(4, 0, layout)
+    expect(l.cardWidth).toBe(1080)
+    expect(l.cardHeight).toBe(expectedH)
+    expect(l.sideLayout).toBe(false)
+    expect(l.cols).toBe(2)
+    expect(l.rows).toBe(2)
+  })
+
+  it.each([
+    ['4:5' as const],
+    ['3:4' as const],
+  ])('%s layout: 10 films → 3-col dynamic height', (layout) => {
+    const l = computeLayout(10, 0, layout)
+    expect(l.cardWidth).toBe(1080)
+    expect(l.cols).toBe(3)
+    expect(l.rows).toBe(4)
+    expect(l.sideLayout).toBe(false)
+  })
+
   it('titleAreaH shifts posterTop, footerY, and cardHeight by the same amount', () => {
     const base    = computeLayout(4)
     const shifted = computeLayout(4, 60)
@@ -403,7 +426,7 @@ describe('renderCard — review type', () => {
     expect(blob).toBeInstanceOf(Blob)
   })
 
-  it.each(['square', 'story', 'banner'] as const)('renders a single review in %s layout', async (layout) => {
+  it.each(['square', '4:5', '3:4', 'story', 'banner'] as const)('renders a single review in %s layout', async (layout) => {
     const blob = await renderCard({
       films: [reviewFilm],
       username: 'michaellamb',
@@ -416,7 +439,7 @@ describe('renderCard — review type', () => {
     expect(blob.type).toBe('image/png')
   })
 
-  it.each(['square', 'story', 'banner'] as const)('renders 4-review card in %s layout', async (layout) => {
+  it.each(['square', '4:5', '3:4', 'story', 'banner'] as const)('renders 4-review card in %s layout', async (layout) => {
     const blob = await renderCard({
       films: Array.from({ length: 4 }, () => reviewFilm),
       username: 'test',
