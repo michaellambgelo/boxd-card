@@ -17,8 +17,8 @@ body:
       options:
         - label: I searched [existing issues](https://github.com/michaellambgelo/boxd-card/issues?q=is%3Aissue) and couldn't find this already reported.
           required: true
-        - label: I'm on the latest version (check the popup footer or https://github.com/michaellambgelo/boxd-card/releases).
-          required: true
+        - label: I'm on the latest version (check the extension settings or https://github.com/michaellambgelo/boxd-card/releases). (Do not select if you are using the web app)
+          required: false
 
   - type: textarea
     id: summary
