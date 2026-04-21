@@ -1,0 +1,165 @@
+name: Bug report
+description: Report a defect in the Boxd Card extension or web app.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a defect! The more detail you provide — especially a screenshot of the broken card and the Letterboxd URL you generated it from — the faster this can be fixed.
+
+        If your issue is a feature request or question, please open a discussion instead.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight
+      options:
+        - label: I searched [existing issues](https://github.com/michaellambgelo/boxd-card/issues?q=is%3Aissue) and couldn't find this already reported.
+          required: true
+        - label: I'm on the latest version (check the popup footer or https://github.com/michaellambgelo/boxd-card/releases).
+          required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What went wrong?
+      description: A clear, concise description of the defect.
+      placeholder: "Generated a Recent Diary card and the star ratings are missing for the last two entries."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where did this happen?
+      options:
+        - Chrome extension
+        - Web app (boxd-card.michaellamb.dev)
+        - Both
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Shown in the popup footer (extension) or on the web app page.
+      placeholder: "0.6.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: card_type
+    attributes:
+      label: Card type
+      options:
+        - Last Four Watched
+        - Favorites
+        - Recent Diary
+        - List
+        - Review
+        - Stats
+        - Not applicable
+    validations:
+      required: true
+
+  - type: dropdown
+    id: layout
+    attributes:
+      label: Layout
+      options:
+        - Landscape (16:9)
+        - Square (1:1)
+        - Story (9:16)
+        - Banner (3:1)
+        - Portrait (4:5)
+        - Portrait (3:4)
+        - Not applicable
+    validations:
+      required: true
+
+  - type: input
+    id: source_url
+    attributes:
+      label: Letterboxd page URL
+      description: The page you generated the card from. Redact the username if you'd rather not share it (e.g. `letterboxd.com/<user>/diary/`).
+      placeholder: "https://letterboxd.com/yourname/diary/"
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: What exactly did you do? Include any settings toggled (alt text, backdrop, list count, etc.).
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: "The diary card should show star ratings for all four entries."
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      placeholder: "The last two entries show no stars, but they are rated on the Letterboxd page."
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Screenshot or generated card
+      description: Drag-and-drop the generated PNG or a screenshot of the popup/web app. This is usually the single most helpful thing you can attach.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: browser
+    attributes:
+      label: Browser
+      description: Only relevant for the Chrome extension.
+      options:
+        - Chrome
+        - Edge
+        - Brave
+        - Arc
+        - Opera
+        - Vivaldi
+        - Other (note in "Additional context")
+        - Not applicable (web app)
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - Windows
+        - Linux
+        - ChromeOS
+        - Other (note in "Additional context")
+
+  - type: textarea
+    id: console
+    attributes:
+      label: Console errors (optional)
+      description: |
+        If you're comfortable, right-click the popup → Inspect → Console, reproduce the bug, then paste any red errors here. For the web app, the browser devtools console.
+      render: shell
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else that might help — recent Letterboxd UI changes, Pro/HQ account, private profile, custom posters, specific list tags, etc.
