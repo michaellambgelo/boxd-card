@@ -52,6 +52,7 @@ export default function App() {
   const [layout,       setLayout]       = useState<Layout>('landscape')
   const [altTextEnabled,        setAltTextEnabled]        = useState(false)
   const [previewAltTextEnabled, setPreviewAltTextEnabled] = useState(false)
+  const [useTmdb,               setUseTmdb]               = useState(true)
 
   const [cardUrl,  setCardUrl]  = useState<string | null>(null)
   const [cardBlob, setCardBlob] = useState<Blob | null>(null)
@@ -76,6 +77,7 @@ export default function App() {
       setLayout(s.layout)
       setAltTextEnabled(s.generateAltText)
       setPreviewAltTextEnabled(s.previewAltText)
+      setUseTmdb(s.useTmdb)
     })
   }, [])
 
@@ -192,6 +194,7 @@ export default function App() {
         filmSlug,
         resolvedCardType === 'stats' ? statsCategory : undefined,
         resolvedCardType === 'stats' ? statsSubCategory : undefined,
+        useTmdb,
       )
 
       if (needsFilms && !filmData.films.length) {
@@ -443,6 +446,20 @@ export default function App() {
                 </label>
               )}
             </div>
+            <div className={styles.settingsSection}>
+              <span className={styles.fieldLabel}>Data sources</span>
+              <label className={styles.checkboxLabel}>
+                <input
+                  type="checkbox"
+                  checked={useTmdb}
+                  onChange={e => { setUseTmdb(e.target.checked); saveSettings({ useTmdb: e.target.checked }) }}
+                />
+                Enrich cards with TMDB (posters, backdrops, metadata)
+              </label>
+              <p className={styles.settingsHint}>
+                When off, cards render using only Letterboxd's own posters and backdrops.
+              </p>
+            </div>
           </div>
         )}
 
@@ -692,19 +709,21 @@ export default function App() {
           </section>
         )}
 
-        <div className={styles.tmdbAttribution}>
-          <a
-            href="https://www.themoviedb.org/"
-            target="_blank"
-            rel="noreferrer"
-            aria-label="The Movie Database (TMDB)"
-          >
-            <img src={tmdbLogoUrl} alt="TMDB" className={styles.tmdbLogo} />
-          </a>
-          <span className={styles.tmdbDisclaimer}>
-            This product uses the TMDB API but is not endorsed or certified by TMDB.
-          </span>
-        </div>
+        {useTmdb && (
+          <div className={styles.tmdbAttribution}>
+            <a
+              href="https://www.themoviedb.org/"
+              target="_blank"
+              rel="noreferrer"
+              aria-label="The Movie Database (TMDB)"
+            >
+              <img src={tmdbLogoUrl} alt="TMDB" className={styles.tmdbLogo} />
+            </a>
+            <span className={styles.tmdbDisclaimer}>
+              This product uses the TMDB API but is not endorsed or certified by TMDB.
+            </span>
+          </div>
+        )}
 
         <footer className={styles.footer}>
           <span>

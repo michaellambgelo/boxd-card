@@ -18,6 +18,7 @@ export interface UserSettings {
   letterboxdPro: boolean
   statsCategory: StatsCategory
   statsSubCategory: StatsSubCategory
+  useTmdb: boolean
 }
 
 export const DEFAULT_SETTINGS: UserSettings = {
@@ -38,6 +39,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   letterboxdPro: false,
   statsCategory: 'most-watched',
   statsSubCategory: 'most-watched',
+  useTmdb: true,
 }
 
 const STORAGE_KEY = 'boxd-card-settings'

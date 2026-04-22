@@ -622,6 +622,7 @@ export async function scrapeLetterboxdPage(
   filmSlug = '',
   statsCategory?: StatsCategory,
   statsSubCategory?: StatsSubCategory,
+  enrichWithTmdb = true,
 ): Promise<FilmDataResponse> {
   const url = buildPageUrl(username, cardType, listSlug, filmSlug)
   const doc = await fetchPageDocument(url)
@@ -693,7 +694,9 @@ export async function scrapeLetterboxdPage(
   // are swallowed per-film so one miss doesn't break the whole card — but we
   // surface them via console so a poster-URL format change or a worker outage
   // shows up in DevTools instead of failing silently.
-  if (films.length > 0) {
+  // Callers can set enrichWithTmdb=false to skip this block entirely (used by
+  // the "Data sources" setting to disable TMDB for debugging regressions).
+  if (enrichWithTmdb && films.length > 0) {
     const slugs = films.map(f => {
       const slug = slugFromPosterUrl(f.posterUrl)
       if (!slug && f.posterUrl) {

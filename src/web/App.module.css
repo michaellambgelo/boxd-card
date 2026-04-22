@@ -172,6 +172,13 @@
   color: var(--subtext);
 }
 
+.settingsHint {
+  font-size: 13px;
+  color: var(--subtext);
+  margin: 4px 0 0 24px;
+  line-height: 1.4;
+}
+
 /* ── Form ────────────────────────────────────────────────────── */
 .form {
   display: flex;
