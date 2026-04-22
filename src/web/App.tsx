@@ -12,6 +12,7 @@ import {
 } from './webScraper'
 import type { ParsedLetterboxdUrl } from './webScraper'
 import type { FilmData } from '../content/index'
+import tmdbLogoUrl from '../assets/TMDB-blue-short.svg?url'
 import styles from './App.module.css'
 
 type Status = 'idle' | 'loading' | 'ready' | 'error'
@@ -251,6 +252,11 @@ export default function App() {
         posterDataUrl: posterDataUrls[i],
       }))
 
+      // TMDB was used if any poster came from TMDB, or if the backdrop is from TMDB's CDN.
+      const usedTmdb =
+        filmData.films.some(f => !!f.tmdbPosterUrl) ||
+        (filmData.backdropUrl?.startsWith('https://image.tmdb.org/') ?? false)
+
       const blob = await renderCard({
         films,
         username:            filmData.username,
@@ -281,6 +287,7 @@ export default function App() {
         breakdownData:       filmData.breakdownData,
         barChartData:        filmData.barChartData,
         milestonesData:      filmData.milestonesData,
+        usedTmdb,
       })
 
       setCardBlob(blob)
@@ -684,6 +691,20 @@ export default function App() {
             )}
           </section>
         )}
+
+        <div className={styles.tmdbAttribution}>
+          <a
+            href="https://www.themoviedb.org/"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="The Movie Database (TMDB)"
+          >
+            <img src={tmdbLogoUrl} alt="TMDB" className={styles.tmdbLogo} />
+          </a>
+          <span className={styles.tmdbDisclaimer}>
+            This product uses the TMDB API but is not endorsed or certified by TMDB.
+          </span>
+        </div>
 
         <footer className={styles.footer}>
           <span>

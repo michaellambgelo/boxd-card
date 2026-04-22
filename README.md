@@ -118,3 +118,7 @@ After each subsequent `npm run build`, click the **↺ reload** button on the ex
 | `https://s.ltrbxd.com/*` | Fetch static assets (logo) |
 
 Privacy policy: [boxd-card.michaellamb.dev/privacy.html](https://boxd-card.michaellamb.dev/privacy.html)
+
+## Attribution
+
+This product uses the [TMDB](https://www.themoviedb.org/) API but is not endorsed or certified by TMDB.

@@ -421,9 +421,33 @@
   box-sizing: border-box;
 }
 
+/* ── TMDB attribution ───────────────────────────────────────── */
+.tmdbAttribution {
+  margin-top: 48px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.tmdbLogo {
+  height: 24px;
+  width: auto;
+  display: block;
+  flex-shrink: 0;
+}
+
+.tmdbDisclaimer {
+  font-size: 12px;
+  color: var(--subtext);
+  line-height: 1.4;
+}
+
 /* ── Footer ──────────────────────────────────────────────────── */
 .footer {
-  margin-top: 48px;
+  margin-top: 20px;
   padding-top: 20px;
   border-top: 1px solid var(--border);
   font-size: 13px;

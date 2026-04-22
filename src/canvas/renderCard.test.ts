@@ -452,6 +452,67 @@ describe('renderCard — review type', () => {
   })
 })
 
+describe('renderCard — TMDB attribution', () => {
+  // Tracks every src value set on an Image instance during the test
+  let srcLog: string[] = []
+
+  class TrackingImage {
+    onload?: () => void
+    onerror?: () => void
+    private _src = ''
+    get src() { return this._src }
+    set src(value: string) {
+      this._src = value
+      if (value) {
+        srcLog.push(value)
+        queueMicrotask(() => this.onload?.())
+      }
+    }
+  }
+
+  beforeEach(() => {
+    srcLog = []
+    vi.stubGlobal('Image', TrackingImage as unknown as typeof Image)
+  })
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('loads TMDB logo when usedTmdb is true', async () => {
+    await renderCard({ ...MOCK_OPTIONS, usedTmdb: true })
+    // Vite inlines small SVGs as data URLs; match on the TMDB viewBox fingerprint.
+    expect(srcLog.some(src => src.includes('273.42') && src.includes('35.52'))).toBe(true)
+  })
+
+  it('does NOT load TMDB logo when usedTmdb is false', async () => {
+    await renderCard({ ...MOCK_OPTIONS, usedTmdb: false })
+    expect(srcLog.some(src => src.includes('273.42') && src.includes('35.52'))).toBe(false)
+  })
+
+  it('does NOT load TMDB logo when usedTmdb is undefined', async () => {
+    await renderCard(MOCK_OPTIONS)
+    expect(srcLog.some(src => src.includes('273.42') && src.includes('35.52'))).toBe(false)
+  })
+
+  it('loads TMDB logo for review cards when usedTmdb is true', async () => {
+    await renderCard({
+      films: [{
+        title: 'Groundhog Day',
+        year: '1993',
+        rating: '★★★★★',
+        posterDataUrl: 'data:image/png;base64,abc',
+        date: 'Feb 02, 2026',
+        reviewText: 'A masterpiece.',
+      }],
+      username: 'michaellamb',
+      showTitle: true, showYear: true, showRating: true, showDate: true,
+      cardType: 'review',
+      reviewCount: 1,
+      usedTmdb: true,
+    })
+    // Vite inlines small SVGs as data URLs; match on the TMDB viewBox fingerprint.
+    expect(srcLog.some(src => src.includes('273.42') && src.includes('35.52'))).toBe(true)
+  })
+})
+
 describe('renderCard — backdrop', () => {
   beforeEach(() => {
     vi.stubGlobal('Image', class AutoImage {
