@@ -113,9 +113,12 @@ After each subsequent `npm run build`, click the **↺ reload** button on the ex
 | `clipboardWrite` | Copy the generated card image to the clipboard |
 | `declarativeContent` | Control Generate button availability based on the active tab URL |
 | `scripting` | Read the logged-in Letterboxd username from the active tab to personalize the navigation hint (e.g. "Navigate to letterboxd.com/&lt;you&gt;/diary/") |
+| `storage` | Persist display preferences (layout, toggles, TMDB opt-in) across sessions |
 | `https://letterboxd.com/*` | Fetch poster redirects from the Letterboxd CDN |
 | `https://a.ltrbxd.com/*` | Fetch poster images from the primary Letterboxd image CDN |
 | `https://s.ltrbxd.com/*` | Fetch static assets (logo) |
+| `https://boxd-card.michaellamb.workers.dev/*` | Used only when TMDB enrichment is enabled in settings; the extension requests film metadata from this Cloudflare Worker, which proxies to TMDB. No requests are made when the setting is off. |
+| `https://image.tmdb.org/*` | Used only when TMDB enrichment is enabled, to fetch the posters and backdrops returned by the worker. |
 
 Privacy policy: [boxd-card.michaellamb.dev/privacy.html](https://boxd-card.michaellamb.dev/privacy.html)
 

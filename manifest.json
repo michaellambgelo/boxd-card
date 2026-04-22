@@ -14,7 +14,9 @@
   "host_permissions": [
     "https://letterboxd.com/*",
     "https://a.ltrbxd.com/*",
-    "https://s.ltrbxd.com/*"
+    "https://s.ltrbxd.com/*",
+    "https://boxd-card.michaellamb.workers.dev/*",
+    "https://image.tmdb.org/*"
   ],
   "action": {
     "default_popup": "src/popup/index.html",

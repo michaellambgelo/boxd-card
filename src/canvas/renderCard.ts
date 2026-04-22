@@ -11,6 +11,13 @@ export interface FilmEntry {
   date?: string        // forwarded from FilmData for diary/review entries
   reviewText?: string  // forwarded from FilmData for review entries
   tags?: string[]      // forwarded from FilmData for review entries
+  // TMDB-sourced fields — populated when extensionUseTmdb (or web useTmdb)
+  // is enabled and the worker returned them. Drawn on Review cards when the
+  // matching show* flag below is true.
+  director?: string
+  runtime?: number     // minutes
+  genres?: string[]
+  overview?: string
 }
 
 export interface CardOptions {
@@ -35,6 +42,11 @@ export interface CardOptions {
   footerAvatarDataUrl?: string  // avatar for the footer identity (own avatar or author avatar)
   showShareIcon?: boolean        // true when generating from someone else's profile
   usedTmdb?: boolean            // when true, draw TMDB attribution logo in the footer
+  // TMDB field toggles — currently honored only by Review cards (Phase 1).
+  showDirector?: boolean
+  showRuntime?: boolean
+  showGenres?: boolean
+  showOverview?: boolean
   layout?: Layout
   statsCategory?: StatsCategory
   statsSummary?: StatEntry[]
@@ -589,6 +601,10 @@ function measureReviewRows(
   showRating: boolean,
   showDate: boolean,
   showTags: boolean,
+  showDirector: boolean,
+  showRuntime: boolean,
+  showGenres: boolean,
+  showOverview: boolean,
   measureCtx: CanvasRenderingContext2D,
   rvContentW: number,
   cfg: ReviewLayoutConfig,
@@ -609,12 +625,23 @@ function measureReviewRows(
 
     if (showTitle) addMetaLine(cfg.titleH)
     if (showYear && film.year) addMetaLine(cfg.metaH)
+    if (showRuntime && film.runtime) addMetaLine(cfg.metaH)
+    if (showDirector && film.director) addMetaLine(cfg.metaH)
     if (showRating && film.rating) addMetaLine(cfg.metaH)
     if (showDate && film.date) addMetaLine(cfg.metaH)
     if (showTags && film.tags?.length) {
       const tagsH = drawTagPills(measureCtx, film.tags, 0, 0, rvContentW, false)
       if (!firstMeta) contentH += cfg.metaGap
       contentH += tagsH
+      firstMeta = false
+    }
+    // Genres render as a subtext meta line (not pills) so the user can't
+    // mistake TMDB-sourced data for a personal tag they authored.
+    if (showGenres && film.genres?.length) addMetaLine(cfg.metaH)
+    if (showOverview && film.overview) {
+      if (!firstMeta) contentH += cfg.metaGap
+      measureCtx.font = `italic ${cfg.reviewFs}px sans-serif`
+      contentH += wrapText(measureCtx, film.overview, 0, 0, rvContentW, cfg.reviewLineH, false)
       firstMeta = false
     }
 
@@ -1153,6 +1180,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
     showListTitle, showListDescription, listTitle, listDescription,
     showCardTypeLabel, cardTypeLabel, reviewCount, showTags, listTags, backdropDataUrl,
     footerAvatarDataUrl, showShareIcon, usedTmdb,
+    showDirector, showRuntime, showGenres, showOverview,
   } = options
 
   // ── Review card ──────────────────────────────────────────────────────────
@@ -1172,7 +1200,9 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
     const measureCanvas = document.createElement('canvas')
     const measureCtx = measureCanvas.getContext('2d')!
     const { rows, footerY, cardHeight } = measureReviewRows(
-      films, count, showTitle, showYear, showRating, showDate, showTags ?? false, measureCtx, rvContentW, cfg
+      films, count, showTitle, showYear, showRating, showDate, showTags ?? false,
+      showDirector ?? false, showRuntime ?? false, showGenres ?? false, showOverview ?? false,
+      measureCtx, rvContentW, cfg,
     )
 
     // Pass 2: draw
@@ -1240,6 +1270,26 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
         })
       }
 
+      if (showRuntime && film.runtime) {
+        drawMetaLine(cfg.metaH, () => {
+          ctx.fillStyle = SUBTEXT_COLOR
+          ctx.font = `${cfg.metaFs}px sans-serif`
+          ctx.textAlign = 'left'
+          ctx.textBaseline = 'top'
+          ctx.fillText(`${film.runtime} min`, textX, contentY)
+        })
+      }
+
+      if (showDirector && film.director) {
+        drawMetaLine(cfg.metaH, () => {
+          ctx.fillStyle = SUBTEXT_COLOR
+          ctx.font = `${cfg.metaFs}px sans-serif`
+          ctx.textAlign = 'left'
+          ctx.textBaseline = 'top'
+          ctx.fillText(truncate(ctx, `Directed by ${film.director}`, rvContentW), textX, contentY)
+        })
+      }
+
       if (showRating && film.rating) {
         drawMetaLine(cfg.metaH, () => {
           ctx.fillStyle = '#FFB020'
@@ -1263,6 +1313,26 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
       if (showTags && film.tags?.length) {
         if (!firstMeta) contentY += cfg.metaGap
         contentY += drawTagPills(ctx, film.tags, textX, contentY, rvContentW, true)
+        firstMeta = false
+      }
+
+      if (showGenres && film.genres?.length) {
+        drawMetaLine(cfg.metaH, () => {
+          ctx.fillStyle = SUBTEXT_COLOR
+          ctx.font = `${cfg.metaFs}px sans-serif`
+          ctx.textAlign = 'left'
+          ctx.textBaseline = 'top'
+          ctx.fillText(truncate(ctx, film.genres!.join(' · '), rvContentW), textX, contentY)
+        })
+      }
+
+      if (showOverview && film.overview) {
+        if (!firstMeta) contentY += cfg.metaGap
+        ctx.fillStyle = SUBTEXT_COLOR
+        ctx.font = `italic ${cfg.reviewFs}px sans-serif`
+        ctx.textAlign = 'left'
+        ctx.textBaseline = 'top'
+        contentY += wrapText(ctx, film.overview, textX, contentY, rvContentW, cfg.reviewLineH, true)
         firstMeta = false
       }
 

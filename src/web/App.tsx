@@ -12,6 +12,7 @@ import {
 } from './webScraper'
 import type { ParsedLetterboxdUrl } from './webScraper'
 import type { FilmData } from '../content/index'
+import { didUseTmdb } from '../shared/tmdb'
 import tmdbLogoUrl from '../assets/TMDB-blue-short.svg?url'
 import styles from './App.module.css'
 
@@ -255,10 +256,7 @@ export default function App() {
         posterDataUrl: posterDataUrls[i],
       }))
 
-      // TMDB was used if any poster came from TMDB, or if the backdrop is from TMDB's CDN.
-      const usedTmdb =
-        filmData.films.some(f => !!f.tmdbPosterUrl) ||
-        (filmData.backdropUrl?.startsWith('https://image.tmdb.org/') ?? false)
+      const usedTmdb = didUseTmdb(filmData.films, filmData.backdropUrl)
 
       const blob = await renderCard({
         films,

@@ -19,6 +19,11 @@ export interface UserSettings {
   statsCategory: StatsCategory
   statsSubCategory: StatsSubCategory
   useTmdb: boolean
+  extensionUseTmdb: boolean
+  showDirector: boolean
+  showRuntime: boolean
+  showGenres: boolean
+  showOverview: boolean
 }
 
 export const DEFAULT_SETTINGS: UserSettings = {
@@ -40,6 +45,11 @@ export const DEFAULT_SETTINGS: UserSettings = {
   statsCategory: 'most-watched',
   statsSubCategory: 'most-watched',
   useTmdb: true,
+  extensionUseTmdb: false,
+  showDirector: false,
+  showRuntime: false,
+  showGenres: false,
+  showOverview: false,
 }
 
 const STORAGE_KEY = 'boxd-card-settings'

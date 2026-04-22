@@ -1,23 +1,16 @@
 /**
- * Client for the worker's /tmdb endpoint.
+ * Web-app client for the worker's /tmdb endpoint.
  *
  * Given a Letterboxd film slug, the worker scrapes data-tmdb-id from the film
  * page and queries TMDB. We only ever talk to our own worker — the TMDB API
  * key never reaches the browser.
+ *
+ * The extension uses a different transport (background service worker's
+ * FETCH_TMDB message); shared types and helpers live in src/shared/tmdb.ts.
  */
 
-export interface TmdbFilmData {
-  tmdbId: number
-  type: 'movie' | 'tv'
-  title: string
-  releaseDate: string
-  runtime: number
-  overview: string
-  director: string
-  genres: string[]
-  posterUrl: string    // https://image.tmdb.org/t/p/original/... or ''
-  backdropUrl: string
-}
+export { slugFromPosterUrl, type TmdbFilmData } from '../shared/tmdb'
+import type { TmdbFilmData } from '../shared/tmdb'
 
 const PROXY_BASE: string =
   (import.meta.env.VITE_PROXY_URL as string | undefined) ??
@@ -33,17 +26,4 @@ export async function fetchTmdbData(slug: string): Promise<TmdbFilmData | null> 
   if (res.status === 404) return null
   if (!res.ok) throw new Error(`HTTP ${res.status} fetching TMDB data`)
   return (await res.json()) as TmdbFilmData
-}
-
-/**
- * Extract the Letterboxd film slug from a poster URL of the form
- *   https://letterboxd.com/film/<slug>/image-NNN/
- * Returns '' when the URL doesn't match that pattern.
- *
- * Review URLs may have a trailing "/N/" disambiguator (e.g. "dune-2021/3") —
- * we strip it because the film slug alone is what TMDB lookups key on.
- */
-export function slugFromPosterUrl(posterUrl: string): string {
-  const m = posterUrl.match(/letterboxd\.com\/film\/([^/]+)\//)
-  return m?.[1] ?? ''
 }

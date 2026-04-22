@@ -391,6 +391,41 @@ describe('renderCard — review type', () => {
     expect(blob).toBeInstanceOf(Blob)
   })
 
+  it('renders a review card with TMDB-sourced director/runtime/genres/overview', async () => {
+    const enriched = {
+      ...reviewFilm,
+      director: 'Harold Ramis',
+      runtime: 101,
+      genres: ['Comedy', 'Fantasy'],
+      overview: 'A weatherman is stuck reliving the same day over and over.',
+    }
+    const blob = await renderCard({
+      films: [enriched],
+      username: 'michaellamb',
+      showTitle: true, showYear: true, showRating: true, showDate: true,
+      cardType: 'review',
+      reviewCount: 1,
+      showDirector: true, showRuntime: true, showGenres: true, showOverview: true,
+      usedTmdb: true,
+    })
+    expect(blob).toBeInstanceOf(Blob)
+  })
+
+  it('renders a review card with TMDB toggles off (no TMDB fields drawn)', async () => {
+    // Film still carries TMDB-sourced fields, but the flags are unset — they should not be drawn.
+    const blob = await renderCard({
+      films: [{
+        ...reviewFilm,
+        director: 'Harold Ramis', runtime: 101, genres: ['Comedy'], overview: 'Synopsis…',
+      }],
+      username: 'test',
+      showTitle: true, showYear: true, showRating: true, showDate: true,
+      cardType: 'review',
+      reviewCount: 1,
+    })
+    expect(blob).toBeInstanceOf(Blob)
+  })
+
   it('throws when films array is empty', async () => {
     await expect(renderCard({
       films: [],

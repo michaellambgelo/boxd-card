@@ -242,6 +242,47 @@
   cursor: not-allowed;
 }
 
+/* ── Settings hint text ──────────────────────────────────────── */
+.settingsHint {
+  color: var(--subtext);
+  font-size: 11px;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.settingsHint code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 3px;
+}
+
+/* ── TMDB attribution block (settings) ───────────────────────── */
+.tmdbAttribution {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-top: 2px;
+}
+
+.tmdbLogo {
+  height: 14px;
+  width: auto;
+  flex-shrink: 0;
+}
+
+.tmdbDisclaimer {
+  color: var(--subtext);
+  font-size: 10.5px;
+  line-height: 1.35;
+}
+
 /* ── Generate button ─────────────────────────────────────────── */
 .generateBtn {
   width: 100%;

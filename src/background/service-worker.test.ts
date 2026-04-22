@@ -1,11 +1,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import type { FetchImageRequest, FetchImageResponse } from './service-worker'
+import type {
+  FetchImageRequest,
+  FetchImageResponse,
+  FetchTmdbRequest,
+  FetchTmdbResponse,
+} from './service-worker'
 
 // Capture the registered listener after the module is imported
+type Message = FetchImageRequest | FetchTmdbRequest
+type Response = FetchImageResponse | FetchTmdbResponse
 let listener: (
-  message: FetchImageRequest,
+  message: Message,
   sender: chrome.runtime.MessageSender,
-  sendResponse: (r: FetchImageResponse) => void
+  sendResponse: (r: Response) => void
 ) => boolean | undefined
 
 beforeEach(async () => {
@@ -66,6 +73,89 @@ describe('service-worker FETCH_IMAGE handler', () => {
     await vi.waitFor(() => expect(sendResponse).toHaveBeenCalledOnce())
     expect(sendResponse).toHaveBeenCalledWith(
       expect.objectContaining({ error: expect.stringContaining('Network error') })
+    )
+  })
+})
+
+describe('service-worker FETCH_TMDB handler', () => {
+  it('returns data: null immediately without fetching when slug is empty', async () => {
+    const mockFetch = vi.fn()
+    vi.stubGlobal('fetch', mockFetch)
+
+    const sendResponse = vi.fn()
+    listener({ type: 'FETCH_TMDB', slug: '' }, {}, sendResponse)
+
+    expect(sendResponse).toHaveBeenCalledWith({ data: null })
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  it('calls the Cloudflare Worker /tmdb endpoint with the URL-encoded slug', async () => {
+    const body = {
+      tmdbId: 438631,
+      type: 'movie',
+      title: 'Dune',
+      releaseDate: '2021-09-15',
+      runtime: 155,
+      overview: 'Paul Atreides...',
+      director: 'Denis Villeneuve',
+      genres: ['Science Fiction'],
+      posterUrl: 'https://image.tmdb.org/t/p/original/p.jpg',
+      backdropUrl: 'https://image.tmdb.org/t/p/original/b.jpg',
+    }
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    vi.stubGlobal('fetch', mockFetch)
+
+    const sendResponse = vi.fn()
+    listener({ type: 'FETCH_TMDB', slug: 'some film' }, {}, sendResponse)
+
+    await vi.waitFor(() => expect(sendResponse).toHaveBeenCalledOnce())
+    const [calledUrl] = mockFetch.mock.calls[0]
+    expect(String(calledUrl)).toBe(
+      'https://boxd-card.michaellamb.workers.dev/tmdb?slug=some%20film',
+    )
+    expect(sendResponse).toHaveBeenCalledWith({ data: body })
+  })
+
+  it('returns data: null on 404 (no TMDB mapping)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response('not found', { status: 404 }),
+    ))
+
+    const sendResponse = vi.fn()
+    listener({ type: 'FETCH_TMDB', slug: 'unknown-film' }, {}, sendResponse)
+
+    await vi.waitFor(() => expect(sendResponse).toHaveBeenCalledOnce())
+    expect(sendResponse).toHaveBeenCalledWith({ data: null })
+  })
+
+  it('returns an error on non-404 failure', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response('upstream', { status: 502 }),
+    ))
+
+    const sendResponse = vi.fn()
+    listener({ type: 'FETCH_TMDB', slug: 'dune-2021' }, {}, sendResponse)
+
+    await vi.waitFor(() => expect(sendResponse).toHaveBeenCalledOnce())
+    expect(sendResponse).toHaveBeenCalledWith(
+      expect.objectContaining({ error: expect.stringContaining('502') }),
+    )
+  })
+
+  it('returns an error on network failure', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Offline')))
+
+    const sendResponse = vi.fn()
+    listener({ type: 'FETCH_TMDB', slug: 'dune-2021' }, {}, sendResponse)
+
+    await vi.waitFor(() => expect(sendResponse).toHaveBeenCalledOnce())
+    expect(sendResponse).toHaveBeenCalledWith(
+      expect.objectContaining({ error: expect.stringContaining('Offline') }),
     )
   })
 })

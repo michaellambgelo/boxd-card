@@ -1,4 +1,5 @@
 import type { CardType, ListCount, ReviewCount, StatsCategory, StatsSubCategory } from '../types'
+import { slugFromPosterUrl } from '../shared/tmdb'
 
 // Letterboxd injects a `person` global on profile pages. It is reachable from
 // the MAIN world / JSDOM but not from the isolated content-script world, where
@@ -17,11 +18,16 @@ export interface FilmData {
   rating: string
   posterUrl: string
   filmId: string
+  /**
+   * Letterboxd film slug (e.g. "dune-2021") extracted from the LazyPoster's
+   * data-poster-url at scrape time. Reliable for TMDB lookups even when
+   * posterUrl has been resolved to a CDN URL that no longer contains /film/.
+   */
+  filmSlug?: string
   date?: string       // ISO-ish date string; populated by diary/review scrapers
   reviewText?: string // review body text; populated by review scrapers only
   tags?: string[]     // user tags; populated by review scrapers only
-  // TMDB enrichment — populated only by the web app via the worker's /tmdb route.
-  // Extension content script leaves these undefined.
+  // TMDB enrichment — populated when useTmdb (web) or extensionUseTmdb is on.
   tmdbPosterUrl?: string
   tmdbBackdropUrl?: string
   director?: string
@@ -122,11 +128,13 @@ export function scrapeRecentActivity(): FilmData[] {
     // Use the resolved src if LazyPoster has updated it; otherwise fall back to
     // data-poster-url so the background worker can fetch + follow the redirect.
     const resolvedSrc = img?.src ?? ''
+    const dataPosterUrl = lazyPoster?.getAttribute('data-poster-url') ?? ''
     const posterUrl = resolvedSrc && !resolvedSrc.includes(PLACEHOLDER)
       ? resolvedSrc
-      : `https://letterboxd.com${lazyPoster?.getAttribute('data-poster-url') ?? ''}`
+      : `https://letterboxd.com${dataPosterUrl}`
+    const filmSlug = slugFromPosterUrl(dataPosterUrl)
 
-    return { title, year, rating, posterUrl, filmId }
+    return { title, year, rating, posterUrl, filmId, filmSlug }
   })
 }
 
@@ -156,8 +164,9 @@ export function scrapeFavorites(): FilmData[] {
       : dataPosterUrl
         ? `https://letterboxd.com${dataPosterUrl}`
         : ''
+    const filmSlug = slugFromPosterUrl(dataPosterUrl)
 
-    return { title, year, rating: '', posterUrl, filmId }
+    return { title, year, rating: '', posterUrl, filmId, filmSlug }
   })
 }
 
@@ -195,6 +204,7 @@ export function scrapeDiary(count = 4): FilmData[] {
       : dataPosterUrl
         ? `https://letterboxd.com${dataPosterUrl}`
         : ''
+    const filmSlug = slugFromPosterUrl(dataPosterUrl)
 
     // ── Rating ───────────────────────────────────────────────────────────
     // .hide-for-owner contains the plain star-text span; .show-for-owner
@@ -216,7 +226,7 @@ export function scrapeDiary(count = 4): FilmData[] {
       ? `${currentMonth} ${day}, ${currentYear}`
       : ''
 
-    return { title, year, rating, posterUrl, filmId, date }
+    return { title, year, rating, posterUrl, filmId, filmSlug, date }
   })
 }
 
@@ -270,13 +280,14 @@ export function scrapeList(count: number): FilmData[] {
       : dataPosterUrl
         ? `https://letterboxd.com${dataPosterUrl}`
         : ''
+    const filmSlug = slugFromPosterUrl(dataPosterUrl)
 
     // Detail view: explicit .rating span. Grid view: data-owner-rating attribute.
     const ratingEl = item.querySelector('.rating')
     const rating = ratingEl?.textContent?.trim()
       || ownerRatingToStars(item.getAttribute('data-owner-rating'))
 
-    return { title, year, rating, posterUrl, filmId }
+    return { title, year, rating, posterUrl, filmId, filmSlug }
   })
 }
 
@@ -324,6 +335,7 @@ export async function scrapeReview(): Promise<FilmData[]> {
   const posterUrl = resolvedSrc && !resolvedSrc.includes(PLACEHOLDER)
     ? resolvedSrc
     : dataPosterUrl ? `https://letterboxd.com${dataPosterUrl}` : ''
+  const filmSlug = slugFromPosterUrl(dataPosterUrl)
 
   const title = document.querySelector(
     'header.inline-production-masthead h2.primaryname a'
@@ -353,7 +365,7 @@ export async function scrapeReview(): Promise<FilmData[]> {
     .map(a => a.textContent?.trim() ?? '')
     .filter(Boolean)
 
-  return [{ title, year, rating, posterUrl, filmId, date, reviewText, tags }]
+  return [{ title, year, rating, posterUrl, filmId, filmSlug, date, reviewText, tags }]
 }
 
 // Reviews list page scraper.
@@ -372,6 +384,7 @@ export async function scrapeReviewsList(count: number): Promise<FilmData[]> {
     const posterUrl = resolvedSrc && !resolvedSrc.includes(PLACEHOLDER)
       ? resolvedSrc
       : dataPosterUrl ? `https://letterboxd.com${dataPosterUrl}` : ''
+    const filmSlug = slugFromPosterUrl(dataPosterUrl)
 
     const title = item.querySelector(
       'header.inline-production-masthead h2.primaryname a'
@@ -414,7 +427,7 @@ export async function scrapeReviewsList(count: number): Promise<FilmData[]> {
       .map(a => a.textContent?.trim() ?? '')
       .filter(Boolean)
 
-    return { title, year, rating, posterUrl, filmId, date, reviewText, tags }
+    return { title, year, rating, posterUrl, filmId, filmSlug, date, reviewText, tags }
   }))
 }
 
@@ -459,11 +472,12 @@ export function scrapeFilmsPage(): FilmData[] {
       : dataPosterUrl
         ? `https://letterboxd.com${dataPosterUrl}`
         : ''
+    const filmSlug = slugFromPosterUrl(dataPosterUrl)
 
     const ratingEl = item.querySelector('.rating')
     const rating = ratingEl?.textContent?.trim() ?? ''
 
-    return { title, year, rating, posterUrl, filmId }
+    return { title, year, rating, posterUrl, filmId, filmSlug }
   })
 }
 
@@ -575,6 +589,17 @@ function statsPosterUrl(img: HTMLImageElement | null, lazy: Element | null): str
   return ''
 }
 
+// Parallel to statsPosterUrl — derive the Letterboxd slug for TMDB lookups.
+// Unlike statsPosterUrl, this never returns a CDN URL; it reads structured
+// attributes so the slug survives even after img.src has been resolved.
+function statsFilmSlug(lazy: Element | null): string {
+  const dataPosterUrl = lazy?.getAttribute('data-poster-url') ?? ''
+  if (dataPosterUrl) return slugFromPosterUrl(dataPosterUrl)
+  const itemLink = lazy?.getAttribute('data-item-link') ?? ''
+  if (itemLink) return slugFromPosterUrl(itemLink)
+  return lazy?.getAttribute('data-item-slug') ?? ''
+}
+
 // Scroll a stats section into view and wait for CSI to load and LazyPoster to
 // resolve poster images. LazyPoster only initialises when elements enter the
 // viewport, so we must scroll each entry into view before scraping.
@@ -628,8 +653,9 @@ export function scrapeStatsTopFilms(count: number = 20): FilmData[] {
     const filmId = lazy?.getAttribute('data-film-id') ?? ''
 
     const posterUrl = statsPosterUrl(img, lazy)
+    const filmSlug = statsFilmSlug(lazy)
 
-    return { title, year, rating: '', posterUrl, filmId }
+    return { title, year, rating: '', posterUrl, filmId, filmSlug }
   })
 }
 
@@ -653,8 +679,9 @@ export function scrapeStatsMostWatched(count: number = 20): FilmData[] {
     const filmId = lazy?.getAttribute('data-film-id') ?? ''
 
     const posterUrl = statsPosterUrl(img, lazy)
+    const filmSlug = statsFilmSlug(lazy)
 
-    return { title, year, rating: detail, posterUrl, filmId }
+    return { title, year, rating: detail, posterUrl, filmId, filmSlug }
   }).filter(f => f.title)
 }
 
@@ -678,8 +705,9 @@ export function scrapeStatsHighestRated(count: number = 12): FilmData[] {
     const filmId = lazy?.getAttribute('data-film-id') ?? ''
 
     const posterUrl = statsPosterUrl(img, lazy)
+    const filmSlug = statsFilmSlug(lazy)
 
-    return { title, year, rating: detail, posterUrl, filmId }
+    return { title, year, rating: detail, posterUrl, filmId, filmSlug }
   }).filter(f => f.title)
 }
 
@@ -713,11 +741,12 @@ export function scrapeYearMostWatched(count: number = 20): FilmData[] {
     const filmId = lazy?.getAttribute('data-film-id') ?? ''
 
     const posterUrl = statsPosterUrl(img, lazy)
+    const filmSlug = statsFilmSlug(lazy)
 
     // data-owner-rating on the poster-container; rewatch count in a label
     const rating = ownerRatingToStars(posterContainer?.getAttribute('data-owner-rating') ?? null)
 
-    return { title, year, rating, posterUrl, filmId }
+    return { title, year, rating, posterUrl, filmId, filmSlug }
   }).filter(f => f.title)
 }
 

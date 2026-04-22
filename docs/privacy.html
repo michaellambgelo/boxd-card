@@ -39,20 +39,28 @@
       <h1>Boxd Card</h1>
     </a>
   </div>
-  <p class="subtle">Privacy Policy &mdash; Last updated: March 2026</p>
+  <p class="subtle">Privacy Policy &mdash; Last updated: April 2026</p>
 
   <h2>What this extension does</h2>
   <p>
     Boxd Card is a Chrome browser extension that reads your Letterboxd profile page and generates
-    a shareable image card showing your last four watched films. All processing happens locally
-    in your browser. 
+    a shareable image card showing your last four watched films, favorites, recent diary entries,
+    lists, or reviews.
   </p>
   <p>
-    There is also a web app version of Boxd Card which uses a Cloudflare Worker to proxy 
-    requests to Letterboxd on your behalf. This allows you to generate cards without installing a browser extension.
+    <strong>By default, all processing happens locally in your browser.</strong>
+    You can optionally enable <em>TMDB enrichment</em> in the extension's settings — off by
+    default — which pulls backdrops, higher-resolution posters, and film metadata from
+    <a href="https://www.themoviedb.org/">The Movie Database</a> via our Cloudflare Worker.
+    Details below.
   </p>
   <p>
-    Both versions of Boxd Card do not collect any personal data and are subject to this privacy policy.
+    There is also a web app version of Boxd Card which uses the same Cloudflare Worker to proxy
+    requests to Letterboxd (and, when enabled, to TMDB) on your behalf. This allows you to
+    generate cards without installing a browser extension.
+  </p>
+  <p>
+    Neither version of Boxd Card collects any personal data. Both are subject to this privacy policy.
   </p>
 
   <h2>Data we collect</h2>
@@ -60,7 +68,17 @@
   <ul>
     <li>No account is required.</li>
     <li>No analytics or tracking of any kind.</li>
-    <li>No data is ever sent to any server operated by this extension.</li>
+    <li>
+      When TMDB enrichment is off (the default for the extension), no data leaves your browser
+      except the poster and page fetches Letterboxd already serves publicly.
+    </li>
+    <li>
+      When TMDB enrichment is on, each card generation sends one HTTPS request per film to our
+      Cloudflare Worker containing only the film's Letterboxd slug (for example
+      <code>dune-2021</code>). No username, Letterboxd account, IP identifier, or other personal
+      data is transmitted. The worker caches TMDB responses for 7 days and does not log who
+      fetched what.
+    </li>
   </ul>
 
   <h2>How the extension works</h2>
@@ -70,6 +88,12 @@
   <ol>
     <li>Reads film titles, ratings, and poster image URLs directly from the page you are already viewing.</li>
     <li>Fetches poster images from Letterboxd's CDN (<code>a.ltrbxd.com</code>) using your browser's built-in fetch capability — the same images your browser would load anyway.</li>
+    <li>
+      <em>Only if you have enabled TMDB enrichment in settings:</em> sends each film's
+      Letterboxd slug to our Cloudflare Worker (<code>boxd-card.michaellamb.workers.dev</code>),
+      which looks up the matching record on TMDB and returns public film metadata and image
+      URLs. TMDB posters and backdrops are then fetched from <code>image.tmdb.org</code>.
+    </li>
     <li>Draws those images onto an HTML5 Canvas element entirely within your browser tab to produce the card PNG.</li>
   </ol>
   <p>
@@ -82,7 +106,18 @@
   <ul>
     <li><strong>activeTab</strong> — to read the URL of the tab you are on and confirm it is a Letterboxd profile page.</li>
     <li><strong>clipboardWrite</strong> — to copy the generated card image to your clipboard when you click <em>Copy</em>.</li>
+    <li><strong>storage</strong> — to persist your display preferences (layout, toggles, opt-in state).</li>
+    <li><strong>scripting</strong> — to read the logged-in Letterboxd username from the active tab so the navigation hint can include it.</li>
     <li><strong>Host access to letterboxd.com, a.ltrbxd.com, s.ltrbxd.com</strong> — to fetch poster images and static assets that are already publicly visible on the page.</li>
+    <li>
+      <strong>Host access to boxd-card.michaellamb.workers.dev</strong> — used only when TMDB
+      enrichment is enabled, to fetch film metadata via our Cloudflare Worker proxy to TMDB.
+      No requests are made to this host otherwise.
+    </li>
+    <li>
+      <strong>Host access to image.tmdb.org</strong> — used only when TMDB enrichment is
+      enabled, to fetch the posters and backdrops the worker returns.
+    </li>
   </ul>
 
   <h2>Third-party services</h2>
@@ -91,6 +126,14 @@
     the same way a normal browser visit does. It is subject to
     <a href="https://letterboxd.com/legal/privacy-policy/">Letterboxd's own Privacy Policy</a>.
     This extension is not affiliated with or endorsed by Letterboxd.
+  </p>
+  <p>
+    When TMDB enrichment is enabled, Boxd Card additionally queries
+    <a href="https://www.themoviedb.org/">The Movie Database (TMDB)</a> through our Cloudflare
+    Worker and loads images from <code>image.tmdb.org</code>. These requests are subject to
+    <a href="https://www.themoviedb.org/privacy-policy">TMDB's Privacy Policy</a> and
+    <a href="https://www.themoviedb.org/terms-of-use">Terms of Use</a>. This product uses the
+    TMDB API but is not endorsed or certified by TMDB.
   </p>
 
   <h2>Changes to this policy</h2>

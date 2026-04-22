@@ -14,7 +14,8 @@
 
 import type { CardType, ListCount, ReviewCount, StatsCategory, StatsSubCategory } from '../types'
 import type { FilmData, FilmDataResponse, StatEntry, ChartDataSet, BreakdownData, BarChartData, WeekEntry } from '../content/index'
-import { fetchTmdbData, slugFromPosterUrl, type TmdbFilmData } from './tmdbClient'
+import { fetchTmdbData } from './tmdbClient'
+import { mergeTmdb, slugFromPosterUrl } from '../shared/tmdb'
 
 // ── Proxy ─────────────────────────────────────────────────────────────────────
 
@@ -735,14 +736,3 @@ export async function scrapeLetterboxdPage(
   }
 }
 
-function mergeTmdb(film: FilmData, tmdb: TmdbFilmData): FilmData {
-  return {
-    ...film,
-    tmdbPosterUrl:   tmdb.posterUrl || undefined,
-    tmdbBackdropUrl: tmdb.backdropUrl || undefined,
-    director:        tmdb.director || undefined,
-    runtime:         tmdb.runtime || undefined,
-    genres:          tmdb.genres.length ? tmdb.genres : undefined,
-    overview:        tmdb.overview || undefined,
-  }
-}
