@@ -20,6 +20,14 @@ export interface FilmData {
   date?: string       // ISO-ish date string; populated by diary/review scrapers
   reviewText?: string // review body text; populated by review scrapers only
   tags?: string[]     // user tags; populated by review scrapers only
+  // TMDB enrichment — populated only by the web app via the worker's /tmdb route.
+  // Extension content script leaves these undefined.
+  tmdbPosterUrl?: string
+  tmdbBackdropUrl?: string
+  director?: string
+  runtime?: number    // minutes
+  genres?: string[]
+  overview?: string
 }
 
 export interface StatEntry { value: string; label: string }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { renderCard } from '../canvas/renderCard'
 import { generateAltText } from '../altText'
 import { CARD_TYPE_CONFIGS, LAYOUTS, LAYOUT_CONFIGS, STATS_CATEGORIES, STATS_CATEGORY_CONFIGS } from '../types'
@@ -24,8 +24,12 @@ export default function App() {
 
   const [urlInput,    setUrlInput]    = useState('')
   const [detected,    setDetected]    = useState<ParsedLetterboxdUrl | null>(null)
+  const [detectedFor, setDetectedFor] = useState<string>('')  // trimmed input that produced `detected`
   const [detectError, setDetectError] = useState<string | null>(null)
   const [detecting,   setDetecting]   = useState(false)
+  // Monotonic counter — guards against concurrent detectUrl() calls where a
+  // slow response for an older input could otherwise clobber a newer result.
+  const detectGenRef = useRef(0)
 
   // For profile pages where cardType is ambiguous, user picks one of these two
   const [profileCardType, setProfileCardType] = useState<'last-four-watched' | 'favorites'>('last-four-watched')
@@ -79,39 +83,65 @@ export default function App() {
     ? (detected.cardType ?? profileCardType)
     : profileCardType
 
+  // Revoke the previous blob URL when cardUrl changes, and on unmount.
+  // This is the single source of truth for cardUrl lifecycle — handleGenerate
+  // just calls setCardUrl(null | new) and the effect handles revocation.
+  useEffect(() => {
+    return () => {
+      if (cardUrl) URL.revokeObjectURL(cardUrl)
+    }
+  }, [cardUrl])
+
   // ── URL detection (shared by paste and generate) ─────────────────────────────
 
   async function detectUrl(text: string): Promise<ParsedLetterboxdUrl | null> {
+    const trimmed = text.trim()
+    const gen = ++detectGenRef.current
+    const isLatest = () => gen === detectGenRef.current
+
     setDetected(null)
+    setDetectedFor('')
     setDetectError(null)
 
-    const parsed = parseLetterboxdUrl(text)
+    const parsed = parseLetterboxdUrl(trimmed)
     if (parsed === null) {
-      setDetectError("This doesn't look like a supported Letterboxd URL. Try a profile, diary, list, reviews, or film review link.")
+      if (isLatest()) {
+        setDetectError("This doesn't look like a supported Letterboxd URL. Try a profile, diary, list, reviews, or film review link.")
+      }
       return null
     }
 
     if (parsed.cardType === 'stats') {
-      setDetectError('Stats cards are only available in the Chrome extension. Letterboxd blocks stats page requests from external services.')
+      if (isLatest()) {
+        setDetectError('Stats cards are only available in the Chrome extension. Letterboxd blocks stats page requests from external services.')
+      }
       return null
     }
 
     if (parsed.username) {
-      setDetected(parsed)
+      if (isLatest()) {
+        setDetected(parsed)
+        setDetectedFor(trimmed)
+      }
       return parsed
     }
 
     // Short URL (boxd.it) — needs a network round-trip
     setDetecting(true)
     try {
-      const resolved = await resolveLetterboxdUrl(text)
-      setDetected(resolved)
+      const resolved = await resolveLetterboxdUrl(trimmed)
+      if (isLatest()) {
+        setDetected(resolved)
+        setDetectedFor(trimmed)
+      }
       return resolved
     } catch (err) {
-      setDetectError(err instanceof Error ? err.message : 'Could not resolve this URL.')
+      if (isLatest()) {
+        setDetectError(err instanceof Error ? err.message : 'Could not resolve this URL.')
+      }
       return null
     } finally {
-      setDetecting(false)
+      if (isLatest()) setDetecting(false)
     }
   }
 
@@ -125,8 +155,14 @@ export default function App() {
   async function handleGenerate(e: React.FormEvent) {
     e.preventDefault()
 
-    // If the user typed or edited the URL without pasting, detect it now
-    const resolvedDetected = detected ?? await detectUrl(urlInput.trim())
+    // Only trust the cached detection if the input hasn't changed since it was
+    // produced. Covers two races: (1) user pastes A, then quickly pastes B and
+    // A's slow boxd.it resolve wins — `detectedFor` won't match B. (2) user
+    // edits the URL in place without pasting — `detectedFor` is the pre-edit
+    // text. In both cases we re-detect from the current input.
+    const currentInput = urlInput.trim()
+    const cacheValid = detected !== null && detectedFor === currentInput
+    const resolvedDetected = cacheValid ? detected : await detectUrl(currentInput)
     if (!resolvedDetected) return
 
     const resolvedCardType = resolvedDetected.cardType ?? profileCardType
@@ -134,7 +170,7 @@ export default function App() {
 
     setStatus('loading')
     setError(null)
-    if (cardUrl) URL.revokeObjectURL(cardUrl)
+    // The useEffect on [cardUrl] revokes the previous blob URL when this fires.
     setCardUrl(null)
     setCardBlob(null)
     setAltText(null)
@@ -167,9 +203,10 @@ export default function App() {
       let posterDataUrls: string[] = []
       if (needsFilms) {
         const posterResults = await Promise.allSettled(
-          filmData.films.map((f: FilmData) =>
-            f.posterUrl ? fetchImageDataUrl(f.posterUrl) : Promise.reject(new Error('empty poster URL')),
-          ),
+          filmData.films.map((f: FilmData) => {
+            const url = f.tmdbPosterUrl || f.posterUrl
+            return url ? fetchImageDataUrl(url) : Promise.reject(new Error('empty poster URL'))
+          }),
         )
         const failures = posterResults.filter((r): r is PromiseRejectedResult => r.status === 'rejected')
         if (failures.length === filmData.films.length) {
@@ -183,7 +220,11 @@ export default function App() {
 
       let backdropDataUrl: string | undefined
       if (showBackdrop && filmData.backdropUrl && (resolvedCardType === 'review' || resolvedCardType === 'list')) {
-        try { backdropDataUrl = await fetchImageDataUrl(filmData.backdropUrl) } catch { /* non-fatal */ }
+        try {
+          backdropDataUrl = await fetchImageDataUrl(filmData.backdropUrl)
+        } catch (err) {
+          console.warn('[backdrop] fetch failed (rendering without backdrop):', err)
+        }
       }
 
       const isOwnProfile = !!(
@@ -193,7 +234,11 @@ export default function App() {
       const avatarUrlToFetch = isOwnProfile ? filmData.loggedInAvatarUrl : filmData.authorAvatarUrl
       let footerAvatarDataUrl: string | undefined
       if (avatarUrlToFetch) {
-        try { footerAvatarDataUrl = await fetchImageDataUrl(avatarUrlToFetch) } catch { /* non-fatal */ }
+        try {
+          footerAvatarDataUrl = await fetchImageDataUrl(avatarUrlToFetch)
+        } catch (err) {
+          console.warn('[avatar] fetch failed (rendering without avatar):', err)
+        }
       }
 
       const films = filmData.films.map((f: FilmData, i: number) => ({
@@ -418,6 +463,7 @@ export default function App() {
                 setUrlInput(e.target.value)
                 if (!e.target.value.trim()) {
                   setDetected(null)
+                  setDetectedFor('')
                   setDetectError(null)
                 }
               }}

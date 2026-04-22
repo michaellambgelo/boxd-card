@@ -4,5 +4,6 @@ dist/
 *.zip
 coverage/
 worker/.wrangler/
+worker/.dev.vars
 .env.local
 .DS_Store

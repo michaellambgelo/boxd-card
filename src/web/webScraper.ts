@@ -14,6 +14,7 @@
 
 import type { CardType, ListCount, ReviewCount, StatsCategory, StatsSubCategory } from '../types'
 import type { FilmData, FilmDataResponse, StatEntry, ChartDataSet, BreakdownData, BarChartData, WeekEntry } from '../content/index'
+import { fetchTmdbData, slugFromPosterUrl, type TmdbFilmData } from './tmdbClient'
 
 // ── Proxy ─────────────────────────────────────────────────────────────────────
 
@@ -688,16 +689,57 @@ export async function scrapeLetterboxdPage(
       films = []
   }
 
+  // TMDB enrichment: look up each film's TMDB metadata in parallel. Failures
+  // are swallowed per-film so one miss doesn't break the whole card — but we
+  // surface them via console so a poster-URL format change or a worker outage
+  // shows up in DevTools instead of failing silently.
+  if (films.length > 0) {
+    const slugs = films.map(f => {
+      const slug = slugFromPosterUrl(f.posterUrl)
+      if (!slug && f.posterUrl) {
+        console.warn(`[tmdb] could not derive slug from posterUrl "${f.posterUrl}" for "${f.title}" — Letterboxd URL format may have changed`)
+      }
+      return slug
+    })
+    const tmdbResults = await Promise.allSettled(slugs.map(s => fetchTmdbData(s)))
+    films = films.map((f, i) => {
+      const r = tmdbResults[i]
+      if (r.status === 'rejected') {
+        console.warn(`[tmdb] enrichment failed for "${f.title}":`, r.reason)
+        return f
+      }
+      // r.value === null is the legitimate "no TMDB mapping" case (404 from
+      // worker or empty slug) — stay quiet to avoid log spam.
+      if (!r.value) return f
+      return mergeTmdb(f, r.value)
+    })
+  }
+
+  // Prefer a TMDB backdrop when Letterboxd's native backdrop is empty.
+  const effectiveBackdropUrl = backdropUrl || films.find(f => f.tmdbBackdropUrl)?.tmdbBackdropUrl || ''
+
   return {
     films,
     username:         pageUsername || username,
     listTitle,
     listDescription,
     listTags,
-    backdropUrl,
+    backdropUrl: effectiveBackdropUrl,
     loggedInUsername,
     loggedInAvatarUrl,
     authorAvatarUrl,
     ...statsExtra,
+  }
+}
+
+function mergeTmdb(film: FilmData, tmdb: TmdbFilmData): FilmData {
+  return {
+    ...film,
+    tmdbPosterUrl:   tmdb.posterUrl || undefined,
+    tmdbBackdropUrl: tmdb.backdropUrl || undefined,
+    director:        tmdb.director || undefined,
+    runtime:         tmdb.runtime || undefined,
+    genres:          tmdb.genres.length ? tmdb.genres : undefined,
+    overview:        tmdb.overview || undefined,
   }
 }
