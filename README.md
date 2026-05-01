@@ -2,6 +2,8 @@
 
 [![Latest release](https://img.shields.io/github/v/release/michaellambgelo/boxd-card)](https://github.com/michaellambgelo/boxd-card/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/michaellambgelo/boxd-card/pr-checks.yml?branch=main&label=CI)](https://github.com/michaellambgelo/boxd-card/actions/workflows/pr-checks.yml)
+[![Status](https://status.michaellamb.dev/api/badge/12/status)](https://status.michaellamb.dev)
+[![Uptime 30d](https://status.michaellamb.dev/api/badge/12/uptime/720?style=flat)](https://status.michaellamb.dev)
 
 A Chrome extension that generates shareable image cards from your Letterboxd profile — last watched films, favorites, diary entries, lists, or reviews.
 
