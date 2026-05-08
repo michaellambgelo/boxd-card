@@ -32,7 +32,7 @@ export default defineConfig(({ mode }) => {
             faroUploader({
               appName: 'boxd-card',
               endpoint: 'https://faro-api-prod-us-east-0.grafana.net/faro/api/v1',
-              appId: env.GRAFANA_FARO_APP_ID || 'TODO_BOXD_CARD_APP_ID',
+              appId: env.GRAFANA_FARO_APP_ID || '4021',
               stackId: '997632',
               apiKey: env.GRAFANA_FARO_API_KEY,
               gzipContents: true,
