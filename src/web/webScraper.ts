@@ -16,6 +16,11 @@ import type { CardType, ListCount, ReviewCount, StatsCategory, StatsSubCategory 
 import type { FilmData, FilmDataResponse, StatEntry, ChartDataSet, BreakdownData, BarChartData, WeekEntry } from '../content/index'
 import { fetchTmdbData } from './tmdbClient'
 import { mergeTmdb, slugFromPosterUrl } from '../shared/tmdb'
+import { track } from './faro'
+
+function targetHost(url: string): string {
+  try { return new URL(url).host } catch { return '' }
+}
 
 // ── Proxy ─────────────────────────────────────────────────────────────────────
 
@@ -35,6 +40,7 @@ export function proxyUrl(target: string, accept?: 'image'): string {
 export async function fetchPageDocument(url: string): Promise<Document> {
   const res = await fetch(proxyUrl(url))
   if (!res.ok) {
+    track('scraper_error', { phase: 'page', http_status: res.status, target_host: targetHost(url) })
     if (res.status === 403) {
       throw new Error(
         "Letterboxd's firewall is blocking this request. Try the browser extension for best results or paste another Letterboxd URL.",
@@ -79,7 +85,10 @@ export async function fetchImageDataUrl(url: string): Promise<string> {
   }
 
   const res = await fetch(proxyUrl(resolvedUrl, 'image'))
-  if (!res.ok) throw new Error(`HTTP ${res.status} fetching image`)
+  if (!res.ok) {
+    track('scraper_error', { phase: 'image', http_status: res.status, target_host: targetHost(resolvedUrl) })
+    throw new Error(`HTTP ${res.status} fetching image`)
+  }
   const contentType = res.headers.get('content-type') ?? ''
   if (!contentType.startsWith('image/')) {
     throw new Error(`Expected image, got ${contentType}`)

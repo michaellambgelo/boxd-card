@@ -14,6 +14,7 @@ import type { ParsedLetterboxdUrl } from './webScraper'
 import type { FilmData } from '../content/index'
 import { didUseTmdb } from '../shared/tmdb'
 import tmdbLogoUrl from '../assets/TMDB-blue-short.svg?url'
+import { track } from './faro'
 import styles from './App.module.css'
 
 type Status = 'idle' | 'loading' | 'ready' | 'error'
@@ -126,6 +127,7 @@ export default function App() {
       if (isLatest()) {
         setDetected(parsed)
         setDetectedFor(trimmed)
+        track('profile_searched', { card_type: parsed.cardType ?? 'profile', short_url: false })
       }
       return parsed
     }
@@ -137,6 +139,7 @@ export default function App() {
       if (isLatest()) {
         setDetected(resolved)
         setDetectedFor(trimmed)
+        track('profile_searched', { card_type: resolved.cardType ?? 'profile', short_url: true })
       }
       return resolved
     } catch (err) {
@@ -315,9 +318,22 @@ export default function App() {
       }
 
       setStatus('ready')
+      track('card_generated', {
+        card_type: resolvedCardType,
+        list_count: (resolvedCardType === 'list' || resolvedCardType === 'recent-diary') ? listCount : 0,
+        review_count: resolvedCardType === 'review' ? reviewCount : 0,
+        layout,
+        used_tmdb: usedTmdb,
+        stats_category: resolvedCardType === 'stats' ? statsCategory : '',
+      })
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      const message = err instanceof Error ? err.message : String(err)
+      setError(message)
       setStatus('error')
+      track('card_generate_failed', {
+        card_type: resolvedCardType,
+        message: message.slice(0, 200),
+      })
     }
   }
 
@@ -329,6 +345,7 @@ export default function App() {
     a.href = cardUrl
     a.download = 'boxd-card.png'
     a.click()
+    track('card_downloaded', { card_type: effectiveCardType })
   }
 
   async function handleCopy() {
@@ -336,11 +353,13 @@ export default function App() {
     await navigator.clipboard.write([new ClipboardItem({ 'image/png': cardBlob })])
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
+    track('card_copied', { card_type: effectiveCardType })
   }
 
   async function handleShare() {
     if (!cardBlob) return
     await navigator.share({ files: [new File([cardBlob], 'boxd-card.png', { type: 'image/png' })] })
+    track('card_shared', { card_type: effectiveCardType })
   }
 
   async function handleCopyAltText() {
@@ -348,6 +367,7 @@ export default function App() {
     await navigator.clipboard.writeText(altText)
     setAltTextCopied(true)
     setTimeout(() => setAltTextCopied(false), 1500)
+    track('alt_text_copied', { card_type: effectiveCardType })
   }
 
   const canShare = typeof navigator !== 'undefined' && 'share' in navigator

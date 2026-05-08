@@ -106,5 +106,61 @@
   </p>
 
   <p class="subtle"><a href="privacy.html">Privacy Policy</a></p>
+
+  <script src="https://unpkg.com/@grafana/faro-web-sdk@^1.16.0/dist/bundle/faro-web-sdk.iife.min.js"></script>
+  <script src="https://unpkg.com/@grafana/faro-web-tracing@^1.16.0/dist/bundle/faro-web-tracing.iife.min.js"></script>
+  <script>
+    (function () {
+      try {
+        if (!window.GrafanaFaroWebSdk) return;
+        var isLocalDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+        var faro = window.GrafanaFaroWebSdk.initializeFaro({
+          url: (isLocalDev ? 'http://localhost:8787' : 'https://grafana.michaellamb.dev') + '/faro-proxy?app=boxd-card',
+          app: {
+            name: 'boxd-card',
+            version: '0.6.0',
+            environment: isLocalDev ? 'development' : 'production',
+          },
+        });
+        if (window.GrafanaFaroWebTracing) {
+          faro.instrumentations.add(new window.GrafanaFaroWebTracing.TracingInstrumentation());
+        }
+
+        function classify(href) {
+          if (!href) return 'other';
+          if (href.indexOf('chromewebstore.google.com') !== -1) return 'chrome_web_store';
+          if (/\/app\/?($|[?#])/.test(href) || href === './app/' || href.indexOf('/app/') !== -1) return 'web_app';
+          if (href.indexOf('github.com/michaellambgelo/boxd-card/releases') !== -1) return 'github_releases';
+          if (href.indexOf('github.com/michaellambgelo/boxd-card/discussions') !== -1) return 'github_discussions';
+          if (href.indexOf('github.com/michaellambgelo/boxd-card') !== -1) return 'github_source';
+          if (href.indexOf('blog.michaellamb.dev') !== -1) return 'blog';
+          if (href.indexOf('privacy.html') !== -1) return 'privacy';
+          if (href.indexOf('letterboxd.com') !== -1) return 'letterboxd';
+          return 'other';
+        }
+
+        faro.api.pushEvent('page_view', {
+          surface: 'hero',
+          path: location.pathname,
+          referrer: document.referrer || '',
+        });
+
+        document.body.addEventListener('click', function (e) {
+          var node = e.target;
+          while (node && node.tagName !== 'A') node = node.parentElement;
+          if (!node) return;
+          var href = node.getAttribute('href') || '';
+          if (!href || href.charAt(0) === '#' || href.indexOf('javascript:') === 0) return;
+          faro.api.pushEvent('cta_click', {
+            surface: 'hero',
+            destination: classify(href),
+            href: href,
+          });
+        });
+      } catch (err) {
+        console.warn('Faro init failed:', err);
+      }
+    })();
+  </script>
 </body>
 </html>
