@@ -53,15 +53,26 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "v${{ steps.version.outputs.version }}"
-          git push origin "v${{ steps.version.outputs.version }}"
+          TAG="v${{ steps.version.outputs.version }}"
+          if git ls-remote --tags origin "$TAG" | grep -q "refs/tags/$TAG"; then
+            echo "Tag $TAG already exists on remote — skipping tag creation."
+          else
+            git tag "$TAG"
+            git push origin "$TAG"
+          fi
 
-      - name: Create GitHub Release
+      - name: Create or update GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "v${{ steps.version.outputs.version }}" \
-            boxd-card-${{ steps.version.outputs.version }}.zip \
-            --title "v${{ steps.version.outputs.version }}" \
-            --generate-notes \
-            --target release
+          TAG="v${{ steps.version.outputs.version }}"
+          ZIP="boxd-card-${{ steps.version.outputs.version }}.zip"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — uploading zip asset (overwrite if present)."
+            gh release upload "$TAG" "$ZIP" --clobber
+          else
+            gh release create "$TAG" "$ZIP" \
+              --title "$TAG" \
+              --generate-notes \
+              --target release
+          fi
