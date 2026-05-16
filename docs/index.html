@@ -46,11 +46,11 @@
     </svg>
     <h1>Boxd Card</h1>
   </div>
-  <p>A Chrome extension that generates a shareable image card from your <a href="https://letterboxd.com">Letterboxd</a> profile.</p>
+  <p>A Chrome extension that generates a shareable image card from your <a href="https://letterboxd.com" data-faro-user-action-name="cta-letterboxd">Letterboxd</a> profile.</p>
 
   <p style="margin-top:1.5em; padding:14px 18px; background:#f0f7ff; border:1px solid #b3d4f5; border-radius:8px;">
     <strong>Don't have a Chromium browser to run the extension?</strong>
-    Try the <a href="./app/"><strong>Boxd Card web app</strong></a> — generate cards directly in your browser on any device, including mobile.
+    Try the <a href="./app/" data-faro-user-action-name="cta-web-app"><strong>Boxd Card web app</strong></a> — generate cards directly in your browser on any device, including mobile.
   </p>
 
   <h2>How it works</h2>
@@ -71,12 +71,12 @@
 
   <h2>Installation</h2>
   <p>
-    <strong>Install from the <a href="https://chromewebstore.google.com/detail/boxd-card/kcholfdhfcojahebmneeeikelffkokdj">Chrome Web Store</a></strong> —
+    <strong>Install from the <a href="https://chromewebstore.google.com/detail/boxd-card/kcholfdhfcojahebmneeeikelffkokdj" data-faro-user-action-name="cta-chrome-store">Chrome Web Store</a></strong> —
     one click, auto-updates, works in Chrome and any Chromium-based browser that supports Web Store extensions.
   </p>
   <p>
     Prefer to sideload manually? Grab the latest ZIP from the
-    <a href="https://github.com/michaellambgelo/boxd-card/releases">Releases</a> page, unpack it, then load the extension in Chrome:
+    <a href="https://github.com/michaellambgelo/boxd-card/releases" data-faro-user-action-name="cta-github-releases">Releases</a> page, unpack it, then load the extension in Chrome:
   </p>
   <ol>
     <li>Open <code>chrome://extensions</code> in Chrome.</li>
@@ -91,20 +91,82 @@
   <h2>Feature requests &amp; bug reports</h2>
   <p>
     Have an idea or found a bug? Open a thread in
-    <a href="https://github.com/michaellambgelo/boxd-card/discussions">GitHub Discussions</a>.
+    <a href="https://github.com/michaellambgelo/boxd-card/discussions" data-faro-user-action-name="cta-github-discussions">GitHub Discussions</a>.
   </p>
 
   <h2>Source code</h2>
   <p>
     Boxd Card is open source.
-    Browse the code or contribute at <a href="https://github.com/michaellambgelo/boxd-card">github.com/michaellambgelo/boxd-card</a>.
+    Browse the code or contribute at <a href="https://github.com/michaellambgelo/boxd-card" data-faro-user-action-name="cta-github-source">github.com/michaellambgelo/boxd-card</a>.
   </p>
 
   <p style="margin-top:2em; padding:14px 18px; background:#f0f7ff; border:1px solid #b3d4f5; border-radius:8px;">
     <strong>Heads up:</strong> <code>boxd-card.michaellamb.dev</code> will soon be moving to <code>boxd-card.com</code>.
-    Details will be announced on <a href="https://blog.michaellamb.dev">blog.michaellamb.dev</a>.
+    Details will be announced on <a href="https://blog.michaellamb.dev" data-faro-user-action-name="cta-blog">blog.michaellamb.dev</a>.
   </p>
 
-  <p class="subtle"><a href="privacy.html">Privacy Policy</a></p>
+  <p class="subtle"><a href="privacy.html" data-faro-user-action-name="cta-privacy">Privacy Policy</a></p>
+
+  <script src="https://unpkg.com/@grafana/faro-web-sdk@^2.5.0/dist/bundle/faro-web-sdk.iife.js"></script>
+  <script src="https://unpkg.com/@grafana/faro-web-tracing@^2.5.0/dist/bundle/faro-web-tracing.iife.js"></script>
+  <script>
+    (function () {
+      try {
+        if (!window.GrafanaFaroWebSdk) return;
+        var SDK = window.GrafanaFaroWebSdk;
+        var isLocalDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+        // getWebInstrumentations() returns the default set including
+        // UserActionInstrumentation, which auto-starts a user action when
+        // an element with data-faro-user-action-name is clicked.
+        var instrumentations = SDK.getWebInstrumentations();
+        if (window.GrafanaFaroWebTracing) {
+          instrumentations.push(new window.GrafanaFaroWebTracing.TracingInstrumentation());
+        }
+        var faro = SDK.initializeFaro({
+          url: (isLocalDev ? 'http://localhost:8787' : 'https://grafana.michaellamb.dev') + '/faro-proxy?app=boxd-card',
+          app: {
+            name: 'boxd-card',
+            version: '0.6.0',
+            environment: isLocalDev ? 'development' : 'production',
+          },
+          instrumentations: instrumentations,
+        });
+
+        function classify(href) {
+          if (!href) return 'other';
+          if (href.indexOf('chromewebstore.google.com') !== -1) return 'chrome_web_store';
+          if (/\/app\/?($|[?#])/.test(href) || href === './app/' || href.indexOf('/app/') !== -1) return 'web_app';
+          if (href.indexOf('github.com/michaellambgelo/boxd-card/releases') !== -1) return 'github_releases';
+          if (href.indexOf('github.com/michaellambgelo/boxd-card/discussions') !== -1) return 'github_discussions';
+          if (href.indexOf('github.com/michaellambgelo/boxd-card') !== -1) return 'github_source';
+          if (href.indexOf('blog.michaellamb.dev') !== -1) return 'blog';
+          if (href.indexOf('privacy.html') !== -1) return 'privacy';
+          if (href.indexOf('letterboxd.com') !== -1) return 'letterboxd';
+          return 'other';
+        }
+
+        faro.api.pushEvent('page_view', {
+          surface: 'hero',
+          path: location.pathname,
+          referrer: document.referrer || '',
+        });
+
+        document.body.addEventListener('click', function (e) {
+          var node = e.target;
+          while (node && node.tagName !== 'A') node = node.parentElement;
+          if (!node) return;
+          var href = node.getAttribute('href') || '';
+          if (!href || href.charAt(0) === '#' || href.indexOf('javascript:') === 0) return;
+          faro.api.pushEvent('cta_click', {
+            surface: 'hero',
+            destination: classify(href),
+            href: href,
+          });
+        });
+      } catch (err) {
+        console.warn('Faro init failed:', err);
+      }
+    })();
+  </script>
 </body>
 </html>

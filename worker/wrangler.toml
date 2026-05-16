@@ -20,8 +20,15 @@ head_sampling_rate = 1
 # To deploy:
 #   npx wrangler deploy
 #
+# Secrets (set once per environment):
+#   npx wrangler secret put TMDB_API_KEY
+#     Required by the /tmdb route. Without it, /tmdb returns 503. The value
+#     is a TMDB v4 "API Read Access Token" (Bearer token), NOT the v3 API Key.
+#     Sent as `Authorization: Bearer <token>` so the key never appears in URLs.
+#
 # To run locally (for dev:web):
 #   npx wrangler dev --port 8787
+#     For local TMDB dev, add TMDB_API_KEY=... to .dev.vars (gitignored).
 #
 # After deploying, set the worker URL in .env.local:
 #   VITE_PROXY_URL=https://boxd-card-proxy.<account>.workers.dev

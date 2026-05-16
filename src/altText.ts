@@ -7,6 +7,10 @@ export interface AltTextFilm {
   date?: string
   reviewText?: string
   tags?: string[]
+  director?: string
+  runtime?: number
+  genres?: string[]
+  overview?: string
 }
 
 export interface AltTextInput {
@@ -25,6 +29,10 @@ export interface AltTextInput {
   listDescription?: string
   showTags?: boolean
   listTags?: string[]
+  showDirector?: boolean
+  showRuntime?: boolean
+  showGenres?: boolean
+  showOverview?: boolean
 }
 
 export function generateAltText(input: AltTextInput): string {
@@ -75,12 +83,28 @@ export function generateAltText(input: AltTextInput): string {
 
     let entry = parts.join(' ')
 
+    if (isReview && input.showRuntime && f.runtime) {
+      entry += `, ${f.runtime} min`
+    }
+
+    if (isReview && input.showDirector && f.director) {
+      entry += `, directed by ${f.director}`
+    }
+
     if (input.showDate && f.date) {
       entry += `, watched ${f.date}`
     }
 
     if (isReview && input.showTags && f.tags?.length) {
       entry += ` [tags: ${f.tags.join(', ')}]`
+    }
+
+    if (isReview && input.showGenres && f.genres?.length) {
+      entry += ` [genres: ${f.genres.join(', ')}]`
+    }
+
+    if (isReview && input.showOverview && f.overview) {
+      entry += `. Synopsis: ${f.overview}`
     }
 
     if (isReview && f.reviewText) {

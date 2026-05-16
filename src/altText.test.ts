@@ -184,4 +184,53 @@ describe('generateAltText', () => {
     }))
     expect(result).toContain('Film A (2020) ★★★. Film B (2021) ★★★★')
   })
+
+  // TMDB-sourced fields on Review cards
+  describe('TMDB-sourced fields (Review cards only)', () => {
+    const reviewInput = (overrides: Partial<AltTextInput> = {}): AltTextInput => base({
+      cardType: 'review',
+      films: [{
+        title: 'Dune', year: '2021', rating: '★★★★',
+        director: 'Denis Villeneuve', runtime: 155,
+        genres: ['Science Fiction', 'Adventure'],
+        overview: 'Paul Atreides leads a rebellion.',
+      }],
+      ...overrides,
+    })
+
+    it('includes runtime when showRuntime is on', () => {
+      expect(generateAltText(reviewInput({ showRuntime: true }))).toContain('155 min')
+    })
+
+    it('includes director when showDirector is on', () => {
+      expect(generateAltText(reviewInput({ showDirector: true }))).toContain('directed by Denis Villeneuve')
+    })
+
+    it('includes genres when showGenres is on', () => {
+      expect(generateAltText(reviewInput({ showGenres: true })))
+        .toContain('[genres: Science Fiction, Adventure]')
+    })
+
+    it('includes overview when showOverview is on', () => {
+      expect(generateAltText(reviewInput({ showOverview: true })))
+        .toContain('Synopsis: Paul Atreides leads a rebellion.')
+    })
+
+    it('omits all TMDB fields when their toggles are off', () => {
+      const result = generateAltText(reviewInput())
+      expect(result).not.toContain('155 min')
+      expect(result).not.toContain('directed by')
+      expect(result).not.toContain('[genres:')
+      expect(result).not.toContain('Synopsis:')
+    })
+
+    it('does NOT include runtime on non-review cards even if the toggle is set', () => {
+      const result = generateAltText(base({
+        cardType: 'last-four-watched',
+        films: [{ title: 'Dune', year: '2021', rating: '★★★★', runtime: 155 }],
+        showRuntime: true,
+      }))
+      expect(result).not.toContain('155 min')
+    })
+  })
 })
