@@ -13,6 +13,11 @@ import styles from './Popup.module.css'
 type Status = 'idle' | 'loading' | 'ready' | 'error'
 type View = 'main' | 'settings'
 
+// Chrome Web Store extension ID for the published listing. When the runtime
+// id matches, the extension was installed from the store and Chrome will
+// auto-update it — the update banner is only useful for dev/sideload installs.
+const CWS_EXTENSION_ID = 'kcholfdhfcojahebmneeeikelffkokdj'
+
 async function fetchPosterDataUrl(url: string): Promise<string> {
   const response: FetchImageResponse = await chrome.runtime.sendMessage({
     type: 'FETCH_IMAGE',
@@ -68,8 +73,12 @@ export default function Popup() {
   const [altText,       setAltText]       = useState<string | null>(null)
   const [altTextCopied, setAltTextCopied] = useState(false)
 
-  // On mount: check for newer release on GitHub
+  // On mount: check for newer release on GitHub.
+  // Skip for users installed from the Chrome Web Store — they get updates
+  // automatically and the GitHub-release link is just a confusing dead end
+  // for them. Only dev/sideload installs benefit from the banner.
   useEffect(() => {
+    if (chrome.runtime.id === CWS_EXTENSION_ID) return
     fetch('https://api.github.com/repos/michaellambgelo/boxd-card/releases/latest')
       .then(r => r.ok ? r.json() : null)
       .then(data => {
