@@ -1,11 +1,13 @@
 import { useState, useEffect, type MouseEvent } from 'react'
 import type { FilmData, FilmDataResponse, GetFilmDataRequest } from '../content/index'
-import type { FetchImageResponse } from '../background/service-worker'
+import type { FetchImageResponse, FetchTmdbResponse } from '../background/service-worker'
 import { renderCard } from '../canvas/renderCard'
 import { generateAltText } from '../altText'
 import { CARD_TYPES, CARD_TYPE_CONFIGS, LAYOUTS, LAYOUT_CONFIGS, STATS_CATEGORIES, STATS_CATEGORY_CONFIGS, formatUrlHint, formatUrlHintSegments } from '../types'
 import type { CardType, ListCount, ReviewCount, Layout, StatsCategory, StatsSubCategory } from '../types'
 import { loadSettings, saveSettings } from '../storage/settings'
+import { didUseTmdb, mergeTmdb, slugFromPosterUrl, type TmdbFilmData } from '../shared/tmdb'
+import tmdbLogoUrl from '../assets/TMDB-blue-short.svg?url'
 import styles from './Popup.module.css'
 
 type Status = 'idle' | 'loading' | 'ready' | 'error'
@@ -18,6 +20,15 @@ async function fetchPosterDataUrl(url: string): Promise<string> {
   })
   if (response.error) throw new Error(`Failed to fetch poster: ${response.error}`)
   return response.dataUrl!
+}
+
+async function fetchTmdbData(slug: string): Promise<TmdbFilmData | null> {
+  const response: FetchTmdbResponse = await chrome.runtime.sendMessage({
+    type: 'FETCH_TMDB',
+    slug,
+  })
+  if (response.error) throw new Error(response.error)
+  return response.data ?? null
 }
 
 export default function Popup() {
@@ -45,6 +56,11 @@ export default function Popup() {
   const [statsSubCategory, setStatsSubCategory] = useState<StatsSubCategory>('most-watched')
   const [altTextEnabled,        setAltTextEnabled]        = useState(false)
   const [previewAltTextEnabled, setPreviewAltTextEnabled] = useState(false)
+  const [useTmdb,               setUseTmdb]               = useState(false)
+  const [showDirector, setShowDirector] = useState(false)
+  const [showRuntime,  setShowRuntime]  = useState(false)
+  const [showGenres,   setShowGenres]   = useState(false)
+  const [showOverview, setShowOverview] = useState(false)
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null)
   const [cardUrl,       setCardUrl]       = useState<string | null>(null)
   const [cardBlob,      setCardBlob]      = useState<Blob | null>(null)
@@ -92,6 +108,11 @@ export default function Popup() {
       setStatsSubCategory(s.statsSubCategory)
       setAltTextEnabled(s.generateAltText)
       setPreviewAltTextEnabled(s.previewAltText)
+      setUseTmdb(s.extensionUseTmdb)
+      setShowDirector(s.showDirector)
+      setShowRuntime(s.showRuntime)
+      setShowGenres(s.showGenres)
+      setShowOverview(s.showOverview)
     })
     chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
       const url = (tab?.url ?? '').replace(/#.*$/, '')
@@ -171,10 +192,34 @@ export default function Popup() {
         throw new Error('No stats data found on this page.')
       }
 
+      // Optional TMDB enrichment — gated on the extensionUseTmdb setting.
+      // Stats render modes other than poster-grid don't benefit from TMDB
+      // enrichment (no per-film posters to upgrade), so skip in that case.
+      // Prefer scrape-time filmSlug (derived from data-poster-url) over
+      // parsing posterUrl — by document_idle the CDN URL no longer contains
+      // /film/<slug>/ so regex extraction would return ''.
+      if (useTmdb && needsFilms && filmData.films.length > 0) {
+        const slugs = filmData.films.map(f => f.filmSlug || slugFromPosterUrl(f.posterUrl))
+        const results = await Promise.allSettled(slugs.map(fetchTmdbData))
+        filmData.films = filmData.films.map((f, i) => {
+          const r = results[i]
+          if (r.status !== 'fulfilled' || !r.value) return f
+          return mergeTmdb(f, r.value)
+        })
+      }
+
+      // Prefer TMDB backdrop when Letterboxd's native backdrop is empty. Mirrors
+      // webScraper.ts:722.
+      const effectiveBackdropUrl =
+        filmData.backdropUrl ||
+        filmData.films.find(f => f.tmdbBackdropUrl)?.tmdbBackdropUrl ||
+        ''
+      const usedTmdb = didUseTmdb(filmData.films, effectiveBackdropUrl)
+
       let posterDataUrls: string[] = []
       if (needsFilms) {
         const posterResults = await Promise.allSettled(
-          filmData.films.map((f: FilmData) => fetchPosterDataUrl(f.posterUrl))
+          filmData.films.map((f: FilmData) => fetchPosterDataUrl(f.tmdbPosterUrl || f.posterUrl))
         )
         const failedCount = posterResults.filter(r => r.status === 'rejected').length
         if (failedCount > 0) {
@@ -207,9 +252,9 @@ export default function Popup() {
       }
 
       let backdropDataUrl: string | undefined
-      if (showBackdrop && filmData.backdropUrl && (cardType === 'review' || cardType === 'list')) {
+      if (showBackdrop && effectiveBackdropUrl && (cardType === 'review' || cardType === 'list')) {
         try {
-          backdropDataUrl = await fetchPosterDataUrl(filmData.backdropUrl)
+          backdropDataUrl = await fetchPosterDataUrl(effectiveBackdropUrl)
         } catch {
           // Non-fatal: render without backdrop
         }
@@ -241,6 +286,10 @@ export default function Popup() {
         date:          f.date,
         reviewText:    f.reviewText,
         tags:          f.tags,
+        director:      f.director,
+        runtime:       f.runtime,
+        genres:        f.genres,
+        overview:      f.overview,
         posterDataUrl: posterDataUrls[i],
       }))
 
@@ -265,6 +314,11 @@ export default function Popup() {
         backdropDataUrl,
         footerAvatarDataUrl,
         showShareIcon: !isOwnProfile,
+        usedTmdb,
+        showDirector: cardType === 'review' ? showDirector : undefined,
+        showRuntime:  cardType === 'review' ? showRuntime  : undefined,
+        showGenres:   cardType === 'review' ? showGenres   : undefined,
+        showOverview: cardType === 'review' ? showOverview : undefined,
         layout,
         statsCategory: cardType === 'stats' ? statsCategory : undefined,
         statsSummary: filmData.statsSummary,
@@ -282,7 +336,11 @@ export default function Popup() {
 
       if (altTextEnabled) {
         setAltText(generateAltText({
-          films: films.map(f => ({ title: f.title, year: f.year, rating: f.rating, date: f.date, reviewText: f.reviewText, tags: f.tags })),
+          films: films.map(f => ({
+            title: f.title, year: f.year, rating: f.rating, date: f.date,
+            reviewText: f.reviewText, tags: f.tags,
+            director: f.director, runtime: f.runtime, genres: f.genres, overview: f.overview,
+          })),
           username: filmData.username,
           cardType,
           showTitle,
@@ -297,6 +355,10 @@ export default function Popup() {
           listDescription:     cardType === 'list' ? filmData.listDescription : undefined,
           showTags:            (cardType === 'list' || cardType === 'review') ? showTags : undefined,
           listTags:            cardType === 'list' ? filmData.listTags : undefined,
+          showDirector: cardType === 'review' ? showDirector : undefined,
+          showRuntime:  cardType === 'review' ? showRuntime  : undefined,
+          showGenres:   cardType === 'review' ? showGenres   : undefined,
+          showOverview: cardType === 'review' ? showOverview : undefined,
         }))
       }
 
@@ -431,6 +493,38 @@ export default function Popup() {
                 <input type="checkbox" checked={previewAltTextEnabled} onChange={e => { setPreviewAltTextEnabled(e.target.checked); saveSettings({ previewAltText: e.target.checked }) }} />
                 Preview alt text
               </label>
+            )}
+          </div>
+          <div className={styles.field}>
+            <span className={styles.fieldLabel}>Data sources</span>
+            <label className={styles.checkboxLabel}>
+              <input
+                type="checkbox"
+                checked={useTmdb}
+                onChange={e => { setUseTmdb(e.target.checked); saveSettings({ extensionUseTmdb: e.target.checked }) }}
+              />
+              Enrich cards with TMDB
+            </label>
+            <p className={styles.settingsHint}>
+              When on, film slugs (e.g. <code>dune-2021</code>) are sent to our
+              Cloudflare Worker to fetch backdrops, higher-resolution posters,
+              and metadata from The Movie Database. Off by default; nothing is
+              sent when unchecked.
+            </p>
+            {useTmdb && (
+              <div className={styles.tmdbAttribution}>
+                <a
+                  href="https://www.themoviedb.org/"
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="The Movie Database (TMDB)"
+                >
+                  <img src={tmdbLogoUrl} alt="TMDB" className={styles.tmdbLogo} />
+                </a>
+                <span className={styles.tmdbDisclaimer}>
+                  This product uses the TMDB API but is not endorsed or certified by TMDB.
+                </span>
+              </div>
             )}
           </div>
         </div>
@@ -636,6 +730,31 @@ export default function Popup() {
             </label>
           )}
         </div>
+
+        {/* TMDB-sourced fields — Review cards only, visible only when TMDB enrichment is on */}
+        {cardType === 'review' && useTmdb && (
+          <div className={styles.field}>
+            <span className={styles.fieldLabel}>From TMDB</span>
+            <div className={styles.checkboxGrid}>
+              <label className={styles.checkboxLabel}>
+                <input type="checkbox" checked={showDirector} onChange={e => { setShowDirector(e.target.checked); saveSettings({ showDirector: e.target.checked }) }} />
+                Director
+              </label>
+              <label className={styles.checkboxLabel}>
+                <input type="checkbox" checked={showRuntime} onChange={e => { setShowRuntime(e.target.checked); saveSettings({ showRuntime: e.target.checked }) }} />
+                Runtime
+              </label>
+              <label className={styles.checkboxLabel}>
+                <input type="checkbox" checked={showGenres} onChange={e => { setShowGenres(e.target.checked); saveSettings({ showGenres: e.target.checked }) }} />
+                Genres
+              </label>
+              <label className={styles.checkboxLabel}>
+                <input type="checkbox" checked={showOverview} onChange={e => { setShowOverview(e.target.checked); saveSettings({ showOverview: e.target.checked }) }} />
+                Synopsis
+              </label>
+            </div>
+          </div>
+        )}
 
         <button
           className={styles.generateBtn}

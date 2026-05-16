@@ -1,3 +1,5 @@
+import type { TmdbFilmData } from '../shared/tmdb'
+
 // Show the action only on letterboxd.com pages; hidden everywhere else.
 chrome.runtime.onInstalled.addListener(() => {
   chrome.declarativeContent.onPageChanged.removeRules(undefined, () => {
@@ -22,8 +24,22 @@ export interface FetchImageResponse {
   error?: string
 }
 
+export interface FetchTmdbRequest {
+  type: 'FETCH_TMDB'
+  slug: string
+}
+
+export interface FetchTmdbResponse {
+  data?: TmdbFilmData | null
+  error?: string
+}
+
+const TMDB_WORKER_BASE = 'https://boxd-card.michaellamb.workers.dev'
+
+type Message = FetchImageRequest | FetchTmdbRequest
+
 chrome.runtime.onMessage.addListener(
-  (message: FetchImageRequest, _sender, sendResponse) => {
+  (message: Message, _sender, sendResponse) => {
     if (message.type === 'FETCH_IMAGE') {
       fetch(message.url)
         .then((res) => {
@@ -40,6 +56,30 @@ chrome.runtime.onMessage.addListener(
           sendResponse({ error: String(err) } satisfies FetchImageResponse)
         )
       return true // keep message channel open for async response
+    }
+
+    if (message.type === 'FETCH_TMDB') {
+      if (!message.slug) {
+        sendResponse({ data: null } satisfies FetchTmdbResponse)
+        return true
+      }
+      fetch(`${TMDB_WORKER_BASE}/tmdb?slug=${encodeURIComponent(message.slug)}`)
+        .then(async (res) => {
+          if (res.status === 404) {
+            sendResponse({ data: null } satisfies FetchTmdbResponse)
+            return
+          }
+          if (!res.ok) {
+            sendResponse({ error: `HTTP ${res.status} fetching TMDB data` } satisfies FetchTmdbResponse)
+            return
+          }
+          const data = (await res.json()) as TmdbFilmData
+          sendResponse({ data } satisfies FetchTmdbResponse)
+        })
+        .catch((err) =>
+          sendResponse({ error: String(err) } satisfies FetchTmdbResponse)
+        )
+      return true
     }
   }
 )

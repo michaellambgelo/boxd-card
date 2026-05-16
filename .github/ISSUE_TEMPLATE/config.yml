@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Feature request or idea
+    url: https://github.com/michaellambgelo/boxd-card/discussions/new?category=ideas
+    about: Suggest a new card type, layout, or improvement.
+  - name: Question or support
+    url: https://github.com/michaellambgelo/boxd-card/discussions/new?category=q-a
+    about: Ask a question about installing or using Boxd Card.

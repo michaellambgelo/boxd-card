@@ -391,6 +391,41 @@ describe('renderCard — review type', () => {
     expect(blob).toBeInstanceOf(Blob)
   })
 
+  it('renders a review card with TMDB-sourced director/runtime/genres/overview', async () => {
+    const enriched = {
+      ...reviewFilm,
+      director: 'Harold Ramis',
+      runtime: 101,
+      genres: ['Comedy', 'Fantasy'],
+      overview: 'A weatherman is stuck reliving the same day over and over.',
+    }
+    const blob = await renderCard({
+      films: [enriched],
+      username: 'michaellamb',
+      showTitle: true, showYear: true, showRating: true, showDate: true,
+      cardType: 'review',
+      reviewCount: 1,
+      showDirector: true, showRuntime: true, showGenres: true, showOverview: true,
+      usedTmdb: true,
+    })
+    expect(blob).toBeInstanceOf(Blob)
+  })
+
+  it('renders a review card with TMDB toggles off (no TMDB fields drawn)', async () => {
+    // Film still carries TMDB-sourced fields, but the flags are unset — they should not be drawn.
+    const blob = await renderCard({
+      films: [{
+        ...reviewFilm,
+        director: 'Harold Ramis', runtime: 101, genres: ['Comedy'], overview: 'Synopsis…',
+      }],
+      username: 'test',
+      showTitle: true, showYear: true, showRating: true, showDate: true,
+      cardType: 'review',
+      reviewCount: 1,
+    })
+    expect(blob).toBeInstanceOf(Blob)
+  })
+
   it('throws when films array is empty', async () => {
     await expect(renderCard({
       films: [],
@@ -449,6 +484,67 @@ describe('renderCard — review type', () => {
       layout,
     })
     expect(blob).toBeInstanceOf(Blob)
+  })
+})
+
+describe('renderCard — TMDB attribution', () => {
+  // Tracks every src value set on an Image instance during the test
+  let srcLog: string[] = []
+
+  class TrackingImage {
+    onload?: () => void
+    onerror?: () => void
+    private _src = ''
+    get src() { return this._src }
+    set src(value: string) {
+      this._src = value
+      if (value) {
+        srcLog.push(value)
+        queueMicrotask(() => this.onload?.())
+      }
+    }
+  }
+
+  beforeEach(() => {
+    srcLog = []
+    vi.stubGlobal('Image', TrackingImage as unknown as typeof Image)
+  })
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('loads TMDB logo when usedTmdb is true', async () => {
+    await renderCard({ ...MOCK_OPTIONS, usedTmdb: true })
+    // Vite inlines small SVGs as data URLs; match on the TMDB viewBox fingerprint.
+    expect(srcLog.some(src => src.includes('273.42') && src.includes('35.52'))).toBe(true)
+  })
+
+  it('does NOT load TMDB logo when usedTmdb is false', async () => {
+    await renderCard({ ...MOCK_OPTIONS, usedTmdb: false })
+    expect(srcLog.some(src => src.includes('273.42') && src.includes('35.52'))).toBe(false)
+  })
+
+  it('does NOT load TMDB logo when usedTmdb is undefined', async () => {
+    await renderCard(MOCK_OPTIONS)
+    expect(srcLog.some(src => src.includes('273.42') && src.includes('35.52'))).toBe(false)
+  })
+
+  it('loads TMDB logo for review cards when usedTmdb is true', async () => {
+    await renderCard({
+      films: [{
+        title: 'Groundhog Day',
+        year: '1993',
+        rating: '★★★★★',
+        posterDataUrl: 'data:image/png;base64,abc',
+        date: 'Feb 02, 2026',
+        reviewText: 'A masterpiece.',
+      }],
+      username: 'michaellamb',
+      showTitle: true, showYear: true, showRating: true, showDate: true,
+      cardType: 'review',
+      reviewCount: 1,
+      usedTmdb: true,
+    })
+    // Vite inlines small SVGs as data URLs; match on the TMDB viewBox fingerprint.
+    expect(srcLog.some(src => src.includes('273.42') && src.includes('35.52'))).toBe(true)
   })
 })
 

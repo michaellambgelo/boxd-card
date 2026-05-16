@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { renderCard } from '../canvas/renderCard'
 import { generateAltText } from '../altText'
 import { CARD_TYPE_CONFIGS, LAYOUTS, LAYOUT_CONFIGS, STATS_CATEGORIES, STATS_CATEGORY_CONFIGS } from '../types'
@@ -12,6 +12,9 @@ import {
 } from './webScraper'
 import type { ParsedLetterboxdUrl } from './webScraper'
 import type { FilmData } from '../content/index'
+import { didUseTmdb } from '../shared/tmdb'
+import tmdbLogoUrl from '../assets/TMDB-blue-short.svg?url'
+import { track, startAction } from './faro'
 import styles from './App.module.css'
 
 type Status = 'idle' | 'loading' | 'ready' | 'error'
@@ -24,8 +27,12 @@ export default function App() {
 
   const [urlInput,    setUrlInput]    = useState('')
   const [detected,    setDetected]    = useState<ParsedLetterboxdUrl | null>(null)
+  const [detectedFor, setDetectedFor] = useState<string>('')  // trimmed input that produced `detected`
   const [detectError, setDetectError] = useState<string | null>(null)
   const [detecting,   setDetecting]   = useState(false)
+  // Monotonic counter — guards against concurrent detectUrl() calls where a
+  // slow response for an older input could otherwise clobber a newer result.
+  const detectGenRef = useRef(0)
 
   // For profile pages where cardType is ambiguous, user picks one of these two
   const [profileCardType, setProfileCardType] = useState<'last-four-watched' | 'favorites'>('last-four-watched')
@@ -47,6 +54,7 @@ export default function App() {
   const [layout,       setLayout]       = useState<Layout>('landscape')
   const [altTextEnabled,        setAltTextEnabled]        = useState(false)
   const [previewAltTextEnabled, setPreviewAltTextEnabled] = useState(false)
+  const [useTmdb,               setUseTmdb]               = useState(true)
 
   const [cardUrl,  setCardUrl]  = useState<string | null>(null)
   const [cardBlob, setCardBlob] = useState<Blob | null>(null)
@@ -71,6 +79,7 @@ export default function App() {
       setLayout(s.layout)
       setAltTextEnabled(s.generateAltText)
       setPreviewAltTextEnabled(s.previewAltText)
+      setUseTmdb(s.useTmdb)
     })
   }, [])
 
@@ -79,39 +88,67 @@ export default function App() {
     ? (detected.cardType ?? profileCardType)
     : profileCardType
 
+  // Revoke the previous blob URL when cardUrl changes, and on unmount.
+  // This is the single source of truth for cardUrl lifecycle — handleGenerate
+  // just calls setCardUrl(null | new) and the effect handles revocation.
+  useEffect(() => {
+    return () => {
+      if (cardUrl) URL.revokeObjectURL(cardUrl)
+    }
+  }, [cardUrl])
+
   // ── URL detection (shared by paste and generate) ─────────────────────────────
 
   async function detectUrl(text: string): Promise<ParsedLetterboxdUrl | null> {
+    const trimmed = text.trim()
+    const gen = ++detectGenRef.current
+    const isLatest = () => gen === detectGenRef.current
+
     setDetected(null)
+    setDetectedFor('')
     setDetectError(null)
 
-    const parsed = parseLetterboxdUrl(text)
+    const parsed = parseLetterboxdUrl(trimmed)
     if (parsed === null) {
-      setDetectError("This doesn't look like a supported Letterboxd URL. Try a profile, diary, list, reviews, or film review link.")
+      if (isLatest()) {
+        setDetectError("This doesn't look like a supported Letterboxd URL. Try a profile, diary, list, reviews, or film review link.")
+      }
       return null
     }
 
     if (parsed.cardType === 'stats') {
-      setDetectError('Stats cards are only available in the Chrome extension. Letterboxd blocks stats page requests from external services.')
+      if (isLatest()) {
+        setDetectError('Stats cards are only available in the Chrome extension. Letterboxd blocks stats page requests from external services.')
+      }
       return null
     }
 
     if (parsed.username) {
-      setDetected(parsed)
+      if (isLatest()) {
+        setDetected(parsed)
+        setDetectedFor(trimmed)
+        track('profile_searched', { card_type: parsed.cardType ?? 'profile', short_url: false })
+      }
       return parsed
     }
 
     // Short URL (boxd.it) — needs a network round-trip
     setDetecting(true)
     try {
-      const resolved = await resolveLetterboxdUrl(text)
-      setDetected(resolved)
+      const resolved = await resolveLetterboxdUrl(trimmed)
+      if (isLatest()) {
+        setDetected(resolved)
+        setDetectedFor(trimmed)
+        track('profile_searched', { card_type: resolved.cardType ?? 'profile', short_url: true })
+      }
       return resolved
     } catch (err) {
-      setDetectError(err instanceof Error ? err.message : 'Could not resolve this URL.')
+      if (isLatest()) {
+        setDetectError(err instanceof Error ? err.message : 'Could not resolve this URL.')
+      }
       return null
     } finally {
-      setDetecting(false)
+      if (isLatest()) setDetecting(false)
     }
   }
 
@@ -125,16 +162,27 @@ export default function App() {
   async function handleGenerate(e: React.FormEvent) {
     e.preventDefault()
 
-    // If the user typed or edited the URL without pasting, detect it now
-    const resolvedDetected = detected ?? await detectUrl(urlInput.trim())
+    // Only trust the cached detection if the input hasn't changed since it was
+    // produced. Covers two races: (1) user pastes A, then quickly pastes B and
+    // A's slow boxd.it resolve wins — `detectedFor` won't match B. (2) user
+    // edits the URL in place without pasting — `detectedFor` is the pre-edit
+    // text. In both cases we re-detect from the current input.
+    const currentInput = urlInput.trim()
+    const cacheValid = detected !== null && detectedFor === currentInput
+    const resolvedDetected = cacheValid ? detected : await detectUrl(currentInput)
     if (!resolvedDetected) return
 
     const resolvedCardType = resolvedDetected.cardType ?? profileCardType
     const { username, listSlug, filmSlug, isReviewListPage } = resolvedDetected
 
+    // Wrap the async pipeline in a Faro user action so scraper_error,
+    // image-fetch perf entries, and any thrown errors get correlated via
+    // action.name in Grafana.
+    const action = startAction('generate-card', { card_type: resolvedCardType })
+
     setStatus('loading')
     setError(null)
-    if (cardUrl) URL.revokeObjectURL(cardUrl)
+    // The useEffect on [cardUrl] revokes the previous blob URL when this fires.
     setCardUrl(null)
     setCardBlob(null)
     setAltText(null)
@@ -155,6 +203,7 @@ export default function App() {
         filmSlug,
         resolvedCardType === 'stats' ? statsCategory : undefined,
         resolvedCardType === 'stats' ? statsSubCategory : undefined,
+        useTmdb,
       )
 
       if (needsFilms && !filmData.films.length) {
@@ -167,9 +216,10 @@ export default function App() {
       let posterDataUrls: string[] = []
       if (needsFilms) {
         const posterResults = await Promise.allSettled(
-          filmData.films.map((f: FilmData) =>
-            f.posterUrl ? fetchImageDataUrl(f.posterUrl) : Promise.reject(new Error('empty poster URL')),
-          ),
+          filmData.films.map((f: FilmData) => {
+            const url = f.tmdbPosterUrl || f.posterUrl
+            return url ? fetchImageDataUrl(url) : Promise.reject(new Error('empty poster URL'))
+          }),
         )
         const failures = posterResults.filter((r): r is PromiseRejectedResult => r.status === 'rejected')
         if (failures.length === filmData.films.length) {
@@ -183,7 +233,11 @@ export default function App() {
 
       let backdropDataUrl: string | undefined
       if (showBackdrop && filmData.backdropUrl && (resolvedCardType === 'review' || resolvedCardType === 'list')) {
-        try { backdropDataUrl = await fetchImageDataUrl(filmData.backdropUrl) } catch { /* non-fatal */ }
+        try {
+          backdropDataUrl = await fetchImageDataUrl(filmData.backdropUrl)
+        } catch (err) {
+          console.warn('[backdrop] fetch failed (rendering without backdrop):', err)
+        }
       }
 
       const isOwnProfile = !!(
@@ -193,7 +247,11 @@ export default function App() {
       const avatarUrlToFetch = isOwnProfile ? filmData.loggedInAvatarUrl : filmData.authorAvatarUrl
       let footerAvatarDataUrl: string | undefined
       if (avatarUrlToFetch) {
-        try { footerAvatarDataUrl = await fetchImageDataUrl(avatarUrlToFetch) } catch { /* non-fatal */ }
+        try {
+          footerAvatarDataUrl = await fetchImageDataUrl(avatarUrlToFetch)
+        } catch (err) {
+          console.warn('[avatar] fetch failed (rendering without avatar):', err)
+        }
       }
 
       const films = filmData.films.map((f: FilmData, i: number) => ({
@@ -205,6 +263,8 @@ export default function App() {
         tags:          f.tags,
         posterDataUrl: posterDataUrls[i],
       }))
+
+      const usedTmdb = didUseTmdb(filmData.films, filmData.backdropUrl)
 
       const blob = await renderCard({
         films,
@@ -236,6 +296,7 @@ export default function App() {
         breakdownData:       filmData.breakdownData,
         barChartData:        filmData.barChartData,
         milestonesData:      filmData.milestonesData,
+        usedTmdb,
       })
 
       setCardBlob(blob)
@@ -262,9 +323,24 @@ export default function App() {
       }
 
       setStatus('ready')
+      track('card_generated', {
+        card_type: resolvedCardType,
+        list_count: (resolvedCardType === 'list' || resolvedCardType === 'recent-diary') ? listCount : 0,
+        review_count: resolvedCardType === 'review' ? reviewCount : 0,
+        layout,
+        used_tmdb: usedTmdb,
+        stats_category: resolvedCardType === 'stats' ? statsCategory : '',
+      })
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      const message = err instanceof Error ? err.message : String(err)
+      setError(message)
       setStatus('error')
+      track('card_generate_failed', {
+        card_type: resolvedCardType,
+        message: message.slice(0, 200),
+      })
+    } finally {
+      action?.end()
     }
   }
 
@@ -276,6 +352,7 @@ export default function App() {
     a.href = cardUrl
     a.download = 'boxd-card.png'
     a.click()
+    track('card_downloaded', { card_type: effectiveCardType })
   }
 
   async function handleCopy() {
@@ -283,11 +360,13 @@ export default function App() {
     await navigator.clipboard.write([new ClipboardItem({ 'image/png': cardBlob })])
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
+    track('card_copied', { card_type: effectiveCardType })
   }
 
   async function handleShare() {
     if (!cardBlob) return
     await navigator.share({ files: [new File([cardBlob], 'boxd-card.png', { type: 'image/png' })] })
+    track('card_shared', { card_type: effectiveCardType })
   }
 
   async function handleCopyAltText() {
@@ -295,6 +374,7 @@ export default function App() {
     await navigator.clipboard.writeText(altText)
     setAltTextCopied(true)
     setTimeout(() => setAltTextCopied(false), 1500)
+    track('alt_text_copied', { card_type: effectiveCardType })
   }
 
   const canShare = typeof navigator !== 'undefined' && 'share' in navigator
@@ -320,7 +400,7 @@ export default function App() {
         <header className={styles.header}>
           {view === 'settings' ? (
             <>
-              <button className={styles.backBtn} onClick={() => setView('main')} aria-label="Back to main">
+              <button className={styles.backBtn} onClick={() => setView('main')} aria-label="Back to main" data-faro-user-action-name="close-settings">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
                 Back
               </button>
@@ -347,7 +427,7 @@ export default function App() {
                 </svg>
                 <h1>Boxd Card</h1>
               </a>
-              <button className={styles.gearBtn} onClick={() => setView('settings')} aria-label="Settings">
+              <button className={styles.gearBtn} onClick={() => setView('settings')} aria-label="Settings" data-faro-user-action-name="open-settings">
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <circle cx="12" cy="12" r="3"/>
                   <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
@@ -370,6 +450,7 @@ export default function App() {
                     value={l}
                     checked={layout === l}
                     onChange={() => { setLayout(l); saveSettings({ layout: l }) }}
+                    data-faro-user-action-name="settings-change-layout"
                   />
                   <span className={styles.layoutOptionText}>
                     <span>{LAYOUT_CONFIGS[l].label}</span>
@@ -381,15 +462,30 @@ export default function App() {
             <div className={styles.settingsSection}>
               <span className={styles.fieldLabel}>Accessibility</span>
               <label className={styles.checkboxLabel}>
-                <input type="checkbox" checked={altTextEnabled} onChange={e => { setAltTextEnabled(e.target.checked); saveSettings({ generateAltText: e.target.checked }) }} />
+                <input type="checkbox" checked={altTextEnabled} onChange={e => { setAltTextEnabled(e.target.checked); saveSettings({ generateAltText: e.target.checked }) }} data-faro-user-action-name="settings-toggle-alt-text" />
                 Generate alt text
               </label>
               {altTextEnabled && (
                 <label className={styles.checkboxLabel}>
-                  <input type="checkbox" checked={previewAltTextEnabled} onChange={e => { setPreviewAltTextEnabled(e.target.checked); saveSettings({ previewAltText: e.target.checked }) }} />
+                  <input type="checkbox" checked={previewAltTextEnabled} onChange={e => { setPreviewAltTextEnabled(e.target.checked); saveSettings({ previewAltText: e.target.checked }) }} data-faro-user-action-name="settings-toggle-preview-alt-text" />
                   Preview alt text
                 </label>
               )}
+            </div>
+            <div className={styles.settingsSection}>
+              <span className={styles.fieldLabel}>Data sources</span>
+              <label className={styles.checkboxLabel}>
+                <input
+                  type="checkbox"
+                  checked={useTmdb}
+                  onChange={e => { setUseTmdb(e.target.checked); saveSettings({ useTmdb: e.target.checked }) }}
+                  data-faro-user-action-name="settings-toggle-tmdb"
+                />
+                Enrich cards with TMDB (posters, backdrops, metadata)
+              </label>
+              <p className={styles.settingsHint}>
+                When off, cards render using only Letterboxd's own posters and backdrops.
+              </p>
             </div>
           </div>
         )}
@@ -418,6 +514,7 @@ export default function App() {
                 setUrlInput(e.target.value)
                 if (!e.target.value.trim()) {
                   setDetected(null)
+                  setDetectedFor('')
                   setDetectError(null)
                 }
               }}
@@ -617,18 +714,19 @@ export default function App() {
               <img src={cardUrl} alt="Boxd Card preview" className={styles.preview} />
             </a>
             <div className={styles.actionRow}>
-              <button className={styles.actionBtn} onClick={handleDownload}>Download</button>
+              <button className={styles.actionBtn} onClick={handleDownload} data-faro-user-action-name="card-download">Download</button>
               <button
                 className={`${styles.actionBtn}${copied ? ` ${styles.actionBtnCopied}` : ''}`}
                 onClick={handleCopy}
+                data-faro-user-action-name="card-copy"
               >
                 {copied ? 'Copied!' : 'Copy'}
               </button>
               {canShare && (
-                <button className={styles.actionBtn} onClick={handleShare}>Share</button>
+                <button className={styles.actionBtn} onClick={handleShare} data-faro-user-action-name="card-share">Share</button>
               )}
               {altText && (
-                <button className={`${styles.actionBtn}${altTextCopied ? ` ${styles.actionBtnCopied}` : ''}`} onClick={handleCopyAltText}>
+                <button className={`${styles.actionBtn}${altTextCopied ? ` ${styles.actionBtnCopied}` : ''}`} onClick={handleCopyAltText} data-faro-user-action-name="card-copy-alt-text">
                   {altTextCopied ? 'Copied!' : 'Alt Text'}
                 </button>
               )}
@@ -637,6 +735,22 @@ export default function App() {
               <textarea className={styles.altTextArea} readOnly rows={3} value={altText} />
             )}
           </section>
+        )}
+
+        {useTmdb && (
+          <div className={styles.tmdbAttribution}>
+            <a
+              href="https://www.themoviedb.org/"
+              target="_blank"
+              rel="noreferrer"
+              aria-label="The Movie Database (TMDB)"
+            >
+              <img src={tmdbLogoUrl} alt="TMDB" className={styles.tmdbLogo} />
+            </a>
+            <span className={styles.tmdbDisclaimer}>
+              This product uses the TMDB API but is not endorsed or certified by TMDB.
+            </span>
+          </div>
         )}
 
         <footer className={styles.footer}>

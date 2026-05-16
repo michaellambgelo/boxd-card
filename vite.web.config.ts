@@ -1,5 +1,6 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
+import faroUploader from '@grafana/faro-rollup-plugin'
 import { resolve } from 'path'
 
 /**
@@ -11,32 +12,51 @@ import { resolve } from 'path'
  * Environment variables (create .env.local in project root):
  *   VITE_PROXY_URL=http://localhost:8787   ← for local dev with wrangler dev
  *   VITE_PROXY_URL=https://proxy.boxd-card.michaellamb.dev  ← for production
+ *   VITE_FARO_PROXY_URL=https://grafana.michaellamb.dev   ← Grafana Faro proxy base
+ *   VITE_APP_VERSION=<package.json version>               ← optional override
+ *   GRAFANA_FARO_API_KEY=<faro cloud api key>             ← enables source-map upload on prod build
  */
-export default defineConfig({
-  plugins: [react()],
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, __dirname, '')
 
-  // Treat src/web/ as the Vite root so index.html is found there.
-  // Module imports that traverse up (e.g. ../canvas/renderCard) still resolve
-  // correctly because Rollup follows the import graph from each file's own
-  // directory rather than from the root.
-  root: resolve(__dirname, 'src/web'),
+  // Source-map upload runs only on production builds and only when the API
+  // key is present. Local builds without the key still succeed; Faro stack
+  // traces just remain unmapped.
+  const enableFaroUpload = mode === 'production' && Boolean(env.GRAFANA_FARO_API_KEY)
 
-  // Load .env files from the project root (not from src/web/).
-  envDir: __dirname,
+  return {
+    plugins: [
+      react(),
+      ...(enableFaroUpload
+        ? [
+            faroUploader({
+              appName: 'boxd-card',
+              endpoint: 'https://faro-api-prod-us-east-0.grafana.net/faro/api/v1',
+              appId: env.GRAFANA_FARO_APP_ID || '4021',
+              stackId: '997632',
+              apiKey: env.GRAFANA_FARO_API_KEY,
+              gzipContents: true,
+              verbose: false,
+            }),
+          ]
+        : []),
+    ],
 
-  // Asset URLs must be relative to /app/ since GitHub Pages serves this
-  // from boxd-card.michaellamb.dev/app/, not the domain root.
-  base: '/app/',
+    root: resolve(__dirname, 'src/web'),
+    envDir: __dirname,
+    base: '/app/',
 
-  build: {
-    // Output to docs/app/ so GitHub Pages serves it at /app/
-    outDir: resolve(__dirname, 'docs/app'),
-    emptyOutDir: true,
-  },
+    build: {
+      outDir: resolve(__dirname, 'docs/app'),
+      emptyOutDir: true,
+      // Emit source maps so the Faro upload plugin can read them. The .map
+      // files ship to GitHub Pages alongside the bundle, which is fine for
+      // an open-source app.
+      sourcemap: true,
+    },
 
-  server: {
-    // Dev server port distinct from the default (5173) to avoid collision
-    // with any other running Vite instance.
-    port: 5174,
-  },
+    server: {
+      port: 5174,
+    },
+  }
 })

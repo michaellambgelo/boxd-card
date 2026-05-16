@@ -109,6 +109,23 @@ describe('scrapeRecentActivity', () => {
     expect(film.posterUrl).toBe('https://letterboxd.com/film/dune-2021/image-150/')
   })
 
+  // Regression: LazyPoster resolves img.src to an a.ltrbxd.com URL before
+  // document_idle, so posterUrl no longer contains /film/<slug>/. Regex
+  // extraction from posterUrl would return '' and TMDB lookups would silently
+  // no-op. filmSlug is read from data-poster-url at scrape time precisely to
+  // survive this case.
+  it('populates filmSlug from data-poster-url even when posterUrl is a resolved CDN URL', () => {
+    setRecentActivityDOM([
+      makeFilmItem({
+        imgSrc: REAL_POSTER,                    // CDN URL — no /film/ segment
+        posterUrl: '/film/dune-2021/image-150/', // still the raw slug path
+      }),
+    ])
+    const [film] = scrapeRecentActivity()
+    expect(film.posterUrl).toBe(REAL_POSTER)
+    expect(film.filmSlug).toBe('dune-2021')
+  })
+
   it('caps results at 4 even when more items exist', () => {
     setRecentActivityDOM(Array.from({ length: 6 }, (_, i) =>
       makeFilmItem({ name: `Film ${i} (202${i})`, filmId: `${i}` })

@@ -14,6 +14,13 @@
 
 import type { CardType, ListCount, ReviewCount, StatsCategory, StatsSubCategory } from '../types'
 import type { FilmData, FilmDataResponse, StatEntry, ChartDataSet, BreakdownData, BarChartData, WeekEntry } from '../content/index'
+import { fetchTmdbData } from './tmdbClient'
+import { mergeTmdb, slugFromPosterUrl } from '../shared/tmdb'
+import { track } from './faro'
+
+function targetHost(url: string): string {
+  try { return new URL(url).host } catch { return '' }
+}
 
 // ── Proxy ─────────────────────────────────────────────────────────────────────
 
@@ -33,6 +40,7 @@ export function proxyUrl(target: string, accept?: 'image'): string {
 export async function fetchPageDocument(url: string): Promise<Document> {
   const res = await fetch(proxyUrl(url))
   if (!res.ok) {
+    track('scraper_error', { phase: 'page', http_status: res.status, target_host: targetHost(url) })
     if (res.status === 403) {
       throw new Error(
         "Letterboxd's firewall is blocking this request. Try the browser extension for best results or paste another Letterboxd URL.",
@@ -77,7 +85,10 @@ export async function fetchImageDataUrl(url: string): Promise<string> {
   }
 
   const res = await fetch(proxyUrl(resolvedUrl, 'image'))
-  if (!res.ok) throw new Error(`HTTP ${res.status} fetching image`)
+  if (!res.ok) {
+    track('scraper_error', { phase: 'image', http_status: res.status, target_host: targetHost(resolvedUrl) })
+    throw new Error(`HTTP ${res.status} fetching image`)
+  }
   const contentType = res.headers.get('content-type') ?? ''
   if (!contentType.startsWith('image/')) {
     throw new Error(`Expected image, got ${contentType}`)
@@ -621,6 +632,7 @@ export async function scrapeLetterboxdPage(
   filmSlug = '',
   statsCategory?: StatsCategory,
   statsSubCategory?: StatsSubCategory,
+  enrichWithTmdb = true,
 ): Promise<FilmDataResponse> {
   const url = buildPageUrl(username, cardType, listSlug, filmSlug)
   const doc = await fetchPageDocument(url)
@@ -688,16 +700,48 @@ export async function scrapeLetterboxdPage(
       films = []
   }
 
+  // TMDB enrichment: look up each film's TMDB metadata in parallel. Failures
+  // are swallowed per-film so one miss doesn't break the whole card — but we
+  // surface them via console so a poster-URL format change or a worker outage
+  // shows up in DevTools instead of failing silently.
+  // Callers can set enrichWithTmdb=false to skip this block entirely (used by
+  // the "Data sources" setting to disable TMDB for debugging regressions).
+  if (enrichWithTmdb && films.length > 0) {
+    const slugs = films.map(f => {
+      const slug = slugFromPosterUrl(f.posterUrl)
+      if (!slug && f.posterUrl) {
+        console.warn(`[tmdb] could not derive slug from posterUrl "${f.posterUrl}" for "${f.title}" — Letterboxd URL format may have changed`)
+      }
+      return slug
+    })
+    const tmdbResults = await Promise.allSettled(slugs.map(s => fetchTmdbData(s)))
+    films = films.map((f, i) => {
+      const r = tmdbResults[i]
+      if (r.status === 'rejected') {
+        console.warn(`[tmdb] enrichment failed for "${f.title}":`, r.reason)
+        return f
+      }
+      // r.value === null is the legitimate "no TMDB mapping" case (404 from
+      // worker or empty slug) — stay quiet to avoid log spam.
+      if (!r.value) return f
+      return mergeTmdb(f, r.value)
+    })
+  }
+
+  // Prefer a TMDB backdrop when Letterboxd's native backdrop is empty.
+  const effectiveBackdropUrl = backdropUrl || films.find(f => f.tmdbBackdropUrl)?.tmdbBackdropUrl || ''
+
   return {
     films,
     username:         pageUsername || username,
     listTitle,
     listDescription,
     listTags,
-    backdropUrl,
+    backdropUrl: effectiveBackdropUrl,
     loggedInUsername,
     loggedInAvatarUrl,
     authorAvatarUrl,
     ...statsExtra,
   }
 }
+
