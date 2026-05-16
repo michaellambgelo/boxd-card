@@ -20,11 +20,24 @@ Listing URL: <https://chromewebstore.google.com/detail/boxd-card/kcholfdhfcojahe
 > - Recent Diary (4, 10, or 20 entries)
 > - Lists (4, 10, or 20 entries)
 > - Reviews (1–4)
+> - Stats — Summary, Most Watched, Rated Higher Than Average, Films by Week,
+>   Ratings & Breakdown, Genres, Countries, Languages, and Milestones
+>   (Letterboxd Pro accounts only, since the underlying stats pages require Pro)
 >
 > Open the extension on a supported Letterboxd page, pick a card type, click
 > Generate Card, and get a PNG you can download or copy straight to your
-> clipboard. Six layout presets are available: landscape, square, 4:5, 3:4,
-> story, and banner.
+> clipboard. Six layout presets are available:
+>
+> - Landscape (1200px wide) — Twitter, Discord
+> - Square (1080 × 1080) — Instagram grid
+> - 4:5 (1080 × 1350) — Instagram feed
+> - 3:4 (1080 × 1440) — Instagram feed
+> - Story (1080 × 1920) — Instagram, TikTok
+> - Banner (1500 × 750) — Twitter header
+>
+> Prefer not to install anything? The same card generator also runs as a web
+> app at <https://boxd-card.michaellamb.dev/> — paste a Letterboxd URL and get
+> the card without leaving your browser.
 >
 > **How it works.** Boxd Card runs locally in your browser by default: it reads
 > film titles, ratings, and poster URLs directly from the Letterboxd page DOM
@@ -96,8 +109,11 @@ Certifications (all required to be true, and are true):
 
 ## Change log
 
-- **2026-04 (v0.7.0 candidate)** — Added TMDB enrichment as an optional,
-  off-by-default feature. Added host permissions for
-  `boxd-card.michaellamb.workers.dev` and `image.tmdb.org`. Updated detailed
-  description and privacy policy with conditional disclosure language.
+- **2026-05 (v0.7.0)** — Added TMDB enrichment as an optional, off-by-default
+  feature for Review cards (richer metadata, higher-resolution posters,
+  backdrops). New Settings → Data sources toggle to disable it. Added host
+  permissions for `boxd-card.michaellamb.workers.dev` and `image.tmdb.org`.
+  Updated detailed description and privacy policy with conditional disclosure
+  language. Stats card type (added in v0.6.0) and the companion web app are
+  now documented in the listing.
 - **Earlier** — see commit history on GitHub.
