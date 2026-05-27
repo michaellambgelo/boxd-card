@@ -218,6 +218,34 @@
   text-decoration: none;
 }
 
+/* Small avatar chip rendered inline with the personalized nudge text
+   when the username is sourced from chrome.storage.local (remembered
+   from a previous Letterboxd visit). */
+.hintAvatar {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  object-fit: cover;
+  vertical-align: -3px;
+  margin-right: 6px;
+}
+
+/* In-text button (matches Letterboxd's link styling) used in the
+   "Quick navigation" setting to clear the remembered identity without
+   disabling the whole feature. */
+.linkButton {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--link, #4a89ff);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+}
+.linkButton:hover {
+  text-decoration: none;
+}
+
 /* ── Checkbox layouts ────────────────────────────────────────── */
 .checkboxGrid {
   display: grid;
