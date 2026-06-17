@@ -487,6 +487,22 @@ export default function App() {
                 When off, cards render using only Letterboxd's own posters and backdrops.
               </p>
             </div>
+            <div className={styles.field}>
+              <span className={styles.fieldLabel}>Quick navigation</span>
+              <label className={styles.checkboxLabel}>
+                <input type="checkbox" checked={false} disabled aria-disabled="true" />
+                Remember my Letterboxd username
+              </label>
+              <p className={styles.settingsHint}>
+                Available only in the{' '}
+                <a href="https://boxd-card.michaellamb.dev" target="_blank" rel="noopener">
+                  Chromium web extension
+                </a>
+                . The extension caches your Letterboxd username locally so the
+                popup's "Navigate to…" hint can deep-link straight to your
+                profile from any tab.
+              </p>
+            </div>
           </div>
         )}
 
