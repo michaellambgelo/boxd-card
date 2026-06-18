@@ -36,7 +36,7 @@ Listing URL: <https://chromewebstore.google.com/detail/boxd-card/kcholfdhfcojahe
 > - Banner (1500 × 750) — Twitter header
 >
 > Prefer not to install anything? The same card generator also runs as a web
-> app at <https://boxd-card.michaellamb.dev/> — paste a Letterboxd URL and get
+> app at <https://boxd-card.com/app/> — paste a Letterboxd URL and get
 > the card without leaving your browser.
 >
 > **How it works.** Boxd Card runs locally in your browser by default: it reads
@@ -51,7 +51,7 @@ Listing URL: <https://chromewebstore.google.com/detail/boxd-card/kcholfdhfcojahe
 > no username, account, or personal data is sent. When TMDB enrichment is off
 > the extension never contacts our server.
 >
-> Full privacy policy: <https://boxd-card.michaellamb.dev/privacy.html>
+> Full privacy policy: <https://boxd-card.com/privacy>
 >
 > Source code (MIT-licensed): <https://github.com/michaellambgelo/boxd-card>
 >
@@ -70,7 +70,7 @@ Listing URL: <https://chromewebstore.google.com/detail/boxd-card/kcholfdhfcojahe
 | Host `letterboxd.com` | Resolve Letterboxd poster redirect URLs. |
 | Host `a.ltrbxd.com` | Fetch poster images from Letterboxd's primary image CDN. |
 | Host `s.ltrbxd.com` | Fetch Letterboxd static assets (logo). |
-| Host `boxd-card.michaellamb.workers.dev` | Only used when the user enables TMDB enrichment in settings. The extension requests film metadata from this Cloudflare Worker, which proxies to TMDB. The extension makes no requests to this host unless the feature is on. |
+| Host `api.boxd-card.com` | Only used when the user enables TMDB enrichment in settings. The extension requests film metadata from this Cloudflare Worker, which proxies to TMDB. The extension makes no requests to this host unless the feature is on. |
 | Host `image.tmdb.org` | Only used when TMDB enrichment is enabled. Fetches the posters and backdrops returned by the worker. |
 
 ## Single-purpose description
@@ -109,6 +109,11 @@ Certifications (all required to be true, and are true):
 
 ## Change log
 
+- **2026-06 (v0.8.0)** — Migrated to the production domain. The web app and
+  hero page moved from `boxd-card.michaellamb.dev` to `boxd-card.com`, and the
+  TMDB-enrichment worker moved from `boxd-card.michaellamb.workers.dev` to
+  `api.boxd-card.com`. The host permission for the worker now reads
+  `api.boxd-card.com`; behavior is otherwise unchanged.
 - **2026-05 (v0.7.0)** — Added TMDB enrichment as an optional, off-by-default
   feature for Review cards (richer metadata, higher-resolution posters,
   backdrops). New Settings → Data sources toggle to disable it. Added host

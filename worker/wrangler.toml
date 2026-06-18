@@ -34,4 +34,4 @@ head_sampling_rate = 1
 #   VITE_PROXY_URL=https://boxd-card-proxy.<account>.workers.dev
 #
 # Or add a custom domain via the Cloudflare dashboard and use that instead,
-# e.g. VITE_PROXY_URL=https://proxy.boxd-card.michaellamb.dev
+# e.g. VITE_PROXY_URL=https://api.boxd-card.com

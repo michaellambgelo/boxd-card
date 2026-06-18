@@ -1,0 +1,61 @@
+<!doctype html>
+<!--
+  INTERIM LANDING PLACEHOLDER
+  ──────────────────────────
+  This is a temporary, single-CTA landing for boxd-card.com so the apex is not
+  broken before the Claude Design output is ready (Phase 0 of the migration).
+  Replace the entire contents of this file with the designed landing when it
+  arrives — it is already served at the apex via docs/_redirects.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Boxd Card</title>
+  <meta property="og:type"        content="website" />
+  <meta property="og:url"         content="https://boxd-card.com" />
+  <meta property="og:title"       content="Boxd Card" />
+  <meta property="og:description" content="Generate a shareable image card from your Letterboxd profile." />
+  <meta property="og:image"       content="https://boxd-card.com/social-preview.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta name="twitter:card"        content="summary_large_image" />
+  <meta name="twitter:title"       content="Boxd Card" />
+  <meta name="twitter:description" content="Generate a shareable image card from your Letterboxd profile." />
+  <meta name="twitter:image"       content="https://boxd-card.com/social-preview.png" />
+  <style>
+    body { min-height: 100vh; margin: 0; display: flex; align-items: center; justify-content: center;
+           font-family: system-ui, sans-serif; background: #14181c; color: #fff; text-align: center; padding: 24px; }
+    .wrap { max-width: 480px; }
+    svg { width: 96px; height: 96px; }
+    h1 { font-size: 2rem; margin: 0.5em 0 0.25em; }
+    p { color: #9ab; font-size: 1.05rem; line-height: 1.5; }
+    .cta { display: inline-block; margin-top: 1.5em; padding: 12px 28px; border-radius: 999px;
+           background: linear-gradient(100deg, #EF8D22, #0EDF52, #40BCF4); color: #08120c;
+           font-weight: 700; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <svg viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg" aria-label="Boxd Card icon">
+      <defs>
+        <linearGradient id="brand-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%"   stop-color="#EF8D22"/>
+          <stop offset="50%"  stop-color="#0EDF52"/>
+          <stop offset="100%" stop-color="#40BCF4"/>
+        </linearGradient>
+        <mask id="letter-mask">
+          <circle cx="250" cy="250" r="250" fill="white"/>
+          <text x="250" y="250" text-anchor="middle" dominant-baseline="central"
+            font-family="Arial Black, Arial, Helvetica, sans-serif"
+            font-weight="900" font-size="230" fill="black">BC</text>
+        </mask>
+      </defs>
+      <circle cx="250" cy="250" r="250" fill="url(#brand-gradient)" mask="url(#letter-mask)"/>
+    </svg>
+    <h1>Boxd Card</h1>
+    <p>Generate a shareable image card from your Letterboxd profile.</p>
+    <a class="cta" href="/about">Learn more &rarr;</a>
+  </div>
+</body>
+</html>

@@ -1,0 +1,11 @@
+# Cloudflare Pages redirects/rewrites for boxd-card.com
+#
+# Apex serves the marketing landing. Until the Claude Design landing is dropped
+# into docs/landing/, this rewrites / to the relocated hero page at /about.
+# When the designed landing is ready, replace docs/landing/index.html with it —
+# the rewrite below already targets /landing/index.html, so no further change is
+# needed here.
+/            /landing/index.html   200
+
+# Legacy flat privacy path → new directory location.
+/privacy.html  /privacy  301

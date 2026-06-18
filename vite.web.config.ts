@@ -11,7 +11,7 @@ import { resolve } from 'path'
  *
  * Environment variables (create .env.local in project root):
  *   VITE_PROXY_URL=http://localhost:8787   ← for local dev with wrangler dev
- *   VITE_PROXY_URL=https://proxy.boxd-card.michaellamb.dev  ← for production
+ *   VITE_PROXY_URL=https://api.boxd-card.com  ← for production
  *   VITE_FARO_PROXY_URL=https://grafana.michaellamb.dev   ← Grafana Faro proxy base
  *   VITE_APP_VERSION=<package.json version>               ← optional override
  *   GRAFANA_FARO_API_KEY=<faro cloud api key>             ← enables source-map upload on prod build
