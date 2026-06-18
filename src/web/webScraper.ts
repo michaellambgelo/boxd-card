@@ -475,9 +475,9 @@ export async function scrapeSingleReview(doc: Document): Promise<FilmData[]> {
   const filmId = lazyPoster?.getAttribute('data-film-id') ?? ''
 
   const title =
-    doc.querySelector('header.inline-production-masthead h2.primaryname a')?.textContent?.trim() ?? ''
+    doc.querySelector('.inline-production-masthead h2.primaryname a')?.textContent?.trim() ?? ''
   const year =
-    doc.querySelector('header.inline-production-masthead .releasedate a')?.textContent?.trim() ?? ''
+    doc.querySelector('.inline-production-masthead .releasedate a')?.textContent?.trim() ?? ''
 
   const rating =
     doc.querySelector('.content-reactions-strip span.inline-rating svg')
