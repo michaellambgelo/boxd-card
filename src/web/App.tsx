@@ -408,7 +408,7 @@ export default function App() {
             </>
           ) : (
             <>
-              <a href="https://boxd-card.michaellamb.dev" className={styles.headerLink}>
+              <a href="https://boxd-card.com" className={styles.headerLink}>
                 <svg viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg" width="40" height="40" aria-hidden="true">
                   <defs>
                     <linearGradient id="bc-grad" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -495,7 +495,7 @@ export default function App() {
               </label>
               <p className={styles.settingsHint}>
                 Available only in the{' '}
-                <a href="https://boxd-card.michaellamb.dev" target="_blank" rel="noopener">
+                <a href="https://boxd-card.com" target="_blank" rel="noopener">
                   Chromium web extension
                 </a>
                 . The extension caches your Letterboxd username locally so the
@@ -771,9 +771,9 @@ export default function App() {
 
         <footer className={styles.footer}>
           <span>
-            <a href="https://boxd-card.michaellamb.dev">Boxd Card</a>
+            <a href="https://boxd-card.com">Boxd Card</a>
             {' · '}
-            <a href="https://boxd-card.michaellamb.dev/privacy.html">Privacy</a>
+            <a href="https://boxd-card.com/privacy">Privacy</a>
           </span>
           <span>
             <a href="https://github.com/michaellambgelo/boxd-card">GitHub</a>

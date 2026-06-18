@@ -441,7 +441,7 @@ export default function Popup() {
         ) : (
           <>
             <a
-              href="https://boxd-card.michaellamb.dev"
+              href="https://boxd-card.com"
               target="_blank"
               rel="noreferrer"
               className={styles.headerLink}

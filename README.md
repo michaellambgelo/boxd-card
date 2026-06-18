@@ -11,7 +11,7 @@ Open the extension on a supported Letterboxd page, pick a card type, click **Gen
 
 Custom posters (a Letterboxd Pro/Patron feature) are supported automatically — they're already rendered in the DOM by the time the extension reads them, so no API access is required.
 
-Alternatively, a web app with most features backed by a Cloudflare Worker is available at [https://boxd-card.michaellamb.dev/app/](https://boxd-card.michaellamb.dev/app/) — best for users who aren't in a Chromium browser.
+Alternatively, a web app with most features backed by a Cloudflare Worker is available at [https://boxd-card.com/app/](https://boxd-card.com/app/) — best for users who aren't in a Chromium browser.
 
 ## Card types
 
@@ -121,10 +121,10 @@ After each subsequent `npm run build`, click the **↺ reload** button on the ex
 | `https://letterboxd.com/*` | Fetch poster redirects from the Letterboxd CDN |
 | `https://a.ltrbxd.com/*` | Fetch poster images from the primary Letterboxd image CDN |
 | `https://s.ltrbxd.com/*` | Fetch static assets (logo) |
-| `https://boxd-card.michaellamb.workers.dev/*` | Used only when TMDB enrichment is enabled in settings; the extension requests film metadata from this Cloudflare Worker, which proxies to TMDB. No requests are made when the setting is off. |
+| `https://api.boxd-card.com/*` | Used only when TMDB enrichment is enabled in settings; the extension requests film metadata from this Cloudflare Worker, which proxies to TMDB. No requests are made when the setting is off. |
 | `https://image.tmdb.org/*` | Used only when TMDB enrichment is enabled, to fetch the posters and backdrops returned by the worker. |
 
-Privacy policy: [boxd-card.michaellamb.dev/privacy.html](https://boxd-card.michaellamb.dev/privacy.html)
+Privacy policy: [boxd-card.com/privacy](https://boxd-card.com/privacy)
 
 ## Attribution
 

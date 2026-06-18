@@ -14,7 +14,7 @@ import type { TmdbFilmData } from '../shared/tmdb'
 
 const PROXY_BASE: string =
   (import.meta.env.VITE_PROXY_URL as string | undefined) ??
-  'https://boxd-card.michaellamb.workers.dev'
+  'https://api.boxd-card.com'
 
 /**
  * Fetch TMDB data for a Letterboxd film slug.
