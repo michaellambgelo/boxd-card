@@ -680,10 +680,10 @@ describe('scrapeReview', () => {
           <img class="image" src="${imgSrc}" />
         </div>
       </section>
-      <header class="inline-production-masthead">
+      <div class="inline-production-masthead">
         <h2 class="primaryname"><a>${title}</a></h2>
         <span class="releasedate"><a>${year}</a></span>
-      </header>
+      </div>
       <div class="content-reactions-strip">
         <span class="inline-rating">
           <svg aria-label="${rating}"></svg>
@@ -745,10 +745,10 @@ describe('scrapeReview', () => {
           <img class="image" src="${REAL_POSTER}" />
         </div>
       </section>
-      <header class="inline-production-masthead">
+      <div class="inline-production-masthead">
         <h2 class="primaryname"><a>Film</a></h2>
         <span class="releasedate"><a>2020</a></span>
-      </header>
+      </div>
       <div class="content-reactions-strip"></div>
       <p class="view-date"><a>01</a><a>Jan</a><a>2020</a></p>
       <div class="js-review-body"><p>First paragraph.</p><p>Second paragraph.</p></div>`
@@ -781,10 +781,10 @@ describe('scrapeReview', () => {
           <img class="image" src="${REAL_POSTER}" />
         </div>
       </section>
-      <header class="inline-production-masthead">
+      <div class="inline-production-masthead">
         <h2 class="primaryname"><a>Film</a></h2>
         <span class="releasedate"><a>2020</a></span>
-      </header>
+      </div>
       <div class="content-reactions-strip"></div>
       <p class="view-date"><a>01</a><a>Jan</a><a>2020</a></p>
       <div class="js-review-body"><p>Some text.</p></div>`
@@ -826,10 +826,10 @@ describe('scrapeReviewsList', () => {
             data-film-id="7418" data-poster-url="${posterUrl}">
             <img class="image" src="${imgSrc}" />
           </div>
-          <header class="inline-production-masthead">
+          <div class="inline-production-masthead">
             <h2 class="primaryname"><a>${title}</a></h2>
             <span class="releasedate"><a>${year}</a></span>
-          </header>
+          </div>
           <div class="content-reactions-strip">
             <span class="inline-rating"><svg aria-label="${rating}"></svg></span>
             <span class="date"><time datetime="${datetime}"></time></span>
@@ -896,10 +896,10 @@ describe('scrapeReviewsList', () => {
               data-film-id="1" data-poster-url="/film/x/">
               <img class="image" src="${REAL_POSTER}" />
             </div>
-            <header class="inline-production-masthead">
+            <div class="inline-production-masthead">
               <h2 class="primaryname"><a>Film</a></h2>
               <span class="releasedate"><a>2020</a></span>
-            </header>
+            </div>
             <div class="content-reactions-strip">
               <span class="date"><time datetime="2026-01-01"></time></span>
             </div>

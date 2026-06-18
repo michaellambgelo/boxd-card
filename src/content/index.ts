@@ -338,10 +338,10 @@ export async function scrapeReview(): Promise<FilmData[]> {
   const filmSlug = slugFromPosterUrl(dataPosterUrl)
 
   const title = document.querySelector(
-    'header.inline-production-masthead h2.primaryname a'
+    '.inline-production-masthead h2.primaryname a'
   )?.textContent?.trim() ?? ''
   const year = document.querySelector(
-    'header.inline-production-masthead .releasedate a'
+    '.inline-production-masthead .releasedate a'
   )?.textContent?.trim() ?? ''
   const rating = document.querySelector(
     '.content-reactions-strip span.inline-rating svg'
@@ -387,10 +387,10 @@ export async function scrapeReviewsList(count: number): Promise<FilmData[]> {
     const filmSlug = slugFromPosterUrl(dataPosterUrl)
 
     const title = item.querySelector(
-      'header.inline-production-masthead h2.primaryname a'
+      '.inline-production-masthead h2.primaryname a'
     )?.textContent?.trim() ?? ''
     const year = item.querySelector(
-      'header.inline-production-masthead .releasedate a'
+      '.inline-production-masthead .releasedate a'
     )?.textContent?.trim() ?? ''
     const rating = item.querySelector(
       '.content-reactions-strip .inline-rating svg'
