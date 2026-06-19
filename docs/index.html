@@ -190,13 +190,21 @@
     /* ── How it works ─────────────────────────────────────── */
     .how { background: var(--band); border-top: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle); margin-top: 64px; }
     .how .inner { padding: 64px 24px; }
-    .how h2 { font-weight: 800; font-size: 28px; letter-spacing: -0.015em; color: var(--text-primary); margin: 0 0 36px; }
-    .how .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; }
-    .step .chiprow { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
-    .step .chip { width: 44px; height: 44px; border-radius: var(--radius-lg); background: var(--surface-input); border: 1px solid var(--border-subtle); display: inline-flex; align-items: center; justify-content: center; color: var(--brand-blue); }
-    .step .num { font-family: var(--font-mono); font-size: 13px; color: var(--text-dim); }
-    .step h3 { font-size: 18px; font-weight: 700; color: var(--text-primary); margin: 0 0 6px; }
-    .step p { font-size: 14.5px; line-height: 1.55; color: var(--text-secondary); margin: 0; }
+    .how h2 { font-weight: 800; font-size: 28px; letter-spacing: -0.015em; color: var(--text-primary); margin: 0; }
+    .how .sub { font-size: 16px; color: var(--text-secondary); margin: 10px 0 32px; max-width: 560px; }
+    .how .tracks { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .track { background: var(--surface-raised); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 24px 24px 22px; }
+    .track .chip { width: 40px; height: 40px; border-radius: var(--radius-lg); background: var(--surface-input); border: 1px solid var(--border-subtle); display: inline-flex; align-items: center; justify-content: center; color: var(--brand-blue); margin-bottom: 10px; }
+    .track .tkicker { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: var(--tracking-label); color: var(--slate-300); }
+    .track h3 { font-size: 18px; font-weight: 700; color: var(--text-primary); margin: 2px 0 16px; }
+    .track .tstep { display: flex; gap: 12px; margin-top: 14px; }
+    .track .tstep .num { font-family: var(--font-mono); font-size: 13px; color: var(--brand-blue); flex-shrink: 0; min-width: 18px; margin-top: 1px; }
+    .track .tstep .t { font-size: 14.5px; font-weight: 700; color: var(--text-primary); margin: 0 0 2px; }
+    .track .tstep .d { font-size: 13.5px; line-height: 1.5; color: var(--text-secondary); margin: 0; }
+    .how .note { margin: 22px 0 0; font-size: 13.5px; line-height: 1.55; color: var(--text-secondary); background: var(--surface-input); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 14px 16px; }
+    .how .note b { color: var(--text-primary); }
+    .how .note a { color: var(--brand-blue); text-decoration: none; }
+    .how .note a:hover { text-decoration: underline; }
 
     /* ── Where it runs ────────────────────────────────────── */
     .runs { padding: 72px 24px 24px; }
@@ -242,7 +250,7 @@
       .card-stack { min-height: 380px; margin-top: 8px; }
     }
     @media (max-width: 640px) {
-      .types .grid, .how .grid { grid-template-columns: 1fr; }
+      .types .grid, .how .tracks { grid-template-columns: 1fr; }
       .swatches { grid-template-columns: repeat(3, 1fr); }
       header.site nav { gap: 16px; }
       header.site nav a.navlink { display: none; }
@@ -266,8 +274,8 @@
         <span class="word" style="font-size:15px;">Boxd Card</span>
       </a>
       <nav>
-        <a class="navlink" href="#how">How it works</a>
         <a class="navlink" href="#types">Card types</a>
+        <a class="navlink" href="#how">How it works</a>
         <a class="navlink" href="#run">Where it runs</a>
         <a class="btn btn--primary btn--sm" style="min-height:38px;" href="https://chromewebstore.google.com/detail/boxd-card/kcholfdhfcojahebmneeeikelffkokdj">Add to Chrome</a>
       </nav>
@@ -398,33 +406,31 @@
   <!-- ── How it works ───────────────────────────────────── -->
   <section class="how" id="how">
     <div class="wrap inner">
-      <h2>Three steps, about ten seconds</h2>
-      <div class="grid">
-        <div class="step">
-          <div class="chiprow">
-            <span class="chip"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg></span>
-            <span class="num">01</span>
-          </div>
-          <h3>Paste a URL</h3>
-          <p>Drop in a Letterboxd profile, diary, list, or reviews link. Boxd Card detects the type automatically.</p>
+      <h2>How it works</h2>
+      <p class="sub">Same card generator, two ways to run it — about ten seconds either way.</p>
+      <div class="tracks">
+        <!-- Chrome extension -->
+        <div class="track">
+          <span class="chip"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><path d="M21.17 8H12"/><path d="M3.95 6.06 8.54 14"/><path d="M10.88 21.94 15.46 14"/></svg></span>
+          <span class="tkicker">Chrome extension</span>
+          <h3>Generate from the page you're on</h3>
+          <div class="tstep"><span class="num">01</span><div><p class="t">Open the popup</p><p class="d">On any Letterboxd profile, diary, list, or review page — it reads the page you're already viewing, no URL needed.</p></div></div>
+          <div class="tstep"><span class="num">02</span><div><p class="t">Pick your options</p><p class="d">Choose the card type, layout, and display details — film count, titles, years, ratings.</p></div></div>
+          <div class="tstep"><span class="num">03</span><div><p class="t">Download &amp; share</p><p class="d">Save the PNG, copy it to your clipboard, or share straight to stories and posts.</p></div></div>
         </div>
-        <div class="step">
-          <div class="chiprow">
-            <span class="chip"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 4H14"/><path d="M10 4H3"/><path d="M21 12H12"/><path d="M8 12H3"/><path d="M21 20H16"/><path d="M12 20H3"/><path d="M14 2v4"/><path d="M8 10v4"/><path d="M16 18v4"/></svg></span>
-            <span class="num">02</span>
-          </div>
-          <h3>Pick your options</h3>
-          <p>Choose the card type and toggle display details — film count, titles, years, ratings.</p>
-        </div>
-        <div class="step">
-          <div class="chiprow">
-            <span class="chip"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.59 13.51l6.83 3.98"/><path d="M15.41 6.51l-6.82 3.98"/></svg></span>
-            <span class="num">03</span>
-          </div>
-          <h3>Download &amp; share</h3>
-          <p>Get a clean PNG to download, copy to clipboard, or share straight to stories and posts.</p>
+        <!-- Web app -->
+        <div class="track">
+          <span class="chip"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg></span>
+          <span class="tkicker">Web app</span>
+          <h3>No install — paste a link</h3>
+          <div class="tstep"><span class="num">01</span><div><p class="t">Paste a URL</p><p class="d">Drop in any Letterboxd profile, diary, list, or reviews link at <a href="/app/" style="color:var(--brand-blue);text-decoration:none;">boxd-card.com/app</a> — it detects the type automatically.</p></div></div>
+          <div class="tstep"><span class="num">02</span><div><p class="t">Pick your options</p><p class="d">The same card types, layouts, and display details as the extension.</p></div></div>
+          <div class="tstep"><span class="num">03</span><div><p class="t">Download &amp; share</p><p class="d">Save or copy the PNG right from the browser — nothing to install.</p></div></div>
         </div>
       </div>
+      <p class="note">
+        Both produce the same PNG, but a few things are <b>extension-only</b>: <b>Stats cards</b> (Letterboxd blocks stats pages from outside services, so the web app can't fetch them) and <b>Remember my username</b> (the extension caches it locally for quicker navigation). For those, use the <a href="https://chromewebstore.google.com/detail/boxd-card/kcholfdhfcojahebmneeeikelffkokdj">Chrome extension</a>. Everything else works in both.
+      </p>
     </div>
   </section>
 
@@ -513,8 +519,8 @@
         </div>
         <div class="cols">
           <div class="col">
-            <a href="#how">How it works</a>
             <a href="#types">Card types</a>
+            <a href="#how">How it works</a>
             <a href="#run">Where it runs</a>
           </div>
           <div class="col">
