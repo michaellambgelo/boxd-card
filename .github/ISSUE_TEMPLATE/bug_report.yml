@@ -35,7 +35,7 @@ body:
       label: Where did this happen?
       options:
         - Chrome extension
-        - Web app (boxd-card.michaellamb.dev)
+        - Web app (boxd-card.com)
         - Both
     validations:
       required: true

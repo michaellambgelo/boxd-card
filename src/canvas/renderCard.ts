@@ -77,7 +77,41 @@ export interface CardLayout {
 
 const HEADER_H    = 90
 const POSTER_TOP  = 110  // = HEADER_H + 20
-const TEXT_AREA_H = 120  // space below each poster for title + year + rating + date
+const TEXT_AREA_H = 120  // legacy default below each poster (title + year + rating);
+                         // overridable per-render via gridTextAreaHeight() so the
+                         // block grows when recent-diary's watch date is also drawn.
+                         // Issue #36: at 4 lines of meta the static 120 overflowed
+                         // into the next row's poster on Story (2×2) and 4:5/3:4.
+
+/**
+ * Worst-case pixel height needed below each poster for the per-film metadata
+ * block, given the currently-toggled display options + card type. Titles
+ * reserve room for the 2-line word-wrap branch (the renderer always advances
+ * by titleH even on the 1-line side). Floored at TEXT_AREA_H so card variants
+ * that already had breathing room don't suddenly shrink their posters.
+ */
+export function gridTextAreaHeight(opts: {
+  showTitle?: boolean
+  showYear?: boolean
+  showRating?: boolean
+  showDate?: boolean
+  cardType?: CardType
+}): number {
+  let h = GRID_TEXT_PAD
+  let firstMeta = true
+  function addLine(lineH: number) {
+    if (!firstMeta) h += GRID_LINE_GAP
+    h += lineH
+    firstMeta = false
+  }
+  if (opts.showTitle)  addLine(GRID_LINE_H * 2)  // worst-case 2-line wrap
+  if (opts.showYear)   addLine(GRID_LINE_H)
+  if (opts.showRating) addLine(GRID_LINE_H)
+  // Per-film watch date is only drawn for recent-diary (other card types
+  // show today's date in the header instead).
+  if (opts.cardType === 'recent-diary' && opts.showDate) addLine(GRID_DATE_LINE_H)
+  return Math.max(h, TEXT_AREA_H)
+}
 
 // Font sizes for poster-grid card text (title/rating/date under each poster)
 const GRID_TITLE_FS    = 24
@@ -96,8 +130,16 @@ const GRID_TEXT_PAD    = 10  // top padding above first text item
  *   banner:    1500×750 fixed (≤4 films, 1×4), 1500px wide 5-col (5-20)
  *   story:     1080×1920 fixed (≤4 films, 2×2 or 1-film showcase), 1080px wide 2-col (5-20)
  */
-export function computeLayout(filmCount: number, titleAreaH = 0, layout: Layout = 'landscape'): CardLayout {
+export function computeLayout(
+  filmCount: number,
+  titleAreaH = 0,
+  layout: Layout = 'landscape',
+  textAreaHeight: number = TEXT_AREA_H,
+): CardLayout {
   const pt = POSTER_TOP + titleAreaH
+  // Local alias so the multi-film grid branches can pick up the per-render
+  // metadata height without changing every formula site.
+  const TAH = textAreaHeight
 
   // ── Landscape (existing behavior) ────────────────────────────────────────
   if (layout === 'landscape') {
@@ -108,13 +150,13 @@ export function computeLayout(filmCount: number, titleAreaH = 0, layout: Layout 
       const effectiveCols = Math.max(1, filmCount)
       const totalPosterW = effectiveCols * posterW + (effectiveCols - 1) * posterGap
       const posterLeft = Math.floor((1200 - totalPosterW) / 2)
-      const footerY = pt + posterH + TEXT_AREA_H + 56
+      const footerY = pt + posterH + TAH + 56
       return {
         cardWidth: 1200, cardHeight: footerY + 64,
         posterW, posterH, posterGap,
         posterLeft, posterTop: pt,
         cols: effectiveCols, rows: 1,
-        footerY, textAreaH: TEXT_AREA_H,
+        footerY, textAreaH: TAH,
         sideLayout: false,
       }
     }
@@ -123,13 +165,13 @@ export function computeLayout(filmCount: number, titleAreaH = 0, layout: Layout 
     const rows = Math.ceil(filmCount / cols)
     const posterW = 208
     const posterH = 312
-    const footerY = pt + rows * (posterH + TEXT_AREA_H) + 56
+    const footerY = pt + rows * (posterH + TAH) + 56
     return {
       cardWidth: 1200, cardHeight: footerY + 64,
       posterW, posterH, posterGap: 20,
       posterLeft: 40, posterTop: pt,
       cols, rows, footerY,
-      textAreaH: TEXT_AREA_H,
+      textAreaH: TAH,
       sideLayout: false,
     }
   }
@@ -150,7 +192,7 @@ export function computeLayout(filmCount: number, titleAreaH = 0, layout: Layout 
       const posterGap = 20
       // Derive poster size from available vertical space
       const available = footerY - pt - 56
-      const posterH = Math.floor((available - rows * TEXT_AREA_H) / rows)
+      const posterH = Math.floor((available - rows * TAH) / rows)
       const posterW = Math.round(posterH * 2 / 3)
       const totalW = cols * posterW + (cols - 1) * posterGap
       const posterLeft = Math.floor((cardWidth - totalW) / 2)
@@ -158,7 +200,7 @@ export function computeLayout(filmCount: number, titleAreaH = 0, layout: Layout 
         cardWidth, cardHeight,
         posterW, posterH, posterGap,
         posterLeft, posterTop: pt,
-        cols, rows, footerY, textAreaH: TEXT_AREA_H,
+        cols, rows, footerY, textAreaH: TAH,
         sideLayout: false,
       }
     }
@@ -167,14 +209,14 @@ export function computeLayout(filmCount: number, titleAreaH = 0, layout: Layout 
     const posterW = 320
     const posterH = 480
     const rows = Math.ceil(filmCount / cols)
-    const footerY = pt + rows * (posterH + TEXT_AREA_H) + 56
+    const footerY = pt + rows * (posterH + TAH) + 56
     const posterLeft = Math.floor((cardWidth - (cols * posterW + (cols - 1) * 20)) / 2)
     return {
       cardWidth, cardHeight: footerY + 64,
       posterW, posterH, posterGap: 20,
       posterLeft, posterTop: pt,
       cols, rows, footerY,
-      textAreaH: TEXT_AREA_H,
+      textAreaH: TAH,
       sideLayout: false,
     }
   }
@@ -208,13 +250,13 @@ export function computeLayout(filmCount: number, titleAreaH = 0, layout: Layout 
     const posterW = Math.floor((cardWidth - 80 - 4 * 20) / cols)
     const posterH = Math.round(posterW * 3 / 2)
     const rows = Math.ceil(filmCount / cols)
-    const footerY = pt + rows * (posterH + TEXT_AREA_H) + 56
+    const footerY = pt + rows * (posterH + TAH) + 56
     return {
       cardWidth, cardHeight: footerY + 64,
       posterW, posterH, posterGap: 20,
       posterLeft: 40, posterTop: pt,
       cols, rows, footerY,
-      textAreaH: TEXT_AREA_H,
+      textAreaH: TAH,
       sideLayout: false,
     }
   }
@@ -245,7 +287,7 @@ export function computeLayout(filmCount: number, titleAreaH = 0, layout: Layout 
     const footerY = cardHeight - 64
     const cols = Math.min(filmCount, 2)
     const rows = Math.ceil(filmCount / cols)
-    const textAreaH = 120
+    const textAreaH = TAH
     const available = footerY - pt - 56
     const posterH = Math.floor(available / rows) - textAreaH
     const posterW = Math.round(posterH * 2 / 3)
@@ -265,7 +307,7 @@ export function computeLayout(filmCount: number, titleAreaH = 0, layout: Layout 
   const cols = 2
   const posterW = Math.floor((cardWidth - 80 - 20) / cols)
   const posterH = Math.round(posterW * 3 / 2)
-  const textAreaH = 120
+  const textAreaH = TAH
   const rows = Math.ceil(filmCount / cols)
   const footerY = pt + rows * (posterH + textAreaH) + 56
   const posterLeft = Math.floor((cardWidth - (cols * posterW + 20)) / 2)
@@ -1417,7 +1459,18 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
       + LIST_BOTTOM
     : 0
 
-  const layout = computeLayout(filmCount, titleAreaH, effectiveLayout)
+  // Per-render metadata block height — accommodates whichever display options
+  // are actually on so the text never overflows into the next row's poster.
+  // Issue #36: with all 4 lines on (title + year + rating + per-film date)
+  // the legacy static TEXT_AREA_H=120 was ~35px short on Story 4-film 2×2.
+  const textAreaHeight = gridTextAreaHeight({
+    showTitle: options.showTitle,
+    showYear:  options.showYear,
+    showRating:options.showRating,
+    showDate:  options.showDate,
+    cardType,
+  })
+  const layout = computeLayout(filmCount, titleAreaH, effectiveLayout, textAreaHeight)
 
   const canvas = document.createElement('canvas')
   canvas.width  = layout.cardWidth

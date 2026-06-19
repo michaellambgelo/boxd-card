@@ -34,7 +34,7 @@ export interface FetchTmdbResponse {
   error?: string
 }
 
-const TMDB_WORKER_BASE = 'https://boxd-card.michaellamb.workers.dev'
+const TMDB_WORKER_BASE = 'https://api.boxd-card.com'
 
 type Message = FetchImageRequest | FetchTmdbRequest
 

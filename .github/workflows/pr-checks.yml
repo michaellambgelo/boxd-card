@@ -19,11 +19,21 @@ jobs:
       - name: Check version is not already tagged
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          if git tag | grep -qx "v$VERSION"; then
-            echo "ERROR: Tag v$VERSION already exists. Bump the version in package.json and manifest.json before opening a release PR."
-            exit 1
+          TAG="v$VERSION"
+          if ! git rev-parse --verify "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG does not exist yet — clear to release."
+            exit 0
           fi
-          echo "Version v$VERSION is clear to release."
+          # Tag exists. Allow this PR if the tagged commit is reachable from
+          # HEAD — that means we're only syncing the release branch up to a
+          # commit that was already released, not trying to ship new content
+          # under an already-released version.
+          if git merge-base --is-ancestor "$TAG" HEAD; then
+            echo "Tag $TAG already exists and is reachable from HEAD — syncing only, no new version required."
+            exit 0
+          fi
+          echo "ERROR: Tag $TAG exists but points outside the current history. Bump the version in package.json and manifest.json before opening a release PR."
+          exit 1
 
   test-and-build:
     name: Test & Build

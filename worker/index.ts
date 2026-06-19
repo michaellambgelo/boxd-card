@@ -45,7 +45,7 @@ async function fetchUpstream(target: string, wantsImage: boolean): Promise<Respo
 
   return fetch(target, {
     headers: {
-      'User-Agent': 'Mozilla/5.0 (compatible; BoxdCard-Web/1.0; +https://boxd-card.michaellamb.dev)',
+      'User-Agent': 'Mozilla/5.0 (compatible; BoxdCard-Web/1.0; +https://boxd-card.com)',
       Accept: acceptHeader,
       'Accept-Language': 'en-US,en;q=0.9',
       'Accept-Encoding': 'gzip, deflate, br',

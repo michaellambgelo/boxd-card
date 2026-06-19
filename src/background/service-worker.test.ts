@@ -116,7 +116,7 @@ describe('service-worker FETCH_TMDB handler', () => {
     await vi.waitFor(() => expect(sendResponse).toHaveBeenCalledOnce())
     const [calledUrl] = mockFetch.mock.calls[0]
     expect(String(calledUrl)).toBe(
-      'https://boxd-card.michaellamb.workers.dev/tmdb?slug=some%20film',
+      'https://api.boxd-card.com/tmdb?slug=some%20film',
     )
     expect(sendResponse).toHaveBeenCalledWith({ data: body })
   })

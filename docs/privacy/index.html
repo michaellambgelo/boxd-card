@@ -72,7 +72,7 @@
       happens locally in your browser.
     </li>
     <li>
-      <strong>The hero page (<code>boxd-card.michaellamb.dev</code>) and the web app
+      <strong>The landing page (<code>boxd-card.com</code>) and the web app
       (<code>/app/</code>)</strong> send anonymous usage telemetry to our self-hosted Grafana
       Cloud instance via a Cloudflare Worker proxy at <code>grafana.michaellamb.dev</code>.
       Details below under <em>Web analytics</em>.
@@ -90,9 +90,9 @@
     </li>
   </ul>
 
-  <h2>Web analytics (hero page and web app only)</h2>
+  <h2>Web analytics (landing page and web app only)</h2>
   <p>
-    To understand which features people use and where errors happen, the hero page and web app
+    To understand which features people use and where errors happen, the landing page and web app
     send anonymous usage events to our Grafana Cloud project. <strong>The Chrome extension does
     not.</strong>
   </p>
@@ -123,7 +123,7 @@
     <li>Fetches poster images from Letterboxd's CDN (<code>a.ltrbxd.com</code>) using your browser's built-in fetch capability — the same images your browser would load anyway.</li>
     <li>
       <em>Only if you have enabled TMDB enrichment in settings:</em> sends each film's
-      Letterboxd slug to our Cloudflare Worker (<code>boxd-card.michaellamb.workers.dev</code>),
+      Letterboxd slug to our Cloudflare Worker (<code>api.boxd-card.com</code>),
       which looks up the matching record on TMDB and returns public film metadata and image
       URLs. TMDB posters and backdrops are then fetched from <code>image.tmdb.org</code>.
     </li>
@@ -143,7 +143,7 @@
     <li><strong>scripting</strong> — to read the logged-in Letterboxd username from the active tab so the navigation hint can include it.</li>
     <li><strong>Host access to letterboxd.com, a.ltrbxd.com, s.ltrbxd.com</strong> — to fetch poster images and static assets that are already publicly visible on the page.</li>
     <li>
-      <strong>Host access to boxd-card.michaellamb.workers.dev</strong> — used only when TMDB
+      <strong>Host access to api.boxd-card.com</strong> — used only when TMDB
       enrichment is enabled, to fetch film metadata via our Cloudflare Worker proxy to TMDB.
       No requests are made to this host otherwise.
     </li>

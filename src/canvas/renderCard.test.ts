@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { renderCard, loadImage, computeLayout, wrapText, drawTagPills } from './renderCard'
+import { renderCard, loadImage, computeLayout, wrapText, drawTagPills, gridTextAreaHeight } from './renderCard'
 
 // Auto-loading Image: fires onload immediately so renderCard doesn't hang in tests
 class AutoImage {
@@ -184,6 +184,67 @@ describe('computeLayout', () => {
     expect(shifted.posterTop).toBe(base.posterTop + 60)
     expect(shifted.footerY).toBe(base.footerY + 60)
     expect(shifted.cardHeight).toBe(base.cardHeight + 60)
+  })
+
+  // Issue #36 — https://github.com/michaellambgelo/boxd-card/issues/36
+  // Static textAreaH=120 was ~35px short on Story 4-film 2×2 when all four
+  // per-film meta lines (title + year + rating + per-film watch date) were
+  // drawn, so row 0's watch date overflowed into row 1's poster image.
+  describe('issue #36: per-film metadata overflow', () => {
+    it('gridTextAreaHeight floors at the legacy TEXT_AREA_H (120) for back-compat', () => {
+      expect(gridTextAreaHeight({})).toBe(120)
+      expect(gridTextAreaHeight({ showTitle: true })).toBe(120)
+      expect(gridTextAreaHeight({ showTitle: true, showYear: true })).toBe(120)
+    })
+
+    it('gridTextAreaHeight ignores showDate for cardTypes that put date in the header', () => {
+      // For last-four-watched, favorites, list: showDate → today\'s date in
+      // the header (right side), not per-film. So flipping showDate on must
+      // NOT grow the per-film text block compared to flipping it off.
+      const without = gridTextAreaHeight({
+        showTitle: true, showYear: true, showRating: true, showDate: false,
+        cardType: 'last-four-watched',
+      })
+      const withDate = gridTextAreaHeight({
+        showTitle: true, showYear: true, showRating: true, showDate: true,
+        cardType: 'last-four-watched',
+      })
+      expect(withDate).toBe(without)
+    })
+
+    it('gridTextAreaHeight grows above 120 for recent-diary with all meta lines on', () => {
+      const h = gridTextAreaHeight({
+        showTitle: true, showYear: true, showRating: true, showDate: true,
+        cardType: 'recent-diary',
+      })
+      expect(h).toBeGreaterThan(120)
+      // Worst-case 2-line title (56) + year (28+4) + rating (28+4) + date (25)
+      // + top pad (10) = 159. The function must reserve at least that.
+      expect(h).toBeGreaterThanOrEqual(159)
+    })
+
+    it('computeLayout threads textAreaHeight into the Story 4-film layout', () => {
+      const legacy = computeLayout(4, 0, 'story')                  // default = 120
+      const grown  = computeLayout(4, 0, 'story', 160)             // recent-diary worst-case
+      expect(legacy.textAreaH).toBe(120)
+      expect(grown.textAreaH).toBe(160)
+      // Bigger meta budget on a fixed 1920px canvas → smaller posters.
+      expect(grown.posterH).toBeLessThan(legacy.posterH)
+      // The row pitch (posterH + textAreaH) is what separates row 0\'s poster
+      // from row 1\'s poster. With the dynamic textAreaH = 160, the row pitch
+      // is large enough that the rendered meta block (≤159 px worst case) fits
+      // entirely between the posters instead of bleeding into row 1.
+      expect(grown.textAreaH).toBeGreaterThanOrEqual(159)
+    })
+
+    it('computeLayout threads textAreaHeight into the 4:5 / 3:4 4-film layouts', () => {
+      for (const layoutName of ['4:5', '3:4'] as const) {
+        const grown = computeLayout(4, 0, layoutName, 160)
+        const legacy = computeLayout(4, 0, layoutName)
+        expect(grown.textAreaH).toBe(160)
+        expect(grown.posterH).toBeLessThan(legacy.posterH)
+      }
+    })
   })
 })
 

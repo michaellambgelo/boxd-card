@@ -5,13 +5,18 @@ import { renderCard } from '../canvas/renderCard'
 import { generateAltText } from '../altText'
 import { CARD_TYPES, CARD_TYPE_CONFIGS, LAYOUTS, LAYOUT_CONFIGS, STATS_CATEGORIES, STATS_CATEGORY_CONFIGS, formatUrlHint, formatUrlHintSegments } from '../types'
 import type { CardType, ListCount, ReviewCount, Layout, StatsCategory, StatsSubCategory } from '../types'
-import { loadSettings, saveSettings } from '../storage/settings'
+import { loadSettings, saveSettings, loadRememberedUser, saveRememberedUser, clearRememberedUser, type RememberedUser } from '../storage/settings'
 import { didUseTmdb, mergeTmdb, slugFromPosterUrl, type TmdbFilmData } from '../shared/tmdb'
 import tmdbLogoUrl from '../assets/TMDB-blue-short.svg?url'
 import styles from './Popup.module.css'
 
 type Status = 'idle' | 'loading' | 'ready' | 'error'
 type View = 'main' | 'settings'
+
+// Chrome Web Store extension ID for the published listing. When the runtime
+// id matches, the extension was installed from the store and Chrome will
+// auto-update it — the update banner is only useful for dev/sideload installs.
+const CWS_EXTENSION_ID = 'kcholfdhfcojahebmneeeikelffkokdj'
 
 async function fetchPosterDataUrl(url: string): Promise<string> {
   const response: FetchImageResponse = await chrome.runtime.sendMessage({
@@ -61,6 +66,8 @@ export default function Popup() {
   const [showRuntime,  setShowRuntime]  = useState(false)
   const [showGenres,   setShowGenres]   = useState(false)
   const [showOverview, setShowOverview] = useState(false)
+  const [rememberUsername, setRememberUsername] = useState(true)
+  const [rememberedUser,   setRememberedUser]   = useState<RememberedUser | null>(null)
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null)
   const [cardUrl,       setCardUrl]       = useState<string | null>(null)
   const [cardBlob,      setCardBlob]      = useState<Blob | null>(null)
@@ -68,8 +75,12 @@ export default function Popup() {
   const [altText,       setAltText]       = useState<string | null>(null)
   const [altTextCopied, setAltTextCopied] = useState(false)
 
-  // On mount: check for newer release on GitHub
+  // On mount: check for newer release on GitHub.
+  // Skip for users installed from the Chrome Web Store — they get updates
+  // automatically and the GitHub-release link is just a confusing dead end
+  // for them. Only dev/sideload installs benefit from the banner.
   useEffect(() => {
+    if (chrome.runtime.id === CWS_EXTENSION_ID) return
     fetch('https://api.github.com/repos/michaellambgelo/boxd-card/releases/latest')
       .then(r => r.ok ? r.json() : null)
       .then(data => {
@@ -113,7 +124,12 @@ export default function Popup() {
       setShowRuntime(s.showRuntime)
       setShowGenres(s.showGenres)
       setShowOverview(s.showOverview)
+      setRememberUsername(s.rememberUsername)
     })
+    // Load the cached Letterboxd identity so the nudge can deep-link to the
+    // user's diary/profile even on tabs where the live detection below returns
+    // nothing (i.e. anywhere off letterboxd.com).
+    loadRememberedUser().then(setRememberedUser)
     chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
       const url = (tab?.url ?? '').replace(/#.*$/, '')
       const match = CARD_TYPES.find(t => CARD_TYPE_CONFIGS[t].urlPattern.test(url))
@@ -131,9 +147,12 @@ export default function Popup() {
     })
   }, [cardType])
 
-  // On mount: read Letterboxd's page-level `window.person.username` directly
-  // from the active tab's MAIN world. Works on any letterboxd.com URL —
-  // doesn't depend on the content script being injected.
+  // On mount: read Letterboxd's page-level `window.person.username` and the
+  // sidebar avatar src directly from the active tab's MAIN world. Works on
+  // any letterboxd.com URL — doesn't depend on the content script being
+  // injected. When the `rememberUsername` setting is on, persist both to
+  // chrome.storage.local so subsequent popup opens on a non-Letterboxd tab
+  // can still personalize the navigation nudge.
   useEffect(() => {
     chrome.tabs.query({ active: true, currentWindow: true }).then(async ([tab]) => {
       if (!tab?.id || !tab.url?.startsWith('https://letterboxd.com/')) return
@@ -143,15 +162,26 @@ export default function Popup() {
           world: 'MAIN',
           func: () => {
             const p = (globalThis as unknown as { person?: { loggedIn?: boolean; username?: string } }).person
-            return p?.loggedIn && p.username ? p.username : ''
+            if (!p?.loggedIn || !p.username) return null
+            const avatarImg = document.querySelector('.site-nav .avatar img') as HTMLImageElement | null
+            return { username: p.username, avatarUrl: avatarImg?.src || undefined }
           },
         })
-        if (result?.result) setLoggedInUsername(result.result)
+        const detected = result?.result as { username: string; avatarUrl?: string } | null | undefined
+        if (!detected?.username) return
+        setLoggedInUsername(detected.username)
+        if (rememberUsername) {
+          const cached: RememberedUser = {
+            username: detected.username, avatarUrl: detected.avatarUrl, at: Date.now(),
+          }
+          saveRememberedUser(cached)
+          setRememberedUser(cached)
+        }
       } catch {
         // activeTab not yet granted, or tab navigated away — keep generic hint.
       }
     })
-  }, [])
+  }, [rememberUsername])
 
   async function handleGenerate() {
     setStatus('loading')
@@ -411,7 +441,7 @@ export default function Popup() {
         ) : (
           <>
             <a
-              href="https://boxd-card.michaellamb.dev"
+              href="https://boxd-card.com"
               target="_blank"
               rel="noreferrer"
               className={styles.headerLink}
@@ -526,6 +556,43 @@ export default function Popup() {
                 </span>
               </div>
             )}
+          </div>
+          <div className={styles.field}>
+            <span className={styles.fieldLabel}>Quick navigation</span>
+            <label className={styles.checkboxLabel}>
+              <input
+                type="checkbox"
+                checked={rememberUsername}
+                onChange={e => {
+                  const next = e.target.checked
+                  setRememberUsername(next)
+                  saveSettings({ rememberUsername: next })
+                  if (!next) {
+                    clearRememberedUser()
+                    setRememberedUser(null)
+                  }
+                }}
+              />
+              Remember my Letterboxd username
+            </label>
+            <p className={styles.settingsHint}>
+              Stored locally on this device. Refreshed each time you open the
+              popup while signed in on letterboxd.com, so the "Navigate to…"
+              hint can deep-link straight to your profile from any tab.
+              {rememberedUser && (
+                <>
+                  {' '}Currently remembered: <strong>@{rememberedUser.username}</strong>.
+                  {' '}
+                  <button
+                    type="button"
+                    className={styles.linkButton}
+                    onClick={() => { clearRememberedUser(); setRememberedUser(null) }}
+                  >
+                    Clear
+                  </button>
+                </>
+              )}
+            </p>
           </div>
         </div>
       )}
@@ -643,9 +710,13 @@ export default function Popup() {
           </div>
         )}
 
-        {/* Navigation hint when on wrong page */}
+        {/* Navigation hint when on wrong page. Falls back to the remembered
+            Letterboxd identity so the nudge stays a clickable deep-link even
+            on tabs where we couldn't live-detect a logged-in username. */}
         {isValidPage === false && (() => {
-          const segments = formatUrlHintSegments(cardType, loggedInUsername)
+          const effectiveUsername = loggedInUsername || rememberedUser?.username || ''
+          const showRememberedAvatar = !loggedInUsername && !!rememberedUser?.avatarUrl
+          const segments = formatUrlHintSegments(cardType, effectiveUsername)
           const handleHintClick = async (e: MouseEvent, href: string) => {
             e.preventDefault()
             const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
@@ -656,6 +727,9 @@ export default function Popup() {
           }
           return (
             <p className={styles.hint}>
+              {showRememberedAvatar && (
+                <img src={rememberedUser!.avatarUrl} alt="" className={styles.hintAvatar} />
+              )}
               Navigate to{' '}
               {segments.map((seg, i) =>
                 seg.kind === 'link'

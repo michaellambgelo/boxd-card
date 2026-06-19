@@ -29,7 +29,7 @@ function targetHost(url: string): string {
 // For production the build bakes in the value at build time.
 const PROXY_BASE: string =
   (import.meta.env.VITE_PROXY_URL as string | undefined) ??
-  'https://boxd-card.michaellamb.workers.dev'
+  'https://api.boxd-card.com'
 
 export function proxyUrl(target: string, accept?: 'image'): string {
   let u = `${PROXY_BASE}?url=${encodeURIComponent(target)}`
@@ -475,9 +475,9 @@ export async function scrapeSingleReview(doc: Document): Promise<FilmData[]> {
   const filmId = lazyPoster?.getAttribute('data-film-id') ?? ''
 
   const title =
-    doc.querySelector('header.inline-production-masthead h2.primaryname a')?.textContent?.trim() ?? ''
+    doc.querySelector('.inline-production-masthead h2.primaryname a')?.textContent?.trim() ?? ''
   const year =
-    doc.querySelector('header.inline-production-masthead .releasedate a')?.textContent?.trim() ?? ''
+    doc.querySelector('.inline-production-masthead .releasedate a')?.textContent?.trim() ?? ''
 
   const rating =
     doc.querySelector('.content-reactions-strip span.inline-rating svg')

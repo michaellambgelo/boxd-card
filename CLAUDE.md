@@ -150,8 +150,9 @@ section.viewing-poster-container
     @data-poster-url   "/film/groundhog-day/image-150/"
   img.image            ← src = resolved poster or placeholder (same fallback strategy)
 
-header.inline-production-masthead h2.primaryname a   ← film title text "Groundhog Day"
-header.inline-production-masthead .releasedate a     ← year text "1993"
+.inline-production-masthead h2.primaryname a   ← film title text "Groundhog Day"
+.inline-production-masthead .releasedate a     ← year text "1993"
+  (match by class only — Letterboxd renders the masthead as a <div>, not a <header>)
 
 .content-reactions-strip span.inline-rating svg      ← @aria-label = "★★★★★" (absent if unrated)
 
@@ -173,8 +174,8 @@ div.viewing-list > div.listitem.js-listitem   (one per review, take first N)
     .react-component[data-component-class="LazyPoster"] @data-poster-url
     img.image   ← src = resolved poster or empty-poster fallback
 
-  Film title:   header.inline-production-masthead h2.primaryname a
-  Year:         header.inline-production-masthead .releasedate a
+  Film title:   .inline-production-masthead h2.primaryname a
+  Year:         .inline-production-masthead .releasedate a
   Rating:       .content-reactions-strip .inline-rating svg @aria-label  ("★★★★½"; absent if unrated)
   Watch date:   .content-reactions-strip .date time @datetime             (ISO: "2026-03-22")
 
