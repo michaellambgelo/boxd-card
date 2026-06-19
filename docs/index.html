@@ -299,9 +299,9 @@
             <span class="lead-icon">
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
             </span>
-            <input value="letterboxd.com/cinephile/" aria-label="Letterboxd URL" />
+            <input id="hero-url" value="letterboxd.com/cinephile/" aria-label="Letterboxd URL" />
           </div>
-          <button class="btn btn--primary btn--md" data-reseed type="button">Generate Card</button>
+          <button class="btn btn--primary btn--md" id="hero-generate" type="button">Generate Card</button>
         </div>
         <p class="helper">Paste from Letterboxd's Share button, or any profile, diary, list, or reviews URL.</p>
       </div>
@@ -563,6 +563,20 @@
       reseed();
       document.querySelectorAll('[data-reseed]').forEach(function (b) {
         b.addEventListener('click', reseed);
+      });
+
+      // Hero "Generate Card" → open the web app in a new tab, handing off the
+      // entered URL as a query param so the app auto-fills and generates.
+      var heroInput = document.getElementById('hero-url');
+      var heroBtn = document.getElementById('hero-generate');
+      function openWebApp() {
+        var v = (heroInput && heroInput.value || '').trim();
+        var dest = '/app/' + (v ? ('?url=' + encodeURIComponent(v)) : '');
+        window.open(dest, '_blank', 'noopener');
+      }
+      if (heroBtn) heroBtn.addEventListener('click', openWebApp);
+      if (heroInput) heroInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); openWebApp(); }
       });
     })();
   </script>
