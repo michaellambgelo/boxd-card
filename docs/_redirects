@@ -1,12 +1,15 @@
-# Cloudflare Pages redirects/rewrites for boxd-card.com
+# Cloudflare Pages redirects for boxd-card.com
 #
-# The apex serves the marketing landing page (docs/landing/).
-/            /landing/index.html   200
+# The apex (docs/index.html) IS the marketing landing page — served directly as
+# a static asset. (Cloudflare Pages does not honor a `/ -> /landing/index.html`
+# 200 rewrite, so the landing lives at the apex rather than behind a rewrite.)
 
-# The about page was retired in favor of the landing; send any old/indexed
-# links to the apex.
-/about       /                     301
-/about/      /                     301
+# The interim /landing/ path and the retired /about page fold into the apex.
+# Exact matches only — do not use a splat here, or /landing/assets/* would break.
+/landing       /          301
+/landing/      /          301
+/about         /          301
+/about/        /          301
 
 # Legacy flat privacy path → new directory location.
-/privacy.html  /privacy  301
+/privacy.html  /privacy   301
