@@ -24,6 +24,7 @@ export default function App() {
   const [view,        setView]        = useState<View>('main')
   const [status,      setStatus]      = useState<Status>('idle')
   const [error,       setError]       = useState<string | null>(null)
+  const [settingsLoaded, setSettingsLoaded] = useState(false)
 
   const [urlInput,    setUrlInput]    = useState('')
   const [detected,    setDetected]    = useState<ParsedLetterboxdUrl | null>(null)
@@ -33,6 +34,8 @@ export default function App() {
   // Monotonic counter — guards against concurrent detectUrl() calls where a
   // slow response for an older input could otherwise clobber a newer result.
   const detectGenRef = useRef(0)
+  // Guards the one-shot auto-generate from a ?url= hand-off.
+  const autoGenRef = useRef(false)
 
   // For profile pages where cardType is ambiguous, user picks one of these two
   const [profileCardType, setProfileCardType] = useState<'last-four-watched' | 'favorites'>('last-four-watched')
@@ -80,8 +83,24 @@ export default function App() {
       setAltTextEnabled(s.generateAltText)
       setPreviewAltTextEnabled(s.previewAltText)
       setUseTmdb(s.useTmdb)
+      setSettingsLoaded(true)
     })
   }, [])
+
+  // Auto-generate from a `?url=` hand-off (e.g. the landing page's Generate
+  // button opens /app/?url=…). Runs once, and only after settings have loaded
+  // so the user's saved preferences are applied to the generated card.
+  useEffect(() => {
+    if (!settingsLoaded || autoGenRef.current) return
+    autoGenRef.current = true
+    const params = new URLSearchParams(window.location.search)
+    const incoming = (params.get('url') ?? params.get('u') ?? '').trim()
+    if (!incoming) return
+    setUrlInput(incoming)
+    // Strip the query so a reload doesn't silently re-generate.
+    window.history.replaceState(null, '', window.location.pathname + window.location.hash)
+    void handleGenerate(undefined, incoming)
+  }, [settingsLoaded])
 
   // Effective card type after detection + profile-page override
   const effectiveCardType: CardType = detected
@@ -101,6 +120,9 @@ export default function App() {
 
   async function detectUrl(text: string): Promise<ParsedLetterboxdUrl | null> {
     const trimmed = text.trim()
+    // Accept scheme-less input (e.g. "letterboxd.com/user/") from pastes and the
+    // landing-page hand-off; parseLetterboxdUrl/new URL() require a scheme.
+    const candidate = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
     const gen = ++detectGenRef.current
     const isLatest = () => gen === detectGenRef.current
 
@@ -108,7 +130,7 @@ export default function App() {
     setDetectedFor('')
     setDetectError(null)
 
-    const parsed = parseLetterboxdUrl(trimmed)
+    const parsed = parseLetterboxdUrl(candidate)
     if (parsed === null) {
       if (isLatest()) {
         setDetectError("This doesn't look like a supported Letterboxd URL. Try a profile, diary, list, reviews, or film review link.")
@@ -135,7 +157,7 @@ export default function App() {
     // Short URL (boxd.it) — needs a network round-trip
     setDetecting(true)
     try {
-      const resolved = await resolveLetterboxdUrl(trimmed)
+      const resolved = await resolveLetterboxdUrl(candidate)
       if (isLatest()) {
         setDetected(resolved)
         setDetectedFor(trimmed)
@@ -159,15 +181,15 @@ export default function App() {
 
   // ── Generate ────────────────────────────────────────────────────────────────
 
-  async function handleGenerate(e: React.FormEvent) {
-    e.preventDefault()
+  async function handleGenerate(e?: React.FormEvent, explicitInput?: string) {
+    e?.preventDefault()
 
     // Only trust the cached detection if the input hasn't changed since it was
     // produced. Covers two races: (1) user pastes A, then quickly pastes B and
     // A's slow boxd.it resolve wins — `detectedFor` won't match B. (2) user
     // edits the URL in place without pasting — `detectedFor` is the pre-edit
     // text. In both cases we re-detect from the current input.
-    const currentInput = urlInput.trim()
+    const currentInput = (explicitInput ?? urlInput).trim()
     const cacheValid = detected !== null && detectedFor === currentInput
     const resolvedDetected = cacheValid ? detected : await detectUrl(currentInput)
     if (!resolvedDetected) return
