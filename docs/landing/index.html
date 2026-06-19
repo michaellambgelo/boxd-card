@@ -206,6 +206,15 @@
     .panel h3 { font-size: 19px; font-weight: 700; color: var(--text-primary); margin: 10px 0 6px; }
     .panel p { font-size: 14.5px; line-height: 1.55; color: var(--text-secondary); margin: 0 0 18px; }
 
+    /* ── Install manually & feedback ──────────────────────── */
+    .extras { padding: 8px 24px 16px; }
+    .extras .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .extras .panel a { color: var(--brand-blue); text-decoration: none; }
+    .extras .panel a:hover { text-decoration: underline; }
+    .extras ol.steps { margin: 4px 0 12px; padding-left: 20px; color: var(--text-secondary); font-size: 14.5px; line-height: 1.7; }
+    .extras ol.steps code { font-family: var(--font-mono); font-size: 13px; background: var(--surface-input); padding: 1px 5px; border-radius: 4px; }
+    .extras .fine { font-size: 13px; color: var(--text-dim); margin: 0; }
+
     /* ── Final CTA ────────────────────────────────────────── */
     .cta { padding: 56px 24px 80px; }
     .cta .panel-cta { position: relative; border-radius: 12px; overflow: hidden; border: 1px solid var(--border-subtle); padding: 56px 40px; text-align: center; }
@@ -228,7 +237,7 @@
 
     /* ── Responsive ───────────────────────────────────────── */
     @media (max-width: 860px) {
-      .hero .grid, .band .grid, .runs .grid { grid-template-columns: 1fr; }
+      .hero .grid, .band .grid, .runs .grid, .extras .grid { grid-template-columns: 1fr; }
       .swatches { grid-template-columns: repeat(5, 1fr); }
       .card-stack { min-height: 380px; margin-top: 8px; }
     }
@@ -437,6 +446,29 @@
     </div>
   </section>
 
+  <!-- ── Install manually & feedback ────────────────────── -->
+  <section class="extras" id="install">
+    <div class="wrap grid">
+      <div class="panel">
+        <span class="kicker">Manual install</span>
+        <h3>Prefer to sideload?</h3>
+        <p>Grab the latest ZIP from the <a href="https://github.com/michaellambgelo/boxd-card/releases">Releases</a> page, unpack it, then load it in Chrome:</p>
+        <ol class="steps">
+          <li>Open <code>chrome://extensions</code></li>
+          <li>Enable <strong>Developer mode</strong> (top-right toggle)</li>
+          <li>Click <strong>Load unpacked</strong> and select the folder</li>
+        </ol>
+        <p class="fine">Sideloaded installs don't auto-update — the popup shows an <em>update available</em> banner whenever a newer release ships.</p>
+      </div>
+      <div class="panel">
+        <span class="kicker">Open source &amp; feedback</span>
+        <h3>Ideas, bugs, contributions</h3>
+        <p>Have an idea or found a bug? Open a thread in <a href="https://github.com/michaellambgelo/boxd-card/discussions">GitHub Discussions</a>.</p>
+        <p>Boxd Card is open source — browse the code or contribute on <a href="https://github.com/michaellambgelo/boxd-card">GitHub</a>.</p>
+      </div>
+    </div>
+  </section>
+
   <!-- ── Final CTA ──────────────────────────────────────── -->
   <section class="cta">
     <div class="wrap">
@@ -526,6 +558,66 @@
       document.querySelectorAll('[data-reseed]').forEach(function (b) {
         b.addEventListener('click', reseed);
       });
+    })();
+  </script>
+
+  <!-- Anonymous RUM for the landing page (same proxy + app as the web app;
+       segmented downstream by the `surface` attribute). See /privacy. -->
+  <script src="https://unpkg.com/@grafana/faro-web-sdk@^2.5.0/dist/bundle/faro-web-sdk.iife.js"></script>
+  <script src="https://unpkg.com/@grafana/faro-web-tracing@^2.5.0/dist/bundle/faro-web-tracing.iife.js"></script>
+  <script>
+    (function () {
+      try {
+        if (!window.GrafanaFaroWebSdk) return;
+        var SDK = window.GrafanaFaroWebSdk;
+        var isLocalDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+        var instrumentations = SDK.getWebInstrumentations();
+        if (window.GrafanaFaroWebTracing) {
+          instrumentations.push(new window.GrafanaFaroWebTracing.TracingInstrumentation());
+        }
+        var faro = SDK.initializeFaro({
+          url: (isLocalDev ? 'http://localhost:8787' : 'https://grafana.michaellamb.dev') + '/faro-proxy?app=boxd-card',
+          app: {
+            name: 'boxd-card',
+            version: '0.8.0',
+            environment: isLocalDev ? 'development' : 'production',
+          },
+          instrumentations: instrumentations,
+        });
+
+        function classify(href) {
+          if (!href) return 'other';
+          if (href.indexOf('chromewebstore.google.com') !== -1) return 'chrome_web_store';
+          if (/\/app\/?($|[?#])/.test(href) || href.indexOf('/app/') !== -1) return 'web_app';
+          if (href.indexOf('github.com/michaellambgelo/boxd-card/releases') !== -1) return 'github_releases';
+          if (href.indexOf('github.com/michaellambgelo/boxd-card/discussions') !== -1) return 'github_discussions';
+          if (href.indexOf('github.com/michaellambgelo/boxd-card') !== -1) return 'github_source';
+          if (href.indexOf('/privacy') !== -1) return 'privacy';
+          if (href.indexOf('letterboxd.com') !== -1) return 'letterboxd';
+          return 'other';
+        }
+
+        faro.api.pushEvent('page_view', {
+          surface: 'landing',
+          path: location.pathname,
+          referrer: document.referrer || '',
+        });
+
+        document.body.addEventListener('click', function (e) {
+          var node = e.target;
+          while (node && node.tagName !== 'A') node = node.parentElement;
+          if (!node) return;
+          var href = node.getAttribute('href') || '';
+          if (!href || href.charAt(0) === '#' || href.indexOf('javascript:') === 0) return;
+          faro.api.pushEvent('cta_click', {
+            surface: 'landing',
+            destination: classify(href),
+            href: href,
+          });
+        });
+      } catch (err) {
+        console.warn('Faro init failed:', err);
+      }
     })();
   </script>
 </body>
