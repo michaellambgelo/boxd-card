@@ -6,7 +6,7 @@ import { generateAltText } from '../altText'
 import { CARD_TYPES, CARD_TYPE_CONFIGS, LAYOUTS, LAYOUT_CONFIGS, STATS_CATEGORIES, STATS_CATEGORY_CONFIGS, formatUrlHint, formatUrlHintSegments } from '../types'
 import type { CardType, ListCount, ReviewCount, Layout, StatsCategory, StatsSubCategory } from '../types'
 import { loadSettings, saveSettings, loadRememberedUser, saveRememberedUser, clearRememberedUser, type RememberedUser } from '../storage/settings'
-import { didUseTmdb, mergeTmdb, slugFromPosterUrl, type TmdbFilmData } from '../shared/tmdb'
+import { didUseTmdb, mergeTmdbKeepCustomPoster, slugFromPosterUrl, type TmdbFilmData } from '../shared/tmdb'
 import tmdbLogoUrl from '../assets/TMDB-blue-short.svg?url'
 import styles from './Popup.module.css'
 
@@ -234,7 +234,8 @@ export default function Popup() {
         filmData.films = filmData.films.map((f, i) => {
           const r = results[i]
           if (r.status !== 'fulfilled' || !r.value) return f
-          return mergeTmdb(f, r.value)
+          // Keeps a user-chosen custom poster while still enriching metadata.
+          return mergeTmdbKeepCustomPoster(f, r.value)
         })
       }
 

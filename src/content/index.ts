@@ -27,6 +27,12 @@ export interface FilmData {
   date?: string       // ISO-ish date string; populated by diary/review scrapers
   reviewText?: string // review body text; populated by review scrapers only
   tags?: string[]     // user tags; populated by review scrapers only
+  /**
+   * True when the Letterboxd poster for this film is a user-chosen custom
+   * poster (extension only). When set, TMDB enrichment keeps this poster
+   * instead of overriding it with the TMDB poster — see the merge in Popup.tsx.
+   */
+  customPoster?: boolean
   // TMDB enrichment — populated when useTmdb (web) or extensionUseTmdb is on.
   tmdbPosterUrl?: string
   tmdbBackdropUrl?: string
@@ -104,6 +110,53 @@ export interface GetFilmDataRequest {
 
 const PLACEHOLDER = 'empty-poster'
 
+// ── Custom poster detection ──────────────────────────────────────────────────
+// Letterboxd renders a non-default poster (a Pro/Patron member's custom choice,
+// or a film-level "preferred" alternative) by stamping a preferredAlternativePosterId
+// into the LazyPoster's data-resolvable-poster-path JSON. Plain-default posters
+// omit the field. Verified against live Letterboxd DOM: e.g. a customised
+// Midsommar carries "preferredAlternativePosterId":"137315" (matching the
+// viewer's person.getCustomPoster("film:459564")), while a default-poster film
+// like Undefeated has no such field.
+//
+// When TMDB enrichment is on we KEEP these posters rather than overriding them
+// with TMDB's — the scraped posterUrl already resolves to the displayed
+// (alternative) image, so preserving it preserves exactly what the user sees.
+// This is a superset of strict per-user customs (it also spares film-preferred
+// alternatives), but it never misses a custom poster and never wrongly flags a
+// default one.
+function isCustomPoster(lazyPoster: Element | null): boolean {
+  const raw = lazyPoster?.getAttribute('data-resolvable-poster-path')
+  if (!raw) return false
+  try {
+    return !!JSON.parse(raw).preferredAlternativePosterId
+  } catch {
+    return false
+  }
+}
+
+// ── Film id ──────────────────────────────────────────────────────────────────
+// Current Letterboxd LazyPosters no longer carry a data-film-id attribute; the
+// numeric id now lives only inside the JSON of data-postered-identifier (top-level
+// `uid`) or data-resolvable-poster-path (`postered.uid`) as e.g. "film:459564".
+// Prefer the legacy attribute when present (older DOM / other page types), then
+// fall back to parsing the uid. Returns '' when no id can be found.
+function filmIdFromLazyPoster(lazyPoster: Element | null): string {
+  const legacy = lazyPoster?.getAttribute('data-film-id')
+  if (legacy) return legacy
+  for (const attr of ['data-postered-identifier', 'data-resolvable-poster-path']) {
+    const raw = lazyPoster?.getAttribute(attr)
+    if (!raw) continue
+    try {
+      const parsed = JSON.parse(raw)
+      const uid: string | undefined = parsed.uid ?? parsed.postered?.uid
+      const m = uid?.match(/^film:(\d+)$/)
+      if (m) return m[1]
+    } catch { /* malformed JSON — try next source */ }
+  }
+  return ''
+}
+
 // ── Recent Activity (Last Four Watched) ──────────────────────────────────────
 
 export function scrapeRecentActivity(): FilmData[] {
@@ -122,7 +175,7 @@ export function scrapeRecentActivity(): FilmData[] {
     const titleMatch = rawTitle.match(/^(.+?)(?:\s*\((\d{4})\))?$/)
     const title = titleMatch?.[1]?.trim() ?? rawTitle
     const year = titleMatch?.[2] ?? ''
-    const filmId = lazyPoster?.getAttribute('data-film-id') ?? ''
+    const filmId = filmIdFromLazyPoster(lazyPoster)
     const rating = ratingEl?.textContent?.trim() ?? ''
 
     // Use the resolved src if LazyPoster has updated it; otherwise fall back to
@@ -134,7 +187,7 @@ export function scrapeRecentActivity(): FilmData[] {
       : `https://letterboxd.com${dataPosterUrl}`
     const filmSlug = slugFromPosterUrl(dataPosterUrl)
 
-    return { title, year, rating, posterUrl, filmId, filmSlug }
+    return { title, year, rating, posterUrl, filmId, filmSlug, customPoster: isCustomPoster(lazyPoster) }
   })
 }
 
@@ -155,7 +208,7 @@ export function scrapeFavorites(): FilmData[] {
     const titleMatch = rawTitle.match(/^(.+?)(?:\s*\((\d{4})\))?$/)
     const title = titleMatch?.[1]?.trim() ?? rawTitle
     const year = titleMatch?.[2] ?? ''
-    const filmId = lazyPoster?.getAttribute('data-film-id') ?? ''
+    const filmId = filmIdFromLazyPoster(lazyPoster)
 
     const resolvedSrc = img?.src ?? ''
     const dataPosterUrl = lazyPoster?.getAttribute('data-poster-url') ?? ''
@@ -166,7 +219,7 @@ export function scrapeFavorites(): FilmData[] {
         : ''
     const filmSlug = slugFromPosterUrl(dataPosterUrl)
 
-    return { title, year, rating: '', posterUrl, filmId, filmSlug }
+    return { title, year, rating: '', posterUrl, filmId, filmSlug, customPoster: isCustomPoster(lazyPoster) }
   })
 }
 
@@ -195,7 +248,7 @@ export function scrapeDiary(count = 4): FilmData[] {
     const titleMatch = rawTitle.match(/^(.+?)(?:\s*\((\d{4})\))?$/)
     const title = titleMatch?.[1]?.trim() ?? rawTitle
     const year = titleMatch?.[2] ?? ''
-    const filmId = lazyPoster?.getAttribute('data-film-id') ?? ''
+    const filmId = filmIdFromLazyPoster(lazyPoster)
 
     const resolvedSrc = img?.src ?? ''
     const dataPosterUrl = lazyPoster?.getAttribute('data-poster-url') ?? ''
@@ -226,7 +279,7 @@ export function scrapeDiary(count = 4): FilmData[] {
       ? `${currentMonth} ${day}, ${currentYear}`
       : ''
 
-    return { title, year, rating, posterUrl, filmId, filmSlug, date }
+    return { title, year, rating, posterUrl, filmId, filmSlug, date, customPoster: isCustomPoster(lazyPoster) }
   })
 }
 
@@ -271,7 +324,7 @@ export function scrapeList(count: number): FilmData[] {
     const titleMatch = rawTitle.match(/^(.+?)(?:\s*\((\d{4})\))?$/)
     const title = titleMatch?.[1]?.trim() ?? rawTitle
     const year = titleMatch?.[2] ?? ''
-    const filmId = lazyPoster?.getAttribute('data-film-id') ?? ''
+    const filmId = filmIdFromLazyPoster(lazyPoster)
 
     const resolvedSrc = img?.src ?? ''
     const dataPosterUrl = lazyPoster?.getAttribute('data-poster-url') ?? ''
@@ -287,7 +340,7 @@ export function scrapeList(count: number): FilmData[] {
     const rating = ratingEl?.textContent?.trim()
       || ownerRatingToStars(item.getAttribute('data-owner-rating'))
 
-    return { title, year, rating, posterUrl, filmId, filmSlug }
+    return { title, year, rating, posterUrl, filmId, filmSlug, customPoster: isCustomPoster(lazyPoster) }
   })
 }
 
@@ -354,7 +407,7 @@ export async function scrapeReview(): Promise<FilmData[]> {
   const yr    = dateLinks[2]?.textContent?.trim() ?? ''
   const date = (day && month && yr) ? `${month} ${day}, ${yr}` : ''
 
-  const filmId = lazyPoster?.getAttribute('data-film-id') ?? ''
+  const filmId = filmIdFromLazyPoster(lazyPoster)
 
   const reviewBody = container.closest('body')?.querySelector('.js-review-body')
   const reviewText = reviewBody
@@ -365,7 +418,7 @@ export async function scrapeReview(): Promise<FilmData[]> {
     .map(a => a.textContent?.trim() ?? '')
     .filter(Boolean)
 
-  return [{ title, year, rating, posterUrl, filmId, filmSlug, date, reviewText, tags }]
+  return [{ title, year, rating, posterUrl, filmId, filmSlug, date, reviewText, tags, customPoster: isCustomPoster(lazyPoster) }]
 }
 
 // Reviews list page scraper.
@@ -406,7 +459,7 @@ export async function scrapeReviewsList(count: number): Promise<FilmData[]> {
         })
       : ''
 
-    const filmId = lazyPoster?.getAttribute('data-film-id') ?? ''
+    const filmId = filmIdFromLazyPoster(lazyPoster)
 
     // Review text — fetch full text if the review is truncated on the list page
     const reviewBodyEl = item.querySelector('.js-review-body') as HTMLElement | null
@@ -427,7 +480,7 @@ export async function scrapeReviewsList(count: number): Promise<FilmData[]> {
       .map(a => a.textContent?.trim() ?? '')
       .filter(Boolean)
 
-    return { title, year, rating, posterUrl, filmId, filmSlug, date, reviewText, tags }
+    return { title, year, rating, posterUrl, filmId, filmSlug, date, reviewText, tags, customPoster: isCustomPoster(lazyPoster) }
   }))
 }
 
@@ -463,7 +516,7 @@ export function scrapeFilmsPage(): FilmData[] {
     const titleMatch = rawTitle.match(/^(.+?)(?:\s*\((\d{4})\))?$/)
     const title = titleMatch?.[1]?.trim() ?? rawTitle
     const year = titleMatch?.[2] ?? ''
-    const filmId = lazyPoster?.getAttribute('data-film-id') ?? ''
+    const filmId = filmIdFromLazyPoster(lazyPoster)
 
     const resolvedSrc = img?.src ?? ''
     const dataPosterUrl = lazyPoster?.getAttribute('data-poster-url') ?? ''
@@ -477,7 +530,7 @@ export function scrapeFilmsPage(): FilmData[] {
     const ratingEl = item.querySelector('.rating')
     const rating = ratingEl?.textContent?.trim() ?? ''
 
-    return { title, year, rating, posterUrl, filmId, filmSlug }
+    return { title, year, rating, posterUrl, filmId, filmSlug, customPoster: isCustomPoster(lazyPoster) }
   })
 }
 
@@ -650,12 +703,12 @@ export function scrapeStatsTopFilms(count: number = 20): FilmData[] {
     const titleMatch = rawTitle.match(/^(.+?)(?:\s*\((\d{4})\))?$/)
     const title = titleMatch?.[1]?.trim() ?? rawTitle
     const year = titleMatch?.[2] ?? ''
-    const filmId = lazy?.getAttribute('data-film-id') ?? ''
+    const filmId = filmIdFromLazyPoster(lazy)
 
     const posterUrl = statsPosterUrl(img, lazy)
     const filmSlug = statsFilmSlug(lazy)
 
-    return { title, year, rating: '', posterUrl, filmId, filmSlug }
+    return { title, year, rating: '', posterUrl, filmId, filmSlug, customPoster: isCustomPoster(lazy) }
   })
 }
 
@@ -676,12 +729,12 @@ export function scrapeStatsMostWatched(count: number = 20): FilmData[] {
     const titleMatch = rawTitle.match(/^(.+?)(?:\s*\((\d{4})\))?$/)
     const title = titleMatch?.[1]?.trim() ?? rawTitle
     const year = titleMatch?.[2] ?? ''
-    const filmId = lazy?.getAttribute('data-film-id') ?? ''
+    const filmId = filmIdFromLazyPoster(lazy)
 
     const posterUrl = statsPosterUrl(img, lazy)
     const filmSlug = statsFilmSlug(lazy)
 
-    return { title, year, rating: detail, posterUrl, filmId, filmSlug }
+    return { title, year, rating: detail, posterUrl, filmId, filmSlug, customPoster: isCustomPoster(lazy) }
   }).filter(f => f.title)
 }
 
@@ -702,12 +755,12 @@ export function scrapeStatsHighestRated(count: number = 12): FilmData[] {
     const titleMatch = rawTitle.match(/^(.+?)(?:\s*\((\d{4})\))?$/)
     const title = titleMatch?.[1]?.trim() ?? rawTitle
     const year = titleMatch?.[2] ?? ''
-    const filmId = lazy?.getAttribute('data-film-id') ?? ''
+    const filmId = filmIdFromLazyPoster(lazy)
 
     const posterUrl = statsPosterUrl(img, lazy)
     const filmSlug = statsFilmSlug(lazy)
 
-    return { title, year, rating: detail, posterUrl, filmId, filmSlug }
+    return { title, year, rating: detail, posterUrl, filmId, filmSlug, customPoster: isCustomPoster(lazy) }
   }).filter(f => f.title)
 }
 
@@ -738,7 +791,7 @@ export function scrapeYearMostWatched(count: number = 20): FilmData[] {
     const titleMatch = rawTitle.match(/^(.+?)(?:\s*\((\d{4})\))?$/)
     const title = titleMatch?.[1]?.trim() ?? rawTitle
     const year = titleMatch?.[2] ?? ''
-    const filmId = lazy?.getAttribute('data-film-id') ?? ''
+    const filmId = filmIdFromLazyPoster(lazy)
 
     const posterUrl = statsPosterUrl(img, lazy)
     const filmSlug = statsFilmSlug(lazy)
@@ -746,7 +799,7 @@ export function scrapeYearMostWatched(count: number = 20): FilmData[] {
     // data-owner-rating on the poster-container; rewatch count in a label
     const rating = ownerRatingToStars(posterContainer?.getAttribute('data-owner-rating') ?? null)
 
-    return { title, year, rating, posterUrl, filmId, filmSlug }
+    return { title, year, rating, posterUrl, filmId, filmSlug, customPoster: isCustomPoster(lazy) }
   }).filter(f => f.title)
 }
 
@@ -761,7 +814,7 @@ function extractMilestoneFilm(el: Element, label: string, date: string): Milesto
   const titleMatch = rawTitle.match(/^(.+?)(?:\s*\((\d{4})\))?$/)
   const title = titleMatch?.[1]?.trim() ?? rawTitle
   const year = titleMatch?.[2] ?? ''
-  const filmId = lazy?.getAttribute('data-film-id') ?? ''
+  const filmId = filmIdFromLazyPoster(lazy)
   const posterUrl = statsPosterUrl(img, lazy)
   const rating = ownerRatingToStars(posterContainer?.getAttribute('data-owner-rating') ?? null)
 

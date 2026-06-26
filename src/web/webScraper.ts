@@ -111,6 +111,26 @@ interface PosterAttrs {
   posterUrl: string
 }
 
+// Current Letterboxd LazyPosters no longer carry a data-film-id attribute; the
+// numeric id now lives only inside the JSON of data-postered-identifier (top-level
+// `uid`) or data-resolvable-poster-path (`postered.uid`) as e.g. "film:459564".
+// Prefer the legacy attribute when present, then fall back to parsing the uid.
+function filmIdFromLazyPoster(lazyPoster: Element | null): string {
+  const legacy = lazyPoster?.getAttribute('data-film-id')
+  if (legacy) return legacy
+  for (const attr of ['data-postered-identifier', 'data-resolvable-poster-path']) {
+    const raw = lazyPoster?.getAttribute(attr)
+    if (!raw) continue
+    try {
+      const parsed = JSON.parse(raw)
+      const uid: string | undefined = parsed.uid ?? parsed.postered?.uid
+      const m = uid?.match(/^film:(\d+)$/)
+      if (m) return m[1]
+    } catch { /* malformed JSON — try next source */ }
+  }
+  return ''
+}
+
 /** Extract title/year/filmId/posterUrl from a LazyPoster item element. */
 function extractPosterAttrs(item: Element): PosterAttrs {
   const lazyPoster = item.querySelector(
@@ -120,7 +140,7 @@ function extractPosterAttrs(item: Element): PosterAttrs {
   const titleMatch = rawTitle.match(/^(.+?)(?:\s*\((\d{4})\))?$/)
   const title = titleMatch?.[1]?.trim() ?? rawTitle
   const year = titleMatch?.[2] ?? ''
-  const filmId = lazyPoster?.getAttribute('data-film-id') ?? ''
+  const filmId = filmIdFromLazyPoster(lazyPoster)
   // In fetched HTML, img.src is never lazy-resolved — always use data-poster-url.
   const dataPosterUrl = lazyPoster?.getAttribute('data-poster-url') ?? ''
   const posterUrl = dataPosterUrl ? `https://letterboxd.com${dataPosterUrl}` : ''

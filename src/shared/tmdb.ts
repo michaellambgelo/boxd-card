@@ -56,6 +56,20 @@ export function mergeTmdb(film: FilmData, tmdb: TmdbFilmData): FilmData {
 }
 
 /**
+ * Like mergeTmdb, but keeps a user-chosen custom poster (extension only).
+ * When the scraped film carries `customPoster`, the Letterboxd poster is the
+ * one the user deliberately set, so we enrich every TMDB field EXCEPT the
+ * poster. Dropping tmdbPosterUrl also keeps didUseTmdb honest — no TMDB poster
+ * was used for this film. Films without the flag (e.g. the web app, which never
+ * sets it) behave exactly like mergeTmdb.
+ */
+export function mergeTmdbKeepCustomPoster(film: FilmData, tmdb: TmdbFilmData): FilmData {
+  const merged = mergeTmdb(film, tmdb)
+  if (film.customPoster) merged.tmdbPosterUrl = undefined
+  return merged
+}
+
+/**
  * Returns true if any TMDB-sourced field is present on any film, or if the
  * card's backdrop came from TMDB's CDN. Used to decide whether to draw the
  * TMDB attribution logo on the card — TMDB's API-usage policy requires
