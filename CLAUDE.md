@@ -65,18 +65,32 @@ Defined in `src/types.ts`:
 ```
 section#recent-activity li.griditem   (take first 4)
   .react-component[data-component-class="LazyPoster"]
-    @data-item-name    "Dune (2021)"   ← title + year
-    @data-film-id      "371378"
-    @data-poster-url   "/film/dune-2021/image-150/"
+    @data-item-name              "Dune (2021)"   ← title + year
+    @data-poster-url             "/film/dune-2021/image-150/"
+    @data-postered-identifier    '{"uid":"film:371378",...}'   ← film id source (see below)
+    @data-resolvable-poster-path '{"preferredAlternativePosterId":"137315","postered":{"uid":"film:371378"},...}'
   img.image                            ← src = resolved poster or placeholder
   p.poster-viewingdata .rating         ← star text e.g. "★★★★"
 ```
+
+**Film id** — current Letterboxd LazyPosters no longer carry a `data-film-id` attribute.
+The numeric id now lives only inside the JSON of `data-postered-identifier` (top-level
+`uid`) or `data-resolvable-poster-path` (`postered.uid`) as `"film:371378"`.
+`filmIdFromLazyPoster()` (in both `content/index.ts` and `web/webScraper.ts`) prefers the
+legacy `data-film-id` when present, then parses the uid out of those JSON attributes.
+
+**Custom posters** — `data-resolvable-poster-path` carries `preferredAlternativePosterId`
+when Letterboxd renders a non-default poster (a Pro/Patron member's custom choice, or a
+film-level preferred alternative); plain-default posters omit it. `isCustomPoster()` reads
+this; when set, extension TMDB enrichment keeps the Letterboxd poster instead of overriding
+it with the TMDB poster (still enriching metadata/backdrop). See `mergeTmdbKeepCustomPoster`
+in `shared/tmdb.ts`.
 
 **Films page (Last Four Watched fallback — `letterboxd.com/<username>/films/`):**
 ```
 ul.poster-list li.poster-container
   .react-component[data-component-class="LazyPoster"]
-    @data-item-name / @data-film-id / @data-poster-url
+    @data-item-name / @data-poster-url / uid (see Film id note above)
   img.image
   p.poster-viewingdata .rating   ← may be absent
 ```
@@ -87,7 +101,7 @@ The content script tries `#recent-activity` first (profile page); falls back to 
 ```
 section#favourites li.griditem   (take first 4)
   .react-component[data-component-class="LazyPoster"]
-    @data-item-name / @data-film-id / @data-poster-url   (same as above)
+    @data-item-name / @data-poster-url / uid (see Film id note above)   (same as above)
   img.image
   (no rating element — favorites have no ratings)
 ```
@@ -100,7 +114,7 @@ section#favourites li.griditem   (take first 4)
 ```
 table#diary-table tbody tr.diary-entry-row
   td.col-film .react-component[data-component-class="LazyPoster"]
-    @data-item-name / @data-film-id / @data-poster-url
+    @data-item-name / @data-poster-url / uid (see Film id note above)
   img.image
   td.col-rating .hide-for-owner .rating   ← plain star text (not interactive input)
   td.col-monthdate .monthdate a.month     ← "Mar" (only on first row of each month)
@@ -113,7 +127,7 @@ table#diary-table tbody tr.diary-entry-row
 ```
 ul.js-list-entries li.posteritem
   .react-component[data-component-class="LazyPoster"]
-    @data-item-name / @data-film-id / @data-poster-url
+    @data-item-name / @data-poster-url / uid (see Film id note above)
   img.image
   (no rating — list entries have no ratings)
 

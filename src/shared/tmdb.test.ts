@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { slugFromPosterUrl, mergeTmdb, didUseTmdb, type TmdbFilmData } from './tmdb'
+import { slugFromPosterUrl, mergeTmdb, mergeTmdbKeepCustomPoster, didUseTmdb, type TmdbFilmData } from './tmdb'
 import type { FilmData } from '../content/index'
 
 describe('slugFromPosterUrl', () => {
@@ -92,6 +92,44 @@ describe('mergeTmdb', () => {
     expect(merged.runtime).toBeUndefined()
     expect(merged.genres).toBeUndefined()
     expect(merged.overview).toBeUndefined()
+  })
+})
+
+describe('mergeTmdbKeepCustomPoster', () => {
+  const baseFilm: FilmData = {
+    title: 'Dune',
+    year: '2021',
+    rating: '★★★★',
+    posterUrl: 'https://a.ltrbxd.com/custom-poster.jpg',
+    filmId: '371378',
+  }
+
+  const fullTmdb: TmdbFilmData = {
+    tmdbId: 438631,
+    type: 'movie',
+    title: 'Dune',
+    releaseDate: '2021-09-15',
+    runtime: 155,
+    overview: 'Paul Atreides...',
+    director: 'Denis Villeneuve',
+    genres: ['Science Fiction'],
+    posterUrl: 'https://image.tmdb.org/t/p/original/p.jpg',
+    backdropUrl: 'https://image.tmdb.org/t/p/original/b.jpg',
+  }
+
+  it('drops the TMDB poster but keeps all other enrichment when customPoster is set', () => {
+    const merged = mergeTmdbKeepCustomPoster({ ...baseFilm, customPoster: true }, fullTmdb)
+    expect(merged.tmdbPosterUrl).toBeUndefined()         // user's custom poster wins
+    expect(merged.posterUrl).toBe(baseFilm.posterUrl)    // Letterboxd poster preserved
+    expect(merged.tmdbBackdropUrl).toBe(fullTmdb.backdropUrl)
+    expect(merged.director).toBe('Denis Villeneuve')
+    expect(merged.runtime).toBe(155)
+    expect(merged.genres).toEqual(['Science Fiction'])
+    expect(merged.overview).toBe('Paul Atreides...')
+  })
+
+  it('behaves exactly like mergeTmdb when customPoster is not set', () => {
+    expect(mergeTmdbKeepCustomPoster(baseFilm, fullTmdb)).toEqual(mergeTmdb(baseFilm, fullTmdb))
   })
 })
 
