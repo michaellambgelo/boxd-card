@@ -4,17 +4,17 @@
       "category": "outdated_dep",
       "severity": "warn",
       "title": "React 18 → 19 major version behind",
-      "detail": "package.json pins react and react-dom to ^18.3.1; latest is 19.2.7 (one major behind). devDependencies @types/react@^18.3.12 and @types/react-dom@^18.3.1 also need to be bumped to ^19.",
+      "detail": "package.json pinned react and react-dom to ^18.3.1; latest is 19.2.7 (one major behind). devDependencies @types/react@^18.3.12 and @types/react-dom@^18.3.1 were also behind. Fix was applied on branch claude-maintenance/2026-07-08-react-19: build passes and all 351 tests pass. PR creation failed — the GH_TOKEN fine-grained PAT lacks pull-requests:write permission. Branch is pushed; a human reviewer can open the PR manually.",
       "actionable": true,
-      "suggested_fix": "Bump react, react-dom, @types/react, @types/react-dom to ^19 in package.json and run npm install"
+      "suggested_fix": "Open a PR from branch claude-maintenance/2026-07-08-react-19 into main — all checks pass locally"
     },
     {
       "category": "failing_ci",
       "severity": "info",
       "title": "No build/test CI runs on direct pushes to main",
-      "detail": "The last 5 CI runs on main are all 'skipped' — they belong to the Claude Code workflow which only fires on PR comments/reviews, not on push events. There is no workflow that runs npm build or npm test on direct commits to main. The pr-checks.yml presumably covers PRs, but merged commits are not re-verified.",
+      "detail": "The last 5 CI runs on main are all 'skipped'. They belong to the Claude Code workflow which only fires on PR comments/reviews. No workflow runs npm build or npm test on direct commits to main. The pr-checks.yml presumably covers PRs but merged commits are not re-verified.",
       "actionable": false,
-      "suggested_fix": "Add a workflow that runs npm install && npm run build && npm run test:run on push to main"
+      "suggested_fix": "Add a push-to-main trigger to pr-checks.yml or a dedicated ci.yml that runs npm install && npm run build && npm run test:run"
     },
     {
       "category": "missing_tests",
