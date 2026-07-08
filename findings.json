@@ -1,0 +1,38 @@
+{
+  "findings": [
+    {
+      "category": "outdated_dep",
+      "severity": "warn",
+      "title": "React 18 → 19 major version behind",
+      "detail": "package.json pins react and react-dom to ^18.3.1; latest is 19.2.7 (one major behind). devDependencies @types/react@^18.3.12 and @types/react-dom@^18.3.1 also need to be bumped to ^19.",
+      "actionable": true,
+      "suggested_fix": "Bump react, react-dom, @types/react, @types/react-dom to ^19 in package.json and run npm install"
+    },
+    {
+      "category": "failing_ci",
+      "severity": "info",
+      "title": "No build/test CI runs on direct pushes to main",
+      "detail": "The last 5 CI runs on main are all 'skipped' — they belong to the Claude Code workflow which only fires on PR comments/reviews, not on push events. There is no workflow that runs npm build or npm test on direct commits to main. The pr-checks.yml presumably covers PRs, but merged commits are not re-verified.",
+      "actionable": false,
+      "suggested_fix": "Add a workflow that runs npm install && npm run build && npm run test:run on push to main"
+    },
+    {
+      "category": "missing_tests",
+      "severity": "info",
+      "title": "No source files changed in the last 14 days",
+      "detail": "git log --since='14 days ago' returned no changed source files. Missing-test audit is not applicable for this run.",
+      "actionable": false,
+      "suggested_fix": "N/A"
+    },
+    {
+      "category": "security",
+      "severity": "info",
+      "title": "No high or critical npm security advisories",
+      "detail": "npm audit found zero high or critical vulnerabilities.",
+      "actionable": false,
+      "suggested_fix": "N/A"
+    }
+  ],
+  "action": "audit_only",
+  "pr_url": null
+}

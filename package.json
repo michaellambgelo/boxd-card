@@ -16,15 +16,15 @@
   "dependencies": {
     "@grafana/faro-web-sdk": "^2.4.0",
     "@grafana/faro-web-tracing": "^2.4.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.0.0",
     "@grafana/faro-rollup-plugin": "^0.10.0",
     "@types/chrome": "^0.0.270",
-    "@types/react": "^18.3.12",
-    "@types/react-dom": "^18.3.1",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^5.2.0",
     "@vitest/coverage-v8": "^4.1.0",
     "canvas": "^3.2.2",
