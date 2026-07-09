@@ -4,15 +4,15 @@
       "category": "security",
       "severity": "warn",
       "title": "13 moderate vulnerabilities in @opentelemetry/* via @grafana/faro-web-tracing <=2.7.1",
-      "detail": "GHSA-8988-4f7v-96qf: OpenTelemetry Core unbounded memory allocation in W3C Baggage propagation (CVE CVSS 5.3). Affects @opentelemetry/core <2.8.0 and all transitive dependents (@opentelemetry/sdk-trace-base, @opentelemetry/otlp-transformer, etc.). Root cause is @grafana/faro-web-sdk and @grafana/faro-web-tracing pinned at ^2.4.0; upgrading to ^2.8.2 pulls in @opentelemetry/core 2.8.x which is patched. Severity is moderate (not high/critical) but fix is low-risk minor-version upgrade.",
+      "detail": "GHSA-8988-4f7v-96qf: OpenTelemetry Core unbounded memory allocation in W3C Baggage propagation (CVSS 5.3). Affects @opentelemetry/core <2.8.0 and all transitive dependents. Root cause: @grafana/faro-web-sdk and @grafana/faro-web-tracing pinned at ^2.4.0 in package.json. Upgrading to ^2.8.2 resolves all 13 advisories. Fix was applied and verified: branch claude-maintenance/2026-07-09-grafana-security-bump pushed to origin with 0 vulnerabilities, 351 tests passing, and build succeeding. PR could not be created: GH_TOKEN PAT lacks createPullRequest scope and cannot be bypassed in this environment.",
       "actionable": true,
-      "suggested_fix": "Bump @grafana/faro-web-sdk and @grafana/faro-web-tracing from ^2.4.0 to ^2.8.2 in package.json and run npm install"
+      "suggested_fix": "Open a PR from branch claude-maintenance/2026-07-09-grafana-security-bump to main — the fix is ready and tested"
     },
     {
       "category": "outdated_dep",
       "severity": "warn",
       "title": "react and react-dom are one major version behind (18.3.1 installed, 19.2.7 available)",
-      "detail": "package.json pins react and react-dom at ^18.3.1; npm outdated reports latest is 19.2.7. React 19 is a major version with breaking changes (concurrent features, new hooks API surface). Not safe to upgrade without review and testing.",
+      "detail": "package.json pins react and react-dom at ^18.3.1; npm outdated reports latest is 19.2.7. React 19 is a major version with breaking changes. Not safe to auto-upgrade without review and testing.",
       "actionable": false,
       "suggested_fix": "Manually review React 19 migration guide, update @types/react and @types/react-dom alongside react and react-dom, then bump to ^19.0.0 in package.json"
     },
@@ -20,7 +20,7 @@
       "category": "failing_ci",
       "severity": "info",
       "title": "All recent main-branch CI runs show conclusion: skipped",
-      "detail": "Last 5 runs of the Claude Code workflow on main branch all have conclusion=skipped. This appears to be expected: the Claude Code workflow has PR-only triggers. Claude Code Review and Release workflows succeed on their respective branches. No actual test/build failures detected.",
+      "detail": "Last 5 runs of the Claude Code workflow on main branch all have conclusion=skipped. This is expected: the Claude Code workflow has PR-only triggers. Claude Code Review and Release workflows succeed on their respective branches. No actual test/build failures detected.",
       "actionable": false,
       "suggested_fix": "No action required; skipped status is expected for PR-gated workflows on direct pushes to main"
     }
