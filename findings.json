@@ -7,6 +7,14 @@
       "detail": "package.json pins react@^18.3.1 and react-dom@^18.3.1 (installed 18.3.1); latest stable is 19.2.7. @types/react@^18.3.12 and @types/react-dom@^18.3.1 must also be bumped to v19 types.",
       "actionable": true,
       "suggested_fix": "Update react, react-dom, @types/react, @types/react-dom to ^19 in package.json and run npm install"
+    },
+    {
+      "category": "failing_ci",
+      "severity": "info",
+      "title": "PR creation blocked: GH_TOKEN lacks pull_requests:write scope",
+      "detail": "Fix was applied on branch claude-maintenance/2026-07-11-react-19 (build and 351 tests passed). Branch was pushed successfully but gh api /repos/.../pulls returned HTTP 403 — the fine-grained PAT in GH_TOKEN does not have the pull_requests:write permission. A human can open the PR manually from the pushed branch.",
+      "actionable": false,
+      "suggested_fix": "Grant pull_requests:write to the claude-maintenance fine-grained PAT, or manually open a PR from branch claude-maintenance/2026-07-11-react-19"
     }
   ],
   "action": "audit_only",
