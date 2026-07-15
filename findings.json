@@ -1,0 +1,30 @@
+{
+  "findings": [
+    {
+      "category": "security",
+      "severity": "warn",
+      "title": "@grafana/faro-web-tracing and @grafana/faro-core vulnerable to OTel unbounded memory (GHSA-8988-4f7v-96qf)",
+      "detail": "@grafana/faro-web-sdk ^2.4.0 and @grafana/faro-web-tracing ^2.4.0 pull in @opentelemetry/core < 2.8.0, which has a moderate vulnerability (CVSS 5.3, CWE-770) allowing unbounded memory allocation via W3C Baggage header propagation. 13 packages are affected. All vulnerabilities are fixed in @grafana/faro-web-sdk >= 2.8.2 and @grafana/faro-web-tracing >= 2.8.2. The package.json range ^2.4.0 already covers 2.8.2; only package-lock.json needs to be refreshed.",
+      "actionable": true,
+      "suggested_fix": "Run `npm update @grafana/faro-web-sdk @grafana/faro-web-tracing` to pin to 2.8.2 in package-lock.json"
+    },
+    {
+      "category": "outdated_dep",
+      "severity": "warn",
+      "title": "React 18 → 19 major version available",
+      "detail": "react and react-dom are at ^18.3.1 (latest compatible: 18.3.1). Latest published version is 19.2.7. React 19 is a major release with breaking changes (new JSX transform, concurrent features, hooks changes). package.json must be updated to ^19 and the React 19 migration guide should be followed before upgrading.",
+      "actionable": true,
+      "suggested_fix": "After reviewing https://react.dev/blog/2024/12/05/react-19 migration guide, run: npm install react@19 react-dom@19 @types/react@19 @types/react-dom@19"
+    },
+    {
+      "category": "failing_ci",
+      "severity": "info",
+      "title": "All 5 recent CI runs on main have conclusion 'skipped'",
+      "detail": "The last 5 GitHub Actions runs on the main branch (2026-06-19 through 2026-06-26) all concluded with 'skipped'. This typically means all jobs in the workflow had conditions that evaluated to false. No actual test failures were detected, but CI is not providing coverage.",
+      "actionable": false,
+      "suggested_fix": "Inspect the GitHub Actions workflow to ensure job conditions are correctly set for main branch pushes"
+    }
+  ],
+  "action": "audit_only",
+  "pr_url": null
+}
