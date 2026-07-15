@@ -26,5 +26,7 @@
     }
   ],
   "action": "audit_only",
-  "pr_url": null
+  "pr_url": null,
+  "fix_branch": "claude-maintenance/2026-07-15-grafana-update",
+  "fix_note": "Fix committed and branch pushed (via SSH). PR creation failed: PAT token does not have write access to the GitHub API (GraphQL and REST both returned 403). Branch is ready for a maintainer to open a PR manually from claude-maintenance/2026-07-15-grafana-update."
 }
