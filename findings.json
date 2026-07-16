@@ -1,0 +1,22 @@
+{
+  "findings": [
+    {
+      "category": "outdated_dep",
+      "severity": "warn",
+      "title": "react and react-dom are 1 major version behind (18 → 19)",
+      "detail": "package.json pins react and react-dom to ^18.3.1; latest stable is 19.2.7. @types/react and @types/react-dom are also on the v18 type track (18.3.31). No deprecated APIs (forwardRef, ReactDOM.render, Children.*) were found in the source tree, and the project already uses the React 18+ createRoot API, making the upgrade low-risk.",
+      "actionable": true,
+      "suggested_fix": "Bump react, react-dom, @types/react, and @types/react-dom to ^19 in package.json and run npm install"
+    },
+    {
+      "category": "failing_ci",
+      "severity": "info",
+      "title": "All recent CI runs on main show conclusion: skipped",
+      "detail": "The last 5 runs of the 'Claude Code' workflow on main (most recent: 2026-06-26) all have conclusion='skipped'. This is not a failure, but indicates the workflow may only trigger on PRs or specific conditions and is not running post-merge checks on main.",
+      "actionable": false,
+      "suggested_fix": "Review the 'Claude Code' workflow trigger conditions to ensure it covers push-to-main if desired"
+    }
+  ],
+  "action": "audit_only",
+  "pr_url": null
+}
