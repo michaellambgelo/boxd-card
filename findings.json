@@ -4,9 +4,9 @@
       "category": "outdated_dep",
       "severity": "warn",
       "title": "react and react-dom are 1 major version behind (18 → 19)",
-      "detail": "package.json pins react and react-dom to ^18.3.1; latest stable is 19.2.7. @types/react and @types/react-dom are also on the v18 type track (18.3.31). No deprecated APIs (forwardRef, ReactDOM.render, Children.*) were found in the source tree, and the project already uses the React 18+ createRoot API, making the upgrade low-risk.",
+      "detail": "package.json pins react and react-dom to ^18.3.1; latest stable is 19.2.7. @types/react and @types/react-dom are also on the v18 type track (18.3.31). No deprecated APIs (forwardRef, ReactDOM.render, Children.*) were found in the source tree, and the project already uses the React 18+ createRoot API, making the upgrade low-risk. Fix was applied on branch claude-maintenance/2026-07-16-react-19 — npm install, npm run build, and npm run test:run (351 tests) all passed — but gh pr create failed: 'Resource not accessible by personal access token (createPullRequest)'. The branch is pushed; a human can open the PR manually.",
       "actionable": true,
-      "suggested_fix": "Bump react, react-dom, @types/react, and @types/react-dom to ^19 in package.json and run npm install"
+      "suggested_fix": "Bump react, react-dom, @types/react, and @types/react-dom to ^19 in package.json and run npm install (branch claude-maintenance/2026-07-16-react-19 is ready)"
     },
     {
       "category": "failing_ci",
