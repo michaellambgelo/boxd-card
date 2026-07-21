@@ -1,0 +1,38 @@
+{
+  "findings": [
+    {
+      "category": "security",
+      "severity": "error",
+      "title": "Critical: tar <=7.5.18 has multiple CVEs (installed 7.5.16)",
+      "detail": "tar 7.5.16 is installed as a transitive devDependency via @grafana/faro-bundlers-shared. It is affected by: GHSA-23hp-3jrh-7fpw (critical, CVSS 7.5 - Decompression/parse DoS via unlimited input), GHSA-8x88-c5mf-7j5w (high, CVSS 7.5 - infinite loop via negative entry size), GHSA-w8wr-v893-vjvp (moderate - PAX numeric path type confusion), GHSA-gvwx-54wh-qm9j (moderate - uncaught exception via NUL byte). Risk is limited to build time (devDep only); the Chrome extension bundle is not affected at runtime.",
+      "actionable": true,
+      "suggested_fix": "npm audit fix to update tar to a patched version (>=7.5.19)"
+    },
+    {
+      "category": "security",
+      "severity": "warn",
+      "title": "Moderate: @opentelemetry/core <2.8.0 unbounded memory allocation (GHSA-8988-4f7v-96qf)",
+      "detail": "GHSA-8988-4f7v-96qf (CVSS 5.3) - unbounded memory allocation in W3C Baggage propagation. Affects production dependencies @grafana/faro-web-sdk and @grafana/faro-web-tracing (installed 2.7.1, latest 2.8.2 which pulls in patched @opentelemetry/core >=2.8.0). These packages are bundled into the Chrome extension and run in user browsers. Fix is within the existing ^2.4.0 semver range.",
+      "actionable": true,
+      "suggested_fix": "npm update @grafana/faro-web-sdk @grafana/faro-web-tracing to bring in @opentelemetry/core >=2.8.0"
+    },
+    {
+      "category": "outdated_dep",
+      "severity": "warn",
+      "title": "Major: react and react-dom at v18.3.1, latest v19.2.7",
+      "detail": "react and react-dom are pinned at ^18.3.1 (installed 18.3.1). React 19 is a major version with breaking changes in the rendering model, hooks, and ref handling. Upgrading requires testing the popup UI (Popup.tsx) carefully.",
+      "actionable": true,
+      "suggested_fix": "Upgrade react and react-dom to ^19.0.0 alongside @types/react and @types/react-dom after validating Popup.tsx compatibility"
+    },
+    {
+      "category": "failing_ci",
+      "severity": "info",
+      "title": "All recent CI runs on main show 'skipped' conclusion",
+      "detail": "The last 5 GitHub Actions runs on the main branch (2026-06-19 through 2026-06-26) all have conclusion 'skipped'. This may be by design (e.g. path filters with no matching file changes), but no successful run is visible in the recent history.",
+      "actionable": false,
+      "suggested_fix": "Inspect the workflow trigger conditions and confirm a run completes successfully after the next code push"
+    }
+  ],
+  "action": "audit_only",
+  "pr_url": null
+}
