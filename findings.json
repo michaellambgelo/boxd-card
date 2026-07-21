@@ -31,6 +31,14 @@
       "detail": "The last 5 GitHub Actions runs on the main branch (2026-06-19 through 2026-06-26) all have conclusion 'skipped'. This may be by design (e.g. path filters with no matching file changes), but no successful run is visible in the recent history.",
       "actionable": false,
       "suggested_fix": "Inspect the workflow trigger conditions and confirm a run completes successfully after the next code push"
+    },
+    {
+      "category": "failing_ci",
+      "severity": "warn",
+      "title": "Fix branch pushed but PR creation blocked — GH_TOKEN lacks pull_requests:write",
+      "detail": "npm audit fix resolved all 14 vulnerabilities (1 critical, 13 moderate). Build and all 351 tests passed. Branch claude-maintenance/2026-07-21-sec-npm-audit-fix was pushed to origin. However, gh pr create failed with 'Resource not accessible by personal access token (createPullRequest)' — the GH_TOKEN fine-grained PAT does not have pull_requests:write permission. A human must open the PR manually from the pushed branch.",
+      "actionable": false,
+      "suggested_fix": "Grant pull_requests:write to the maintenance bot PAT, or open the PR manually from branch claude-maintenance/2026-07-21-sec-npm-audit-fix"
     }
   ],
   "action": "audit_only",
