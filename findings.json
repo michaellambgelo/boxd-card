@@ -4,17 +4,17 @@
       "category": "security",
       "severity": "error",
       "title": "Critical vulnerability in tar (transitive dev dependency)",
-      "detail": "node-tar <=7.5.18 has 4 CVEs including a critical decompression/parse DoS (GHSA-23hp-3jrh-7fpw, CVSS 7.5) and a high infinite-loop on negative entry size (GHSA-8x88-c5mf-7j5w, CVSS 7.5). tar is a transitive dev dependency pulled into the lock file. npm audit fix can resolve this by updating tar to 7.5.21.",
+      "detail": "node-tar <=7.5.18 has 4 CVEs including a critical decompression/parse DoS (GHSA-23hp-3jrh-7fpw, CVSS 7.5) and a high infinite-loop on negative entry size (GHSA-8x88-c5mf-7j5w, CVSS 7.5). tar is a transitive dev dependency pulled into the lock file. npm audit fix resolves this by updating tar to 7.5.21. FIX APPLIED: branch claude-maintenance/2026-07-23-npm-audit-fix pushed; npm audit shows 0 vulnerabilities; 351 tests pass; build succeeds. PR creation failed due to token lacking createPullRequest permission.",
       "actionable": true,
-      "suggested_fix": "Run `npm audit fix` to update tar to 7.5.21 in package-lock.json"
+      "suggested_fix": "Merge branch claude-maintenance/2026-07-23-npm-audit-fix — fix already applied and tested"
     },
     {
       "category": "security",
       "severity": "warn",
       "title": "Moderate vulnerability: @opentelemetry/core unbounded memory in W3C Baggage (GHSA-8988-4f7v-96qf)",
-      "detail": "All @opentelemetry/* packages <2.8.0 contain an unbounded memory allocation bug in W3C Baggage propagation. They are transitive dependencies of @grafana/faro-web-tracing. npm audit fix updates @grafana/faro-web-sdk and @grafana/faro-web-tracing to 2.8.2 (within the declared ^2.4.0 range) which pulls in fixed OpenTelemetry packages.",
+      "detail": "All @opentelemetry/* packages <2.8.0 contain an unbounded memory allocation bug in W3C Baggage propagation. They are transitive dependencies of @grafana/faro-web-tracing. npm audit fix updated @grafana/faro-web-sdk and @grafana/faro-web-tracing to 2.8.2 (within the declared ^2.4.0 range) which pulls in fixed OpenTelemetry packages. FIX APPLIED in branch claude-maintenance/2026-07-23-npm-audit-fix.",
       "actionable": true,
-      "suggested_fix": "Run `npm audit fix` to update @grafana/faro-web-sdk and @grafana/faro-web-tracing to 2.8.2, resolving all @opentelemetry/core transitive vulnerabilities"
+      "suggested_fix": "Merge branch claude-maintenance/2026-07-23-npm-audit-fix — fix already applied and tested"
     },
     {
       "category": "outdated_dep",
