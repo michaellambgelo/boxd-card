@@ -1,0 +1,46 @@
+{
+  "findings": [
+    {
+      "category": "security",
+      "severity": "error",
+      "title": "Critical vulnerability in tar (transitive dev dependency)",
+      "detail": "node-tar <=7.5.18 has 4 CVEs including a critical decompression/parse DoS (GHSA-23hp-3jrh-7fpw, CVSS 7.5) and a high infinite-loop on negative entry size (GHSA-8x88-c5mf-7j5w, CVSS 7.5). tar is a transitive dev dependency pulled into the lock file. npm audit fix can resolve this by updating tar to 7.5.21.",
+      "actionable": true,
+      "suggested_fix": "Run `npm audit fix` to update tar to 7.5.21 in package-lock.json"
+    },
+    {
+      "category": "security",
+      "severity": "warn",
+      "title": "Moderate vulnerability: @opentelemetry/core unbounded memory in W3C Baggage (GHSA-8988-4f7v-96qf)",
+      "detail": "All @opentelemetry/* packages <2.8.0 contain an unbounded memory allocation bug in W3C Baggage propagation. They are transitive dependencies of @grafana/faro-web-tracing. npm audit fix updates @grafana/faro-web-sdk and @grafana/faro-web-tracing to 2.8.2 (within the declared ^2.4.0 range) which pulls in fixed OpenTelemetry packages.",
+      "actionable": true,
+      "suggested_fix": "Run `npm audit fix` to update @grafana/faro-web-sdk and @grafana/faro-web-tracing to 2.8.2, resolving all @opentelemetry/core transitive vulnerabilities"
+    },
+    {
+      "category": "outdated_dep",
+      "severity": "warn",
+      "title": "react and react-dom are one major version behind (v18 → v19)",
+      "detail": "react@18.3.1 and react-dom@18.3.1 are installed; latest is 19.2.8. React 19 is a major release with breaking changes. The @types/react and @types/react-dom devDependencies also pin to ^18 and would need to be updated alongside.",
+      "actionable": false,
+      "suggested_fix": "Upgrade react, react-dom, @types/react, @types/react-dom to ^19 — requires manual testing for breaking changes (concurrent rendering API changes, removal of legacy APIs)"
+    },
+    {
+      "category": "failing_ci",
+      "severity": "info",
+      "title": "All recent CI runs on main are 'skipped'",
+      "detail": "Last 5 runs of the 'Claude Code' workflow on main all have conclusion 'skipped'. No failures or cancellations detected. Skipped runs indicate conditional workflow logic (e.g. path filters or branch conditions not met).",
+      "actionable": false,
+      "suggested_fix": "No action needed — skipped is expected behavior for conditional workflows"
+    },
+    {
+      "category": "missing_tests",
+      "severity": "info",
+      "title": "No source files changed in the last 14 days",
+      "detail": "git log --since='14 days ago' returned no changed files, so there are no recently added source files to check for missing tests.",
+      "actionable": false,
+      "suggested_fix": "No action needed"
+    }
+  ],
+  "action": "audit_only",
+  "pr_url": null
+}
