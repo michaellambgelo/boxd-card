@@ -1,8 +1,12 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
+    // ES2021 rather than ES2020: src/types.ts uses String.replaceAll, which is
+    // an ES2021 API. Chrome has shipped it since 85, so this was only ever a
+    // config/runtime mismatch — but the build never typechecked, so nothing
+    // surfaced it.
+    "target": "ES2021",
     "useDefineForClassFields": true,
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "lib": ["ES2021", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "skipLibCheck": true,
     "moduleResolution": "bundler",
@@ -15,7 +19,14 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "types": ["chrome"]
+    // "vite/client" supplies import.meta.env plus the ambient module
+    // declarations for `*.svg?url` and `*.module.css`. Listing only "chrome"
+    // here replaced the default type set and left all of those untyped.
+    "types": ["chrome", "vite/client"]
   },
-  "include": ["src", "vite.config.ts", "manifest.json"]
+  // The worker's own source is typechecked separately (worker/tsconfig.json)
+  // against the Workers runtime. Its test file is listed here instead, because
+  // that's how it actually runs: under vitest, in jsdom, with DOM types.
+  // Build configs run in Node and get tsconfig.node.json.
+  "include": ["src", "test", "worker/index.test.ts", "manifest.json"]
 }
