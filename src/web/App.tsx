@@ -15,6 +15,8 @@ import type { FilmData } from '../content/index'
 import { didUseTmdb } from '../shared/tmdb'
 import tmdbLogoUrl from '../assets/TMDB-blue-short.svg?url'
 import { track, startAction } from './faro'
+import { getHandoffUrl } from './handoff'
+import { sanitizeErrorMessage } from './telemetryPrivacy'
 import styles from './App.module.css'
 
 type Status = 'idle' | 'loading' | 'ready' | 'error'
@@ -26,7 +28,11 @@ export default function App() {
   const [error,       setError]       = useState<string | null>(null)
   const [settingsLoaded, setSettingsLoaded] = useState(false)
 
-  const [urlInput,    setUrlInput]    = useState('')
+  // Seeded once from the landing-page hand-off (already stripped from the URL
+  // in main.tsx). Reading it here rather than in an effect keeps the input
+  // populated on first paint and avoids a setState-in-effect render cascade.
+  const [handoffUrl] = useState(getHandoffUrl)
+  const [urlInput,    setUrlInput]    = useState(handoffUrl)
   const [detected,    setDetected]    = useState<ParsedLetterboxdUrl | null>(null)
   const [detectedFor, setDetectedFor] = useState<string>('')  // trimmed input that produced `detected`
   const [detectError, setDetectError] = useState<string | null>(null)
@@ -64,6 +70,9 @@ export default function App() {
   const [copied,   setCopied]   = useState(false)
   const [altText,       setAltText]       = useState<string | null>(null)
   const [altTextCopied, setAltTextCopied] = useState(false)
+  // Failures from the post-generate actions (copy / share). Kept separate from
+  // `error` so a clipboard refusal doesn't tear down the rendered card.
+  const [actionError,   setActionError]   = useState<string | null>(null)
 
   // On mount: load persisted settings
   useEffect(() => {
@@ -88,18 +97,21 @@ export default function App() {
   }, [])
 
   // Auto-generate from a `?url=` hand-off (e.g. the landing page's Generate
-  // button opens /app/?url=…). Runs once, and only after settings have loaded
-  // so the user's saved preferences are applied to the generated card.
+  // button opens /app/?url=…). The param itself was read and stripped from the
+  // address bar in main.tsx, before Faro initialized — see handoff.ts for why.
+  //
+  // The value seeds `urlInput` at construction (see its useState above) rather
+  // than via setState here, so this effect only kicks off the generation. It
+  // waits for settingsLoaded so the user's saved preferences apply to the card.
   useEffect(() => {
     if (!settingsLoaded || autoGenRef.current) return
     autoGenRef.current = true
-    const params = new URLSearchParams(window.location.search)
-    const incoming = (params.get('url') ?? params.get('u') ?? '').trim()
-    if (!incoming) return
-    setUrlInput(incoming)
-    // Strip the query so a reload doesn't silently re-generate.
-    window.history.replaceState(null, '', window.location.pathname + window.location.hash)
-    void handleGenerate(undefined, incoming)
+    if (!handoffUrl) return
+    void handleGenerate(undefined, handoffUrl)
+    // One-shot bootstrap: it must run exactly once, when settings finish
+    // loading. handleGenerate is re-created every render, so listing it here
+    // would re-fire generation on every keystroke.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settingsLoaded])
 
   // Effective card type after detection + profile-page override
@@ -359,7 +371,9 @@ export default function App() {
       setStatus('error')
       track('card_generate_failed', {
         card_type: resolvedCardType,
-        message: message.slice(0, 200),
+        // Scraper errors quote slugs and can embed request URLs; the privacy
+        // policy promises neither is collected. Scrub before it leaves.
+        message: sanitizeErrorMessage(message).slice(0, 200),
       })
     } finally {
       action?.end()
@@ -379,7 +393,14 @@ export default function App() {
 
   async function handleCopy() {
     if (!cardBlob) return
-    await navigator.clipboard.write([new ClipboardItem({ 'image/png': cardBlob })])
+    setActionError(null)
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': cardBlob })])
+    } catch {
+      // Rejects when the document isn't focused or the permission is refused.
+      setActionError('Could not copy to the clipboard. Try Download instead.')
+      return
+    }
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
     track('card_copied', { card_type: effectiveCardType })
@@ -387,19 +408,42 @@ export default function App() {
 
   async function handleShare() {
     if (!cardBlob) return
-    await navigator.share({ files: [new File([cardBlob], 'boxd-card.png', { type: 'image/png' })] })
+    setActionError(null)
+    const file = new File([cardBlob], 'boxd-card.png', { type: 'image/png' })
+    try {
+      await navigator.share({ files: [file] })
+    } catch (err) {
+      // Dismissing the share sheet rejects with AbortError. That's the normal
+      // cancel path, not a failure — swallow it silently. Without this catch it
+      // surfaces as an unhandled rejection and Faro reports it as an exception.
+      if ((err as Error)?.name !== 'AbortError') {
+        setActionError('Sharing is not available here. Try Download instead.')
+      }
+      return
+    }
     track('card_shared', { card_type: effectiveCardType })
   }
 
   async function handleCopyAltText() {
     if (!altText) return
-    await navigator.clipboard.writeText(altText)
+    setActionError(null)
+    try {
+      await navigator.clipboard.writeText(altText)
+    } catch {
+      setActionError('Could not copy to the clipboard.')
+      return
+    }
     setAltTextCopied(true)
     setTimeout(() => setAltTextCopied(false), 1500)
     track('alt_text_copied', { card_type: effectiveCardType })
   }
 
-  const canShare = typeof navigator !== 'undefined' && 'share' in navigator
+  // `'share' in navigator` is true on desktop Chrome even where file sharing is
+  // unsupported, so ask canShare about an actual file rather than the API alone.
+  const canShare = typeof navigator !== 'undefined'
+    && typeof navigator.share === 'function'
+    && (typeof navigator.canShare !== 'function'
+      || navigator.canShare({ files: [new File([], 'boxd-card.png', { type: 'image/png' })] }))
 
   // Detection hint shown below the URL field
   function detectionHint(): string | null {
@@ -769,6 +813,7 @@ export default function App() {
                 </button>
               )}
             </div>
+            {actionError && <p className={styles.error}>{actionError}</p>}
             {altText && previewAltTextEnabled && (
               <textarea className={styles.altTextArea} readOnly rows={3} value={altText} />
             )}

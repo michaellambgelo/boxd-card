@@ -17,6 +17,7 @@ import type { FilmData, FilmDataResponse, StatEntry, ChartDataSet, BreakdownData
 import { fetchTmdbData } from './tmdbClient'
 import { mergeTmdb, slugFromPosterUrl } from '../shared/tmdb'
 import { track } from './faro'
+import { sanitizeErrorMessage } from './telemetryPrivacy'
 
 function targetHost(url: string): string {
   try { return new URL(url).host } catch { return '' }
@@ -62,14 +63,16 @@ export async function fetchPageDocument(url: string): Promise<Document> {
 async function resolvePosterCdnUrl(filmSlug: string): Promise<string> {
   const doc = await fetchPageDocument(`https://letterboxd.com/film/${filmSlug}/`)
   const jsonLdEl = doc.querySelector('script[type="application/ld+json"]')
-  if (!jsonLdEl) throw new Error(`No JSON-LD found on film page for "${filmSlug}"`)
+  // Deliberately slug-free: this message can end up in a `card_generate_failed`
+  // telemetry event, and the privacy policy promises we don't collect slugs.
+  if (!jsonLdEl) throw new Error('No JSON-LD found on the film page')
   const raw = (jsonLdEl.textContent ?? '')
     .replace(/^\/\*\s*<!\[CDATA\[[\s\S]*?\*\//m, '')  // strip leading CDATA comment
     .replace(/\/\*\s*\]\]>[\s\S]*?\*\/\s*$/m, '')      // strip trailing CDATA comment
     .trim()
   const data = JSON.parse(raw) as Record<string, unknown>
   if (typeof data.image !== 'string' || !data.image) {
-    throw new Error(`No image in JSON-LD for "${filmSlug}"`)
+    throw new Error('No image in JSON-LD on the film page')
   }
   return data.image
 }
@@ -229,9 +232,13 @@ async function fetchFullText(path: string): Promise<string> {
     const res = await fetch(proxyUrl(`https://letterboxd.com${path}`))
     if (!res.ok) return ''
     const html = await res.text()
-    const div = document.createElement('div')
-    div.innerHTML = html
-    return Array.from(div.querySelectorAll('p'))
+    // DOMParser, not `div.innerHTML = html`: the parsed document is inert, so
+    // markup in the fetched fragment can't load resources or fire handlers.
+    // A detached div does NOT give you that — Chrome still starts image loads
+    // for `<img onerror=…>` created via innerHTML. Same reason fetchPageDocument
+    // has always used DOMParser.
+    const doc = new DOMParser().parseFromString(html, 'text/html')
+    return Array.from(doc.querySelectorAll('p'))
       .map(p => p.textContent?.trim() ?? '')
       .filter(Boolean)
       .join('\n\n')
@@ -707,10 +714,13 @@ export async function scrapeLetterboxdPage(
   // Callers can set enrichWithTmdb=false to skip this block entirely (used by
   // the "Data sources" setting to disable TMDB for debugging regressions).
   if (enrichWithTmdb && films.length > 0) {
+    // These diagnostics are deliberately content-free: Faro captures
+    // console.warn by default, and film titles / poster URLs are card content
+    // the privacy policy says we don't collect. The count is the signal.
     const slugs = films.map(f => {
       const slug = slugFromPosterUrl(f.posterUrl)
       if (!slug && f.posterUrl) {
-        console.warn(`[tmdb] could not derive slug from posterUrl "${f.posterUrl}" for "${f.title}" — Letterboxd URL format may have changed`)
+        console.warn('[tmdb] could not derive a slug from a posterUrl — Letterboxd URL format may have changed')
       }
       return slug
     })
@@ -718,7 +728,7 @@ export async function scrapeLetterboxdPage(
     films = films.map((f, i) => {
       const r = tmdbResults[i]
       if (r.status === 'rejected') {
-        console.warn(`[tmdb] enrichment failed for "${f.title}":`, r.reason)
+        console.warn('[tmdb] enrichment failed for one film:', sanitizeErrorMessage(String(r.reason)))
         return f
       }
       // r.value === null is the legitimate "no TMDB mapping" case (404 from
