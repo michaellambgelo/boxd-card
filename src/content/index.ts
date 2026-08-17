@@ -309,9 +309,13 @@ async function fetchFullText(path: string): Promise<string> {
     const res = await fetch(`https://letterboxd.com${path}`)
     if (!res.ok) return ''
     const html = await res.text()
-    const div = document.createElement('div')
-    div.innerHTML = html
-    return Array.from(div.querySelectorAll('p'))
+    // DOMParser, not `div.innerHTML = html`. A detached div still lets Chrome
+    // start image loads for `<img onerror=…>`, and inline handlers created by a
+    // content script compile in the *page's* main world — so a sanitizer slip on
+    // Letterboxd's side would run script in the viewer's letterboxd.com session.
+    // The parsed document is inert; nothing in it loads or executes.
+    const doc = new DOMParser().parseFromString(html, 'text/html')
+    return Array.from(doc.querySelectorAll('p'))
       .map(elementText)
       .filter(Boolean)
       .join('\n\n')

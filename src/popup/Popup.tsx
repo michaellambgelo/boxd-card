@@ -1,4 +1,4 @@
-import { useState, useEffect, type MouseEvent } from 'react'
+import { useState, useEffect, useRef, type MouseEvent } from 'react'
 import type { FilmData, FilmDataResponse, GetFilmDataRequest } from '../content/index'
 import type { FetchImageResponse, FetchTmdbResponse } from '../background/service-worker'
 import { renderCard } from '../canvas/renderCard'
@@ -43,8 +43,8 @@ export default function Popup() {
   const [cardType,    setCardType]    = useState<CardType>('last-four-watched')
   const [listCount,   setListCount]   = useState<ListCount>(4)
   const [reviewCount, setReviewCount] = useState<ReviewCount>(1)
-  const [isValidPage,      setIsValidPage]      = useState<boolean | null>(null)
-  const [isReviewListPage, setIsReviewListPage] = useState(false)
+  // null until the tab query resolves; drives the "checking…" state below.
+  const [tabUrl, setTabUrl] = useState<string | null>(null)
   const [loggedInUsername, setLoggedInUsername] = useState<string>('')
   const [showTitle,     setShowTitle]     = useState(true)
   const [showYear,      setShowYear]      = useState(true)
@@ -74,6 +74,11 @@ export default function Popup() {
   const [copied,        setCopied]        = useState(false)
   const [altText,       setAltText]       = useState<string | null>(null)
   const [altTextCopied, setAltTextCopied] = useState(false)
+  // Failures from the post-generate actions (copy). Kept separate from `error`
+  // so a clipboard refusal doesn't tear down the rendered card.
+  const [actionError,   setActionError]   = useState<string | null>(null)
+  const [settingsLoaded, setSettingsLoaded] = useState(false)
+  const autoSelectedRef = useRef(false)
 
   // On mount: check for newer release on GitHub.
   // Skip for users installed from the Chrome Web Store — they get updates
@@ -125,27 +130,38 @@ export default function Popup() {
       setShowGenres(s.showGenres)
       setShowOverview(s.showOverview)
       setRememberUsername(s.rememberUsername)
+      setSettingsLoaded(true)
     })
     // Load the cached Letterboxd identity so the nudge can deep-link to the
     // user's diary/profile even on tabs where the live detection below returns
     // nothing (i.e. anywhere off letterboxd.com).
     loadRememberedUser().then(setRememberedUser)
+  }, [])
+
+  // Auto-select the card type that matches the active tab. Deliberately gated
+  // on settingsLoaded rather than depending on [letterboxdPro]: the pro-only
+  // check needs the loaded value, and re-running this on every letterboxdPro
+  // change would re-apply every setter (silently reverting anything the user
+  // changed in between) and override a card type they picked by hand.
+  useEffect(() => {
+    if (!settingsLoaded || autoSelectedRef.current) return
+    autoSelectedRef.current = true
     chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
       const url = (tab?.url ?? '').replace(/#.*$/, '')
       const match = CARD_TYPES.find(t => CARD_TYPE_CONFIGS[t].urlPattern.test(url))
       if (match && (!CARD_TYPE_CONFIGS[match].proOnly || letterboxdPro)) setCardType(match)
     })
-  }, [letterboxdPro])
+  }, [settingsLoaded, letterboxdPro])
 
-  // Validate current tab URL whenever the card type changes
+  // Read the active tab's URL once. Validity is *derived* from it below rather
+  // than stored: the previous version re-queried the tab and reset state on
+  // every card-type change, which meant a setState in the effect body and a
+  // redundant round-trip per toggle.
   useEffect(() => {
-    setIsValidPage(null)
     chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
-      const url = (tab?.url ?? '').replace(/#.*$/, '')
-      setIsValidPage(CARD_TYPE_CONFIGS[cardType].urlPattern.test(url))
-      setIsReviewListPage(cardType === 'review' && /\/reviews\/?$/.test(url))
+      setTabUrl((tab?.url ?? '').replace(/#.*$/, ''))
     })
-  }, [cardType])
+  }, [])
 
   // On mount: read Letterboxd's page-level `window.person.username` and the
   // sidebar avatar src directly from the active tab's MAIN world. Works on
@@ -409,19 +425,41 @@ export default function Popup() {
 
   async function handleCopy() {
     if (!cardBlob) return
-    await navigator.clipboard.write([
-      new ClipboardItem({ 'image/png': cardBlob }),
-    ])
+    setActionError(null)
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({ 'image/png': cardBlob }),
+      ])
+    } catch {
+      // Rejects when the popup isn't focused or the permission is refused.
+      // Without a catch this is an unhandled rejection and the user sees
+      // nothing happen at all.
+      setActionError('Could not copy to the clipboard. Try Download instead.')
+      return
+    }
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
   }
 
   async function handleCopyAltText() {
     if (!altText) return
-    await navigator.clipboard.writeText(altText)
+    setActionError(null)
+    try {
+      await navigator.clipboard.writeText(altText)
+    } catch {
+      setActionError('Could not copy to the clipboard.')
+      return
+    }
     setAltTextCopied(true)
     setTimeout(() => setAltTextCopied(false), 1500)
   }
+
+  // Derived from tabUrl — no effect, no extra render pass. `null` means the tab
+  // query hasn't resolved yet, which the UI shows as neither valid nor invalid.
+  const isValidPage: boolean | null =
+    tabUrl === null ? null : CARD_TYPE_CONFIGS[cardType].urlPattern.test(tabUrl)
+  const isReviewListPage =
+    cardType === 'review' && tabUrl !== null && /\/reviews\/?$/.test(tabUrl)
 
   const buttonDisabled = status === 'loading' || isValidPage !== true
 
@@ -860,6 +898,7 @@ export default function Popup() {
                 </button>
               )}
             </div>
+            {actionError && <p className={styles.error}>{actionError}</p>}
             {altText && previewAltTextEnabled && (
               <textarea className={styles.altTextArea} readOnly rows={3} value={altText} />
             )}

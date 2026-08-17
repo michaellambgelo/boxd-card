@@ -15,6 +15,9 @@ let listener: (
   sendResponse: (r: Response) => void
 ) => boolean | undefined
 
+/** A sender the handler will trust: our own popup / content script. */
+const SELF = { id: 'test-extension-id' } as chrome.runtime.MessageSender
+
 beforeEach(async () => {
   vi.resetModules()
   // Re-import so onMessage.addListener is called fresh
@@ -45,7 +48,7 @@ describe('service-worker FETCH_IMAGE handler', () => {
     })
 
     const sendResponse = vi.fn()
-    listener({ type: 'FETCH_IMAGE', url: 'https://a.ltrbxd.com/poster.jpg' }, {}, sendResponse)
+    listener({ type: 'FETCH_IMAGE', url: 'https://a.ltrbxd.com/poster.jpg' }, SELF, sendResponse)
 
     // Wait for the async chain to complete
     await vi.waitFor(() => expect(sendResponse).toHaveBeenCalledOnce())
@@ -56,7 +59,7 @@ describe('service-worker FETCH_IMAGE handler', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404 }))
 
     const sendResponse = vi.fn()
-    listener({ type: 'FETCH_IMAGE', url: 'https://a.ltrbxd.com/missing.jpg' }, {}, sendResponse)
+    listener({ type: 'FETCH_IMAGE', url: 'https://a.ltrbxd.com/missing.jpg' }, SELF, sendResponse)
 
     await vi.waitFor(() => expect(sendResponse).toHaveBeenCalledOnce())
     expect(sendResponse).toHaveBeenCalledWith(
@@ -68,12 +71,70 @@ describe('service-worker FETCH_IMAGE handler', () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Network error')))
 
     const sendResponse = vi.fn()
-    listener({ type: 'FETCH_IMAGE', url: 'https://a.ltrbxd.com/poster.jpg' }, {}, sendResponse)
+    listener({ type: 'FETCH_IMAGE', url: 'https://a.ltrbxd.com/poster.jpg' }, SELF, sendResponse)
 
     await vi.waitFor(() => expect(sendResponse).toHaveBeenCalledOnce())
     expect(sendResponse).toHaveBeenCalledWith(
       expect.objectContaining({ error: expect.stringContaining('Network error') })
     )
+  })
+})
+
+describe('service-worker sender + URL guards', () => {
+  it('ignores messages from a sender that is not this extension', () => {
+    const mockFetch = vi.fn()
+    vi.stubGlobal('fetch', mockFetch)
+
+    const sendResponse = vi.fn()
+    const result = listener(
+      { type: 'FETCH_IMAGE', url: 'https://a.ltrbxd.com/poster.jpg' },
+      { id: 'some-other-extension' } as chrome.runtime.MessageSender,
+      sendResponse,
+    )
+
+    expect(result).toBeUndefined()
+    expect(mockFetch).not.toHaveBeenCalled()
+    expect(sendResponse).not.toHaveBeenCalled()
+  })
+
+  it('refuses FETCH_IMAGE for a host outside the allowlist', async () => {
+    const mockFetch = vi.fn()
+    vi.stubGlobal('fetch', mockFetch)
+
+    const sendResponse = vi.fn()
+    listener({ type: 'FETCH_IMAGE', url: 'https://evil.example/poster.jpg' }, SELF, sendResponse)
+
+    expect(mockFetch).not.toHaveBeenCalled()
+    expect(sendResponse).toHaveBeenCalledWith(
+      expect.objectContaining({ error: expect.stringContaining('allowlisted') }),
+    )
+  })
+
+  it('refuses FETCH_IMAGE over plain http', async () => {
+    const mockFetch = vi.fn()
+    vi.stubGlobal('fetch', mockFetch)
+
+    const sendResponse = vi.fn()
+    listener({ type: 'FETCH_IMAGE', url: 'http://a.ltrbxd.com/poster.jpg' }, SELF, sendResponse)
+
+    expect(mockFetch).not.toHaveBeenCalled()
+    expect(sendResponse).toHaveBeenCalledWith(
+      expect.objectContaining({ error: expect.stringContaining('allowlisted') }),
+    )
+  })
+
+  it('allows every host listed in manifest host_permissions', async () => {
+    for (const url of [
+      'https://letterboxd.com/film/dune-2021/image-150/',
+      'https://a.ltrbxd.com/resized/poster.jpg',
+      'https://s.ltrbxd.com/static/poster.jpg',
+      'https://image.tmdb.org/t/p/original/p.jpg',
+    ]) {
+      const mockFetch = vi.fn().mockRejectedValue(new Error('stop here'))
+      vi.stubGlobal('fetch', mockFetch)
+      listener({ type: 'FETCH_IMAGE', url }, SELF, vi.fn())
+      expect(mockFetch, url).toHaveBeenCalledWith(url)
+    }
   })
 })
 
@@ -83,7 +144,7 @@ describe('service-worker FETCH_TMDB handler', () => {
     vi.stubGlobal('fetch', mockFetch)
 
     const sendResponse = vi.fn()
-    listener({ type: 'FETCH_TMDB', slug: '' }, {}, sendResponse)
+    listener({ type: 'FETCH_TMDB', slug: '' }, SELF, sendResponse)
 
     expect(sendResponse).toHaveBeenCalledWith({ data: null })
     expect(mockFetch).not.toHaveBeenCalled()
@@ -111,7 +172,7 @@ describe('service-worker FETCH_TMDB handler', () => {
     vi.stubGlobal('fetch', mockFetch)
 
     const sendResponse = vi.fn()
-    listener({ type: 'FETCH_TMDB', slug: 'some film' }, {}, sendResponse)
+    listener({ type: 'FETCH_TMDB', slug: 'some film' }, SELF, sendResponse)
 
     await vi.waitFor(() => expect(sendResponse).toHaveBeenCalledOnce())
     const [calledUrl] = mockFetch.mock.calls[0]
@@ -127,7 +188,7 @@ describe('service-worker FETCH_TMDB handler', () => {
     ))
 
     const sendResponse = vi.fn()
-    listener({ type: 'FETCH_TMDB', slug: 'unknown-film' }, {}, sendResponse)
+    listener({ type: 'FETCH_TMDB', slug: 'unknown-film' }, SELF, sendResponse)
 
     await vi.waitFor(() => expect(sendResponse).toHaveBeenCalledOnce())
     expect(sendResponse).toHaveBeenCalledWith({ data: null })
@@ -139,7 +200,7 @@ describe('service-worker FETCH_TMDB handler', () => {
     ))
 
     const sendResponse = vi.fn()
-    listener({ type: 'FETCH_TMDB', slug: 'dune-2021' }, {}, sendResponse)
+    listener({ type: 'FETCH_TMDB', slug: 'dune-2021' }, SELF, sendResponse)
 
     await vi.waitFor(() => expect(sendResponse).toHaveBeenCalledOnce())
     expect(sendResponse).toHaveBeenCalledWith(
@@ -151,7 +212,7 @@ describe('service-worker FETCH_TMDB handler', () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Offline')))
 
     const sendResponse = vi.fn()
-    listener({ type: 'FETCH_TMDB', slug: 'dune-2021' }, {}, sendResponse)
+    listener({ type: 'FETCH_TMDB', slug: 'dune-2021' }, SELF, sendResponse)
 
     await vi.waitFor(() => expect(sendResponse).toHaveBeenCalledOnce())
     expect(sendResponse).toHaveBeenCalledWith(
