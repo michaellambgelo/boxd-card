@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { renderCard, loadImage, computeLayout, wrapText, drawTagPills, gridTextAreaHeight } from './renderCard'
+import { renderCard, loadImage, computeLayout, wrapText, drawTagPills, gridTextAreaHeight, IMAGE_LOAD_TIMEOUT_MS } from './renderCard'
 
 // Auto-loading Image: fires onload immediately so renderCard doesn't hang in tests
 class AutoImage {
@@ -275,14 +275,48 @@ describe('loadImage', () => {
     expect(result).toBe(getCapture())
   })
 
-  it('rejects when the image errors', async () => {
+  it('rejects with an Error when the image errors', async () => {
     const { MockImage, getCapture } = makeMockImageClass()
     vi.stubGlobal('Image', MockImage as unknown as typeof Image)
 
     const promise = loadImage('data:image/png;base64,INVALID')
     getCapture()!.onerror?.(new Event('error'))
 
-    await expect(promise).rejects.toBeInstanceOf(Event)
+    await expect(promise).rejects.toThrow('Image failed to load')
+  })
+
+  it('rejects when the image neither loads nor errors', async () => {
+    vi.useFakeTimers()
+    try {
+      const { MockImage } = makeMockImageClass()
+      vi.stubGlobal('Image', MockImage as unknown as typeof Image)
+
+      // Never fire onload/onerror — this is the wedge that used to leave the
+      // popup stuck in "Generating…" forever.
+      const promise = loadImage('data:image/png;base64,abc')
+      const assertion = expect(promise).rejects.toThrow('timed out')
+      await vi.advanceTimersByTimeAsync(IMAGE_LOAD_TIMEOUT_MS + 1)
+      await assertion
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('clears the timeout once the image has loaded', async () => {
+    vi.useFakeTimers()
+    try {
+      const { MockImage, getCapture } = makeMockImageClass()
+      vi.stubGlobal('Image', MockImage as unknown as typeof Image)
+
+      const promise = loadImage('data:image/png;base64,abc')
+      getCapture()!.onload?.()
+      await promise
+
+      // A pending timer here would fire reject() on an already-settled promise.
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 
