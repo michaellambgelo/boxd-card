@@ -2,6 +2,28 @@ name = "boxd-card"
 main = "index.ts"
 compatibility_date = "2024-09-23"
 
+# ── Rate limiting ───────────────────────────────────────────────────────────
+# The proxy is unauthenticated and open to anyone. Abuse doesn't just cost
+# Workers requests — every proxied call hits Letterboxd from a Cloudflare IP
+# under our User-Agent, so sustained abuse risks Letterboxd blocking the
+# traffic and taking the product down with it.
+#
+# The worker already reads an optional RATE_LIMITER binding and fails open when
+# it isn't bound (see isRateLimited in index.ts). Uncomment to switch it on:
+#
+#   [[unsafe.bindings]]
+#   name = "RATE_LIMITER"
+#   type = "ratelimit"
+#   namespace_id = "1001"          # any stable integer, unique within this worker
+#   simple = { limit = 120, period = 60 }
+#
+# then `npx wrangler deploy` and confirm with a burst:
+#   for i in $(seq 1 200); do curl -s -o /dev/null -w '%{http_code}\n' \
+#     'https://api.boxd-card.com/?url=https://letterboxd.com/'; done | sort | uniq -c
+#
+# A Cloudflare dashboard rate-limiting rule on api.boxd-card.com is an
+# equivalent alternative and needs no deploy. Do one or the other.
+
 [observability]
 enabled = false
 head_sampling_rate = 1

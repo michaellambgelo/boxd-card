@@ -5,6 +5,7 @@ const mockMessageListeners: Array<(...args: unknown[]) => unknown> = []
 
 globalThis.chrome = {
   runtime: {
+    id: 'test-extension-id',
     onMessage:   { addListener: vi.fn((fn) => mockMessageListeners.push(fn)) },
     onInstalled: { addListener: vi.fn() },
     sendMessage: vi.fn(),

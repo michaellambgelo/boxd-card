@@ -299,9 +299,9 @@
             <span class="lead-icon">
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
             </span>
-            <input value="letterboxd.com/cinephile/" aria-label="Letterboxd URL" />
+            <input id="hero-url" value="letterboxd.com/cinephile/" aria-label="Letterboxd URL" />
           </div>
-          <button class="btn btn--primary btn--md" data-reseed type="button">Generate Card</button>
+          <button class="btn btn--primary btn--md" id="hero-generate" type="button">Generate Card</button>
         </div>
         <p class="helper">Paste from Letterboxd's Share button, or any profile, diary, list, or reviews URL.</p>
       </div>
@@ -564,6 +564,20 @@
       document.querySelectorAll('[data-reseed]').forEach(function (b) {
         b.addEventListener('click', reseed);
       });
+
+      // Hero "Generate Card" → open the web app in a new tab, handing off the
+      // entered URL as a query param so the app auto-fills and generates.
+      var heroInput = document.getElementById('hero-url');
+      var heroBtn = document.getElementById('hero-generate');
+      function openWebApp() {
+        var v = (heroInput && heroInput.value || '').trim();
+        var dest = '/app/' + (v ? ('?url=' + encodeURIComponent(v)) : '');
+        window.open(dest, '_blank', 'noopener');
+      }
+      if (heroBtn) heroBtn.addEventListener('click', openWebApp);
+      if (heroInput) heroInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); openWebApp(); }
+      });
     })();
   </script>
 
@@ -581,6 +595,23 @@
         if (window.GrafanaFaroWebTracing) {
           instrumentations.push(new window.GrafanaFaroWebTracing.TracingInstrumentation());
         }
+        // Keep origin + pathname, drop query + fragment. Mirrors
+        // sanitizeUrlForTelemetry in src/web/telemetryPrivacy.ts — the web app
+        // and this page make the same promise in /privacy, so they need the
+        // same scrub. Faro attaches meta.page.url (= location.href) to every
+        // signal, so without this any query string on the landing page is
+        // recorded verbatim.
+        function scrubUrl(value) {
+          if (typeof value !== 'string' || !value) return value;
+          if (!/^https?:\/\//i.test(value)) return value;
+          try {
+            var u = new URL(value);
+            return u.origin + u.pathname;
+          } catch (e) {
+            return value.split(/[?#]/)[0];
+          }
+        }
+
         var faro = SDK.initializeFaro({
           url: (isLocalDev ? 'http://localhost:8787' : 'https://grafana.michaellamb.dev') + '/faro-proxy?app=boxd-card',
           app: {
@@ -589,6 +620,22 @@
             environment: isLocalDev ? 'development' : 'production',
           },
           instrumentations: instrumentations,
+          beforeSend: function (item) {
+            if (item && item.meta && item.meta.page && typeof item.meta.page.url === 'string') {
+              item.meta.page.url = scrubUrl(item.meta.page.url);
+            }
+            var payload = item && item.payload;
+            if (payload && payload.attributes) {
+              for (var k in payload.attributes) {
+                if (!Object.prototype.hasOwnProperty.call(payload.attributes, k)) continue;
+                var v = payload.attributes[k];
+                if (typeof v === 'string' && /^https?:\/\//i.test(v)) {
+                  payload.attributes[k] = scrubUrl(v);
+                }
+              }
+            }
+            return item;
+          },
         });
 
         function classify(href) {

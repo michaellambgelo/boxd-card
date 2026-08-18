@@ -39,7 +39,7 @@
       <h1>Boxd Card</h1>
     </a>
   </div>
-  <p class="subtle">Privacy Policy &mdash; Last updated: May 2026</p>
+  <p class="subtle">Privacy Policy &mdash; Last updated: August 2026</p>
 
   <h2>What this extension does</h2>
   <p>
@@ -110,6 +110,15 @@
     <li>Generated card images — they remain in your browser memory only.</li>
   </ul>
   <p>
+    Those exclusions are enforced in code, not just by convention. Every request the web app makes
+    carries your Letterboxd URL or a film slug in its query string, and analytics SDKs record full
+    request URLs by default. Before any telemetry leaves your browser we strip query strings and
+    fragments from every recorded URL — page addresses, network timings, and traces alike — keeping
+    only the origin and path. Free-text error messages are scrubbed the same way. The
+    <code>?url=</code> hand-off from the landing page is removed from the address bar before
+    analytics starts, so it is never recorded at all.
+  </p>
+  <p>
     Telemetry is routed through our own Cloudflare Worker (<code>grafana.michaellamb.dev</code>)
     before reaching Grafana Cloud, which acts as the storage backend.
   </p>
@@ -139,7 +148,12 @@
   <ul>
     <li><strong>activeTab</strong> — to read the URL of the tab you are on and confirm it is a Letterboxd profile page.</li>
     <li><strong>clipboardWrite</strong> — to copy the generated card image to your clipboard when you click <em>Copy</em>.</li>
-    <li><strong>storage</strong> — to persist your display preferences (layout, toggles, opt-in state).</li>
+    <li>
+      <strong>storage</strong> — to persist your display preferences (layout, toggles, opt-in state),
+      and, when <em>Remember my username</em> is on, to cache your Letterboxd username and avatar URL
+      so the popup can link straight to your profile from any tab. That cache stays on your device;
+      it is never sent anywhere, and turning the setting off clears it.
+    </li>
     <li><strong>scripting</strong> — to read the logged-in Letterboxd username from the active tab so the navigation hint can include it.</li>
     <li><strong>Host access to letterboxd.com, a.ltrbxd.com, s.ltrbxd.com</strong> — to fetch poster images and static assets that are already publicly visible on the page.</li>
     <li>

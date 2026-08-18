@@ -15,6 +15,8 @@ import type { FilmData } from '../content/index'
 import { didUseTmdb } from '../shared/tmdb'
 import tmdbLogoUrl from '../assets/TMDB-blue-short.svg?url'
 import { track, startAction } from './faro'
+import { getHandoffUrl } from './handoff'
+import { sanitizeErrorMessage } from './telemetryPrivacy'
 import styles from './App.module.css'
 
 type Status = 'idle' | 'loading' | 'ready' | 'error'
@@ -24,8 +26,13 @@ export default function App() {
   const [view,        setView]        = useState<View>('main')
   const [status,      setStatus]      = useState<Status>('idle')
   const [error,       setError]       = useState<string | null>(null)
+  const [settingsLoaded, setSettingsLoaded] = useState(false)
 
-  const [urlInput,    setUrlInput]    = useState('')
+  // Seeded once from the landing-page hand-off (already stripped from the URL
+  // in main.tsx). Reading it here rather than in an effect keeps the input
+  // populated on first paint and avoids a setState-in-effect render cascade.
+  const [handoffUrl] = useState(getHandoffUrl)
+  const [urlInput,    setUrlInput]    = useState(handoffUrl)
   const [detected,    setDetected]    = useState<ParsedLetterboxdUrl | null>(null)
   const [detectedFor, setDetectedFor] = useState<string>('')  // trimmed input that produced `detected`
   const [detectError, setDetectError] = useState<string | null>(null)
@@ -33,6 +40,8 @@ export default function App() {
   // Monotonic counter — guards against concurrent detectUrl() calls where a
   // slow response for an older input could otherwise clobber a newer result.
   const detectGenRef = useRef(0)
+  // Guards the one-shot auto-generate from a ?url= hand-off.
+  const autoGenRef = useRef(false)
 
   // For profile pages where cardType is ambiguous, user picks one of these two
   const [profileCardType, setProfileCardType] = useState<'last-four-watched' | 'favorites'>('last-four-watched')
@@ -61,6 +70,9 @@ export default function App() {
   const [copied,   setCopied]   = useState(false)
   const [altText,       setAltText]       = useState<string | null>(null)
   const [altTextCopied, setAltTextCopied] = useState(false)
+  // Failures from the post-generate actions (copy / share). Kept separate from
+  // `error` so a clipboard refusal doesn't tear down the rendered card.
+  const [actionError,   setActionError]   = useState<string | null>(null)
 
   // On mount: load persisted settings
   useEffect(() => {
@@ -80,8 +92,27 @@ export default function App() {
       setAltTextEnabled(s.generateAltText)
       setPreviewAltTextEnabled(s.previewAltText)
       setUseTmdb(s.useTmdb)
+      setSettingsLoaded(true)
     })
   }, [])
+
+  // Auto-generate from a `?url=` hand-off (e.g. the landing page's Generate
+  // button opens /app/?url=…). The param itself was read and stripped from the
+  // address bar in main.tsx, before Faro initialized — see handoff.ts for why.
+  //
+  // The value seeds `urlInput` at construction (see its useState above) rather
+  // than via setState here, so this effect only kicks off the generation. It
+  // waits for settingsLoaded so the user's saved preferences apply to the card.
+  useEffect(() => {
+    if (!settingsLoaded || autoGenRef.current) return
+    autoGenRef.current = true
+    if (!handoffUrl) return
+    void handleGenerate(undefined, handoffUrl)
+    // One-shot bootstrap: it must run exactly once, when settings finish
+    // loading. handleGenerate is re-created every render, so listing it here
+    // would re-fire generation on every keystroke.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settingsLoaded])
 
   // Effective card type after detection + profile-page override
   const effectiveCardType: CardType = detected
@@ -101,6 +132,9 @@ export default function App() {
 
   async function detectUrl(text: string): Promise<ParsedLetterboxdUrl | null> {
     const trimmed = text.trim()
+    // Accept scheme-less input (e.g. "letterboxd.com/user/") from pastes and the
+    // landing-page hand-off; parseLetterboxdUrl/new URL() require a scheme.
+    const candidate = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
     const gen = ++detectGenRef.current
     const isLatest = () => gen === detectGenRef.current
 
@@ -108,7 +142,7 @@ export default function App() {
     setDetectedFor('')
     setDetectError(null)
 
-    const parsed = parseLetterboxdUrl(trimmed)
+    const parsed = parseLetterboxdUrl(candidate)
     if (parsed === null) {
       if (isLatest()) {
         setDetectError("This doesn't look like a supported Letterboxd URL. Try a profile, diary, list, reviews, or film review link.")
@@ -135,7 +169,7 @@ export default function App() {
     // Short URL (boxd.it) — needs a network round-trip
     setDetecting(true)
     try {
-      const resolved = await resolveLetterboxdUrl(trimmed)
+      const resolved = await resolveLetterboxdUrl(candidate)
       if (isLatest()) {
         setDetected(resolved)
         setDetectedFor(trimmed)
@@ -159,15 +193,15 @@ export default function App() {
 
   // ── Generate ────────────────────────────────────────────────────────────────
 
-  async function handleGenerate(e: React.FormEvent) {
-    e.preventDefault()
+  async function handleGenerate(e?: React.FormEvent, explicitInput?: string) {
+    e?.preventDefault()
 
     // Only trust the cached detection if the input hasn't changed since it was
     // produced. Covers two races: (1) user pastes A, then quickly pastes B and
     // A's slow boxd.it resolve wins — `detectedFor` won't match B. (2) user
     // edits the URL in place without pasting — `detectedFor` is the pre-edit
     // text. In both cases we re-detect from the current input.
-    const currentInput = urlInput.trim()
+    const currentInput = (explicitInput ?? urlInput).trim()
     const cacheValid = detected !== null && detectedFor === currentInput
     const resolvedDetected = cacheValid ? detected : await detectUrl(currentInput)
     if (!resolvedDetected) return
@@ -337,7 +371,9 @@ export default function App() {
       setStatus('error')
       track('card_generate_failed', {
         card_type: resolvedCardType,
-        message: message.slice(0, 200),
+        // Scraper errors quote slugs and can embed request URLs; the privacy
+        // policy promises neither is collected. Scrub before it leaves.
+        message: sanitizeErrorMessage(message).slice(0, 200),
       })
     } finally {
       action?.end()
@@ -357,7 +393,14 @@ export default function App() {
 
   async function handleCopy() {
     if (!cardBlob) return
-    await navigator.clipboard.write([new ClipboardItem({ 'image/png': cardBlob })])
+    setActionError(null)
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': cardBlob })])
+    } catch {
+      // Rejects when the document isn't focused or the permission is refused.
+      setActionError('Could not copy to the clipboard. Try Download instead.')
+      return
+    }
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
     track('card_copied', { card_type: effectiveCardType })
@@ -365,19 +408,42 @@ export default function App() {
 
   async function handleShare() {
     if (!cardBlob) return
-    await navigator.share({ files: [new File([cardBlob], 'boxd-card.png', { type: 'image/png' })] })
+    setActionError(null)
+    const file = new File([cardBlob], 'boxd-card.png', { type: 'image/png' })
+    try {
+      await navigator.share({ files: [file] })
+    } catch (err) {
+      // Dismissing the share sheet rejects with AbortError. That's the normal
+      // cancel path, not a failure — swallow it silently. Without this catch it
+      // surfaces as an unhandled rejection and Faro reports it as an exception.
+      if ((err as Error)?.name !== 'AbortError') {
+        setActionError('Sharing is not available here. Try Download instead.')
+      }
+      return
+    }
     track('card_shared', { card_type: effectiveCardType })
   }
 
   async function handleCopyAltText() {
     if (!altText) return
-    await navigator.clipboard.writeText(altText)
+    setActionError(null)
+    try {
+      await navigator.clipboard.writeText(altText)
+    } catch {
+      setActionError('Could not copy to the clipboard.')
+      return
+    }
     setAltTextCopied(true)
     setTimeout(() => setAltTextCopied(false), 1500)
     track('alt_text_copied', { card_type: effectiveCardType })
   }
 
-  const canShare = typeof navigator !== 'undefined' && 'share' in navigator
+  // `'share' in navigator` is true on desktop Chrome even where file sharing is
+  // unsupported, so ask canShare about an actual file rather than the API alone.
+  const canShare = typeof navigator !== 'undefined'
+    && typeof navigator.share === 'function'
+    && (typeof navigator.canShare !== 'function'
+      || navigator.canShare({ files: [new File([], 'boxd-card.png', { type: 'image/png' })] }))
 
   // Detection hint shown below the URL field
   function detectionHint(): string | null {
@@ -747,6 +813,7 @@ export default function App() {
                 </button>
               )}
             </div>
+            {actionError && <p className={styles.error}>{actionError}</p>}
             {altText && previewAltTextEnabled && (
               <textarea className={styles.altTextArea} readOnly rows={3} value={altText} />
             )}
