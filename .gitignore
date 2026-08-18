@@ -7,3 +7,7 @@ worker/.wrangler/
 worker/.dev.vars
 .env.local
 .DS_Store
+# Vite emits source maps into the apex build output. The Faro uploader
+# deletes them after upload, but a build without GRAFANA_FARO_API_KEY skips
+# that plugin entirely — never publish unminified sources to Pages.
+docs/assets/*.map

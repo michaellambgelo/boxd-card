@@ -1,11 +1,39 @@
-import { defineConfig, loadEnv } from 'vite'
+import { defineConfig, loadEnv, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import faroUploader from '@grafana/faro-rollup-plugin'
 import { resolve } from 'path'
 import { readFileSync } from 'fs'
 
 /**
- * Vite config for the standalone web app (docs/app/).
+ * Refuse to build if anything has re-enabled emptyOutDir.
+ *
+ * outDir is docs/ — the Cloudflare Pages root, which also holds the published
+ * privacy policy, the About page, _redirects and the social preview, none of
+ * which Vite knows about. Because outDir sits outside root, an explicit `true`
+ * (in this file, or via `--emptyOutDir` on the CLI) is exactly the escape hatch
+ * Vite needs to delete all of it. A comment isn't enough of a guard for that.
+ */
+function guardOutDir(): Plugin {
+  let emptyOutDir: boolean | null | undefined
+  return {
+    name: 'boxd-card:guard-docs-outdir',
+    apply: 'build',
+    enforce: 'pre',
+    configResolved(config) { emptyOutDir = config.build.emptyOutDir },
+    buildStart() {
+      if (emptyOutDir !== false) {
+        throw new Error(
+          'vite.web.config.ts: build.emptyOutDir must stay false. outDir is docs/, the ' +
+          'Pages root — emptying it would delete privacy/, about/, _redirects and ' +
+          'social-preview.png.',
+        )
+      }
+    },
+  }
+}
+
+/**
+ * Vite config for the web app, which is the apex of boxd-card.com (docs/).
  *
  * Build:  npm run build:web
  * Dev:    npm run dev:web   (start the proxy worker first: npx wrangler dev --port 8787)
@@ -36,6 +64,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [
+      guardOutDir(),
       react(),
       ...(enableFaroUpload
         ? [
@@ -54,19 +83,28 @@ export default defineConfig(({ mode }) => {
 
     root: resolve(__dirname, 'src/web'),
     envDir: __dirname,
-    base: '/app/',
+    // The app is the apex. Cloudflare Pages does not honour 200-rewrites in
+    // _redirects (see docs/_redirects and commit e897134), so whatever serves
+    // `/` has to physically be docs/index.html — it can't be a rewrite to a
+    // subdirectory. Hence base '/' and outDir docs/ rather than docs/app.
+    base: '/',
 
     define: {
       'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion),
     },
 
     build: {
-      outDir: resolve(__dirname, 'docs/app'),
-      emptyOutDir: true,
+      outDir: resolve(__dirname, 'docs'),
+      // NEVER wipe docs/ — it holds hand-written siblings the build knows
+      // nothing about: _redirects, about/, privacy/, landing/assets/, the
+      // social preview and the *.md notes. The build only writes index.html,
+      // assets/ and favicon.svg. Stale hashed bundles are cleared by the
+      // `rm -rf docs/assets` step in the build:web script instead.
+      emptyOutDir: false,
       // Emit source maps so the Faro upload plugin can read them at build time
       // and Grafana can un-minify stack traces. The .map files are not
-      // committed to docs/app/ and so are not published to Pages — Faro
-      // resolves them by the bundle id it injects, not by URL.
+      // committed and so are not published to Pages — Faro resolves them by
+      // the bundle id it injects, not by URL.
       sourcemap: true,
     },
 

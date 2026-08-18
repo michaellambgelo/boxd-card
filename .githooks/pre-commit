@@ -3,8 +3,10 @@
 # which the package.json `prepare` script runs automatically on `npm install`.
 #
 # Responsibilities:
-#   1. Rebuild docs/app/ when web app sources are staged, and stage the output
-#      so the build artifact lands in the same commit as the source change.
+#   1. Rebuild the web app when its sources are staged, and stage the output so
+#      the build artifact lands in the same commit as the source change. The app
+#      is the apex, so its output is docs/index.html + docs/assets/ +
+#      docs/favicon.svg — not a subdirectory.
 #   2. When package.json is staged, reconcile package-lock.json so the lockfile
 #      can't drift out of sync with package.json (e.g., version bumps that
 #      forget to re-run npm install).
@@ -13,17 +15,24 @@ set -e
 
 cd "$(git rev-parse --show-toplevel)"
 
-# ── 1. Rebuild docs/app/ if web sources changed ─────────────────────────────
-WEB_SOURCES=$(git diff --cached --name-only | grep -E '^(src/web/|vite\.web\.config\.ts|\.env\.production)' || true)
+# ── 1. Rebuild the apex app if web sources changed ──────────────────────────
+# package.json is a genuine build input: vite.web.config.ts bakes its `version`
+# into the Faro app config. Without it here, a release commit that bumps the
+# version stages no src/web file, fires no rebuild, and ships a bundle still
+# reporting the old version — which is exactly what happened at 0.8.1.
+WEB_SOURCES=$(git diff --cached --name-only | grep -E '^(src/web/|vite\.web\.config\.ts|\.env\.production|package\.json$)' || true)
 
 if [ -n "$WEB_SOURCES" ]; then
-  echo "▶ Web source changed — rebuilding docs/app/..."
+  echo "▶ Web source changed — rebuilding the apex app..."
   if ! npm run build:web; then
     echo "✗ build:web failed — commit aborted." >&2
     exit 1
   fi
-  git add docs/app/
-  echo "✓ docs/app/ rebuilt and staged."
+  # Stage only what the build emits. Deliberately NOT `git add docs/` — that
+  # would sweep in unrelated edits to the hand-written pages under docs/.
+  # `--all` picks up deletions too, so a renamed bundle doesn't leave a ghost.
+  git add --all docs/index.html docs/assets docs/favicon.svg
+  echo "✓ apex app rebuilt and staged."
 fi
 
 # ── 2. Reconcile package-lock.json when package.json is staged ──────────────
