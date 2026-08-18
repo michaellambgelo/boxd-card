@@ -86,11 +86,23 @@ Sideloaded installs don't auto-update, but the extension popup shows an *update 
 
 ```bash
 npm install
-npm run dev      # build in watch mode → dist/
-npm run build    # one-shot production build
-npm run test     # Vitest in watch mode
-npm run test:run # single test run (CI)
-npm run coverage # v8 coverage report
+npm run dev        # extension: build in watch mode → dist/
+npm run build      # extension: typecheck + one-shot production build
+npm run dev:web    # web app dev server on :5174 (start the worker first)
+npm run build:web  # web app: typecheck + build → docs/app/
+npm run typecheck  # tsc --noEmit across app, build configs, and worker
+npm run lint       # ESLint, zero-warning policy
+npm run test       # Vitest in watch mode
+npm run test:run   # single test run (CI)
+npm run coverage   # v8 coverage report
+```
+
+The Cloudflare Worker that backs the web app lives in `worker/`:
+
+```bash
+cd worker
+npx wrangler dev --port 8787   # local, pairs with npm run dev:web
+npx wrangler deploy
 ```
 
 **Loading the extension in Chrome:**
@@ -105,9 +117,11 @@ After each subsequent `npm run build`, click the **↺ reload** button on the ex
 ## Tech stack
 
 - **Chrome Manifest V3** — service worker, content script, popup
-- **React + TypeScript** — popup UI
+- **React + TypeScript** — popup and web app UI
 - **Vite + @crxjs/vite-plugin** — build tooling
 - **Canvas 2D API** — card image generation (no external image library)
+- **Cloudflare Worker** — CORS proxy + TMDB lookup for the web app (`worker/`)
+- **Vitest** — unit tests; **ESLint** + **tsc** — zero-warning lint and typecheck gates
 
 ## Permissions
 

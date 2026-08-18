@@ -4,277 +4,268 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Boxd Card** is a Chrome MV3 extension that generates shareable PNG image cards from a user's Letterboxd profile. Four card types are supported: Last Four Watched, Favorites, Recent Diary, and List. It works by reading metadata and poster images directly from the Letterboxd page DOM — no backend, no API, no CORS issues.
+**Boxd Card** generates shareable PNG image cards from a Letterboxd profile. It ships as **three surfaces** backed by one shared rendering core:
 
-The extension icon is only shown on `letterboxd.com` pages (via `declarativeContent`). The popup validates the current tab URL against the selected card type and disables the Generate button with a navigation hint when the page doesn't match.
+| Surface | Lives in | Served from | How it gets data |
+|---------|----------|-------------|------------------|
+| **Chrome MV3 extension** | `src/popup/`, `src/content/`, `src/background/` | Chrome Web Store (`kcholfdhfcojahebmneeeikelffkokdj`) | Content script scrapes the page DOM you're already on |
+| **Web app** | `src/web/` → built to `docs/app/` | GitHub Pages, `boxd-card.com/app/` | Fetches + parses Letterboxd HTML through the proxy worker |
+| **Landing page** | `docs/index.html` (hand-written) | GitHub Pages, `boxd-card.com` | Static; its Generate CTA hands off to `/app/?url=…` |
 
-## Tech Stack
+Plus a **Cloudflare Worker** (`worker/`) at `api.boxd-card.com` that the web app and the extension both call.
 
-- **Chrome Manifest V3** — service worker, content scripts, popup
-- **React + TypeScript** — popup UI
-- **Vite + @crxjs/vite-plugin 2.0.0** — build tooling (handles MV3 service worker + popup bundling)
-- **Canvas API** — card image generation (no external image library)
+The extension needs no backend for its core flow — it reads metadata and posters straight from the DOM. The web app can't do that (CORS), so it goes through the worker.
 
-## Extension Architecture
+## Card types
 
-```
-Letterboxd page DOM
-        │
-        │  chrome.runtime.sendMessage (GET_FILM_DATA)
-        ▼
-  Content Script                ← injected into letterboxd.com/* pages
-  content/index.ts              ← scrapes films, username, dates, list metadata
-        │
-        │  FilmDataResponse
-        ▼
-  Popup UI
-  popup/Popup.tsx               ← validates URL, drives canvas render, manages UI state
-        │
-        ├─► Background Service Worker (FETCH_IMAGE)
-        │   background/service-worker.ts  ← cross-origin poster image fetching
-        │
-        ▼
-  Canvas Renderer
-  canvas/renderCard.ts          ← pure Canvas 2D, no React; exports renderCard, computeLayout, loadImage
-        │
-        ▼
-  Copy to clipboard / Download PNG
-```
-
-## Card Types and URL Patterns
-
-Defined in `src/types.ts`:
+Defined in `src/types.ts` as `CARD_TYPE_CONFIGS`. Each entry carries the URL pattern used to validate the page, the hint shown when the page doesn't match, and a `proOnly` flag.
 
 | CardType | Label | Required URL |
 |----------|-------|-------------|
-| `last-four-watched` | Last Four Watched | `letterboxd.com/<username>/` or `letterboxd.com/<username>/films/` |
-| `favorites` | Favorites | `letterboxd.com/<username>/` |
-| `recent-diary` | Recent Diary | `letterboxd.com/<username>/diary/` or `.../films/diary/` |
-| `list` | List | `letterboxd.com/<username>/list/<slug>/` |
-| `review` | Review | `letterboxd.com/<username>/reviews/` or `.../film/<slug>/[n]/` |
+| `last-four-watched` | Last Four Watched | `letterboxd.com/<user>/` or `/<user>/films/` |
+| `favorites` | Favorites | `letterboxd.com/<user>/` |
+| `recent-diary` | Recent Diary | `letterboxd.com/<user>/diary/` or `/films/diary/` |
+| `list` | List | `letterboxd.com/<user>/list/<slug>/` |
+| `review` | Review | `/<user>/reviews/` or `/<user>/film/<slug>/[n]/` |
+| `stats` | Stats | `/<user>/stats/` or `/<user>/year/<yyyy>/` — **Pro only** |
 
-`ListCount` = `4 | 10 | 20` — applies to Recent Diary and List types.
+- `ListCount` = `4 | 10 | 20` — Recent Diary, List, Stats.
+- `ReviewCount` = `1 | 2 | 3 | 4` — Review. Only offered on `/reviews/` list pages; a single film review page always yields exactly 1.
+- `Layout` = `landscape | square | 4:5 | 3:4 | story | banner` — output aspect ratio.
+- `StatsCategory` = `summary | most-watched | highest-rated | by-week | breakdown | genres | countries | languages | milestones`, each with a `renderMode` (`poster-grid | summary | chart | bar-chart | milestones`).
 
-`ReviewCount` = `1 | 2 | 3 | 4` — applies to Review type. The count selector is only shown on `/reviews/` list pages; single film review pages always yield exactly 1 entry.
+**Stats is extension-only.** Letterboxd blocks stats-page requests from external services, so the web app rejects those URLs with an explanatory message rather than failing at fetch time.
 
-## DOM Selectors (verified against live Letterboxd HTML)
-
-### Profile page (`letterboxd.com/<username>/`)
-
-**Recent Activity (Last Four Watched):**
-```
-section#recent-activity li.griditem   (take first 4)
-  .react-component[data-component-class="LazyPoster"]
-    @data-item-name    "Dune (2021)"   ← title + year
-    @data-film-id      "371378"
-    @data-poster-url   "/film/dune-2021/image-150/"
-  img.image                            ← src = resolved poster or placeholder
-  p.poster-viewingdata .rating         ← star text e.g. "★★★★"
-```
-
-**Films page (Last Four Watched fallback — `letterboxd.com/<username>/films/`):**
-```
-ul.poster-list li.poster-container
-  .react-component[data-component-class="LazyPoster"]
-    @data-item-name / @data-film-id / @data-poster-url
-  img.image
-  p.poster-viewingdata .rating   ← may be absent
-```
-Page defaults to "Recently Watched" order; first 4 items = last four watched.
-The content script tries `#recent-activity` first (profile page); falls back to this selector on `/films/`.
-
-**Favorites:**
-```
-section#favourites li.griditem   (take first 4)
-  .react-component[data-component-class="LazyPoster"]
-    @data-item-name / @data-film-id / @data-poster-url   (same as above)
-  img.image
-  (no rating element — favorites have no ratings)
-```
-
-**Page owner username:** `document.body.dataset.owner`
-**Logged-in username:** extracted from `.site-nav .profile a` or `.site-nav .avatar` href (excludes reserved paths)
-
-### Diary page (`letterboxd.com/<username>/diary/`)
+## Architecture
 
 ```
-table#diary-table tbody tr.diary-entry-row
-  td.col-film .react-component[data-component-class="LazyPoster"]
-    @data-item-name / @data-film-id / @data-poster-url
-  img.image
-  td.col-rating .hide-for-owner .rating   ← plain star text (not interactive input)
-  td.col-monthdate .monthdate a.month     ← "Mar" (only on first row of each month)
-  td.col-monthdate .monthdate a.year      ← "2026" (carry forward for subsequent rows)
-  td.col-daydate a.daydate                ← "20"
+                    ┌──────────────────────────────┐
+   EXTENSION        │  Letterboxd page DOM         │
+                    └──────────────┬───────────────┘
+                                   │ scrapes in-page
+                    ┌──────────────▼───────────────┐
+                    │ content/index.ts             │  GET_FILM_DATA message
+                    └──────────────┬───────────────┘
+                                   │ FilmDataResponse
+                    ┌──────────────▼───────────────┐
+                    │ popup/Popup.tsx              │
+                    └───┬──────────────────────┬───┘
+                        │ FETCH_IMAGE          │
+                        │ FETCH_TMDB           │
+                    ┌───▼──────────────────┐   │
+                    │ background/          │   │
+                    │ service-worker.ts    │   │
+                    └──────────────────────┘   │
+                                               │
+   WEB APP                                     │
+   ┌────────────────────┐                      │
+   │ web/App.tsx        │                      │
+   │ web/webScraper.ts  │──── proxy fetch ──┐  │
+   └──────────┬─────────┘                   │  │
+              │                             │  │
+              │                    ┌────────▼──▼────────┐
+              │                    │ worker/index.ts    │
+              │                    │ api.boxd-card.com  │
+              │                    │  /?url=  /tmdb     │
+              │                    └────────────────────┘
+              │
+   BOTH       ▼
+   ┌──────────────────────────────────────────┐
+   │ canvas/renderCard.ts   → PNG Blob        │
+   │ altText.ts             → alt text        │
+   └──────────────────────────────────────────┘
+              │
+              ▼   Copy to clipboard / Download / Share
 ```
 
-### List page (`letterboxd.com/<username>/list/<slug>/`)
+**Shared between surfaces:** `canvas/renderCard.ts`, `altText.ts`, `types.ts`, `storage/settings.ts`, `shared/tmdb.ts`. The two scrapers (`content/index.ts` for the live DOM, `web/webScraper.ts` for fetched HTML) deliberately mirror each other's selectors but stay separate — the extension can read lazily-resolved `img.src`, the web app can only see `data-poster-url`.
 
-```
-ul.js-list-entries li.posteritem
-  .react-component[data-component-class="LazyPoster"]
-    @data-item-name / @data-film-id / @data-poster-url
-  img.image
-  (no rating — list entries have no ratings)
-
-.list-title-intro h1.title-1             ← list title
-.list-title-intro .body-text p           ← description paragraphs
-  (filter out paragraphs starting with "Updated")
-```
-
-### Tags (reviews and lists)
-
-```
-ul.tags li a   ← tag text content (e.g. "in theaters", "moviepass")
-```
-
-For single review and list pages: `document.querySelectorAll('ul.tags li a')`
-For reviews list page: `item.querySelectorAll('ul.tags li a')` per review entry
-
-### Logged-In User (site navigation)
-
-```
-.site-nav .profile a   ← href="/username/" (logged-in user profile link)
-.site-nav .avatar img  ← src = avatar URL (48px crop, upsized to 80px)
-```
-
-The logged-in user is the person viewing/generating the card. This is distinct from the page owner (whose content is being viewed). Reserved paths like `/films/`, `/lists/`, etc. are excluded from username extraction.
-
-### Single review page (`letterboxd.com/<username>/film/<slug>/` or `.../film/<slug>/\d+/`)
-
-```
-Username: document.body.dataset.owner
-
-section.viewing-poster-container
-  .react-component[data-component-class="LazyPoster"]
-    @data-poster-url   "/film/groundhog-day/image-150/"
-  img.image            ← src = resolved poster or placeholder (same fallback strategy)
-
-.inline-production-masthead h2.primaryname a   ← film title text "Groundhog Day"
-.inline-production-masthead .releasedate a     ← year text "1993"
-  (match by class only — Letterboxd renders the masthead as a <div>, not a <header>)
-
-.content-reactions-strip span.inline-rating svg      ← @aria-label = "★★★★★" (absent if unrated)
-
-p.view-date a   ← three links in DOM order: day "02", month "Feb", year "2026"
-  (preceded by "Watched" / "Rewatched" text node — ignore)
-
-.js-review-body p   ← one <p> per paragraph; use innerText to get text with \n at <br>
-  join paragraphs with \n\n
-  presence of .js-review-body confirms page is a review (not just a diary entry)
-```
-
-### Reviews list page (`letterboxd.com/<username>/reviews/`)
-
-```
-div.viewing-list > div.listitem.js-listitem   (one per review, take first N)
-  article.production-viewing.viewing-poster-container.js-production-viewing
-
-  Poster (same LazyPoster pattern):
-    .react-component[data-component-class="LazyPoster"] @data-poster-url
-    img.image   ← src = resolved poster or empty-poster fallback
-
-  Film title:   .inline-production-masthead h2.primaryname a
-  Year:         .inline-production-masthead .releasedate a
-  Rating:       .content-reactions-strip .inline-rating svg @aria-label  ("★★★★½"; absent if unrated)
-  Watch date:   .content-reactions-strip .date time @datetime             (ISO: "2026-03-22")
-
-  Review text:  .js-review-body p   ← innerText, join with \n\n
-
-  CRITICAL — truncated reviews:
-    .js-review-body also carries class js-collapsible-text and
-    @data-full-text-url="/s/full-text/viewing:{id}/"
-    Long reviews are truncated on the list page. To get the full text, fetch
-    https://letterboxd.com + data-full-text-url (returns HTML fragment; extract <p> tags).
-    If data-full-text-url is absent, the review is short enough to be complete.
-```
-
-### Poster URL strategy
-
-`img.src` starts as a placeholder (`empty-poster-*.png`) and is updated by Letterboxd's LazyPoster React component after load. The scraper checks if `img.src` contains `"empty-poster"` and falls back to `https://letterboxd.com` + `data-poster-url` if so. The background worker then fetches that URL, which redirects to the actual CDN image.
-
-## Card Layout
-
-`computeLayout(filmCount, titleAreaH = 0)` in `renderCard.ts` returns a `CardLayout` object:
-
-| filmCount | cols | posterW | posterH | base cardHeight |
-|-----------|------|---------|---------|----------------|
-| ≤ 4 | 4 | 200 | 300 | 560 |
-| 5–20 | 5 | 208 | 312 | dynamic (POSTER_TOP + rows×372 + 56 + 64) |
-
-5-column math: `posterLeft=40`, `gap=20` → `5×208 + 4×20 = 1120 = 1200 − 2×40`
-
-`titleAreaH` shifts `posterTop`, `footerY`, and `cardHeight` uniformly to make room for optional text above the poster grid. Used for:
-- **List type:** list title (32px) and/or description (24px) + padding
-- **Non-list types:** card type label (32px) + padding
-
-**Drawing order (poster-grid types):** background → logo → header date → title area text → poster grid (image + title + rating + diary date) → footer
-
-**`showDate` behavior:**
-- All poster-grid types except `recent-diary`: today's date in header (right-aligned)
-- `recent-diary`: per-film watch date below rating for each poster
-
-**Review card** (`cardType === 'review'`): two-pass layout — `measureReviewRows()` computes each row's height on a temp canvas, then the final canvas is created at the computed height.
-
-Each review row is a two-column layout:
-- Left: poster (`200×300 px`) at `x=40`
-- Right column (`x=270`, `w=890`): title → rating → watch date → tag pills → review text (word-wrapped)
-
-Row height = `max(300, contentHeight)`. Rows are separated by `RV_ROW_GAP = 28 px`. Card width is always `1200 px`.
-
-**Backdrop** (Review and List): when `backdropDataUrl` is provided, `drawBackground()` draws it blurred (`blur(20px)`, oversized by `3×blur` to hide edge fade) then overlays `rgba(0,0,0,0.72)` before all other content. Falls back silently to the solid `BG_COLOR` fill if the image fails to load.
-
-**Footer Attribution:**
-- **Single user mode** (logged-in user = page owner): `[avatar] username` on left, "generated by Boxd Card" on right
-- **Attribution mode** (sharing another user's content): `[logged-in avatar] logged-in-user 🔗 [author avatar] author-username` on left
-- Footer shows usernames only (no `letterboxd.com/` prefix)
-- Avatars are 32px circular clips, spaced 10px from text
-- Share emoji (🔗) appears between users with 12px gaps when showing attribution
-
-## Project Structure
+## Project structure
 
 ```
 boxd-card/
-├── manifest.json
+├── manifest.json                  # MV3 manifest (permissions, content-script matches)
 ├── src/
-│   ├── types.ts               # CardType, ListCount, CardTypeConfig, CARD_TYPE_CONFIGS
-│   ├── assets/
-│   │   └── letterboxd-logo-h-neg-rgb.svg   # official horizontal logo (white on transparent)
-│   ├── popup/
-│   │   ├── index.html
-│   │   ├── main.tsx
-│   │   └── Popup.tsx          # full UI + generation pipeline
-│   ├── content/
-│   │   └── index.ts           # DOM scrapers: scrapeRecentActivity, scrapeFavorites,
-│   │                          #   scrapeDiary, scrapeList, scrapeListMeta
-│   ├── background/
-│   │   └── service-worker.ts  # FETCH_IMAGE handler + declarativeContent setup
-│   └── canvas/
-│       └── renderCard.ts      # Canvas renderer; exports renderCard, computeLayout, loadImage
-├── src/content/index.test.ts
-├── src/canvas/renderCard.test.ts
-├── test/
-│   └── setup.ts               # Vitest global mocks (chrome.*, HTMLCanvasElement)
-├── vite.config.ts
-├── vitest.config.ts
-└── package.json
+│   ├── types.ts                   # CardType, ListCount, Layout, StatsCategory, CARD_TYPE_CONFIGS
+│   ├── altText.ts                 # generateAltText() — accessible description of a card
+│   ├── assets/                    # Letterboxd + TMDB logos (SVG)
+│   ├── popup/                     # Extension popup: Popup.tsx, main.tsx, index.html, CSS module
+│   ├── content/index.ts           # In-page DOM scrapers (all card types + stats)
+│   ├── background/service-worker.ts  # FETCH_IMAGE / FETCH_TMDB + declarativeContent
+│   ├── canvas/renderCard.ts       # Canvas renderer; renderCard, computeLayout, wrapText, loadImage
+│   ├── shared/tmdb.ts             # TmdbFilmData, slugFromPosterUrl, mergeTmdb, didUseTmdb
+│   ├── storage/settings.ts        # UserSettings + RememberedUser (chrome.storage / localStorage)
+│   └── web/
+│       ├── App.tsx                # Web app UI + generation pipeline
+│       ├── main.tsx               # Entry point — ORDER MATTERS, see Telemetry below
+│       ├── webScraper.ts          # Fetch + parse Letterboxd HTML via the proxy
+│       ├── tmdbClient.ts          # Calls the worker's /tmdb route
+│       ├── faro.ts                # Grafana Faro init + track()/startAction()
+│       ├── telemetryPrivacy.ts    # URL/message scrubbing — see Telemetry below
+│       ├── handoff.ts             # Captures + strips the landing page's ?url= param
+│       └── index.html             # Web app HTML shell
+├── worker/
+│   ├── index.ts                   # Cloudflare Worker: /?url= proxy + /tmdb
+│   ├── wrangler.toml              # Deploy config (rate-limit binding documented here)
+│   └── tsconfig.json              # Workers-runtime typecheck (separate from the app)
+├── docs/                          # GitHub Pages root
+│   ├── index.html                 # Landing page (hand-written)
+│   ├── privacy/index.html         # Privacy policy — a promise backed by code, keep in sync
+│   ├── app/                       # BUILD OUTPUT of src/web — committed, do not hand-edit
+│   └── _redirects                 # Cloudflare Pages redirects
+├── eslint.config.mjs
+├── tsconfig.json                  # App + tests (DOM types)
+├── tsconfig.node.json             # Build configs (Node types)
+└── vite.config.ts / vite.web.config.ts
 ```
 
-## Development Commands
+## Development commands
 
 ```bash
-npm run dev      # build in watch mode → dist/
-npm run build    # one-shot production build
-npm run test     # Vitest in watch mode
-npm run test:run # single test run (CI)
-npm run coverage # Vitest with v8 coverage
+npm run dev        # extension: build in watch mode → dist/
+npm run build      # extension: typecheck + one-shot production build
+npm run dev:web    # web app dev server (localhost:5174) — start the worker first
+npm run build:web  # web app: typecheck + build → docs/app/
+npm run typecheck  # tsc --noEmit across all three tsconfigs (app / node / worker)
+npm run lint       # ESLint, zero-warning policy
+npm run test       # Vitest watch
+npm run test:run   # single run (CI)
+npm run coverage   # Vitest + v8 coverage
 ```
 
-**Loading in Chrome:** `npm run build` → `chrome://extensions` → Enable Developer mode → Load unpacked → select `dist/`. After subsequent builds, click ↺ reload. For content script changes, also refresh the Letterboxd tab.
+Worker, from `worker/`:
+```bash
+npx wrangler dev --port 8787   # local; pairs with npm run dev:web
+npx wrangler deploy
+npx wrangler secret put TMDB_API_KEY   # v4 "API Read Access Token", NOT the v3 key
+```
 
-**PostToolUse hook:** After any Edit/Write to `src/*.ts` files, `.claude/hooks/run-tests.sh` auto-runs `npm run test:run`. Exits 0 silently on pass; exits 2 with stderr on failure.
+`wrangler` is pinned in `devDependencies` — don't let `npx` pull a floating version.
 
-## Known Gaps
+**Loading the extension:** `npm run build` → `chrome://extensions` → Developer mode → Load unpacked → `dist/`. Reload after each build; also refresh the Letterboxd tab for content-script changes.
 
-- Favorites have no star ratings by design (not present in the DOM)
-- Sparse layout (1–3 films for last-four/favorites) is centered correctly but visually sparse — accepted behavior
+**PostToolUse hook:** any Edit/Write triggers `.claude/hooks/run-tests.sh` → `npm run test:run`.
+
+**Pre-commit hook** (`.githooks/pre-commit`, wired up by `npm install`): rebuilds `docs/app/` when `src/web/`, `vite.web.config.ts`, or `.env.production` are staged, and reconciles `package-lock.json` when `package.json` is staged.
+
+## Environment
+
+`.env.production` is committed (public URLs only). `.env.local` is gitignored and holds the Grafana credentials.
+
+| Var | Used by | Notes |
+|-----|---------|-------|
+| `VITE_PROXY_URL` | web app | Worker base. `http://localhost:8787` for local dev |
+| `VITE_FARO_PROXY_URL` | web app | Faro proxy base; unset disables telemetry entirely |
+| `VITE_APP_VERSION` | web app | Optional — defaults to `package.json` version, set in `vite.web.config.ts` |
+| `GRAFANA_FARO_API_KEY` | build only | Enables source-map upload on production builds. Needs the `frontend-observability:write` scope |
+| `GRAFANA_FARO_APP_ID` | build only | Defaults to `4021` |
+
+## Telemetry and privacy — read before touching `src/web/`
+
+`docs/privacy/index.html` is a **published promise**, and parts of it are enforced in code. It states we do not collect the Letterboxd URL you paste, nor any film or list slug.
+
+That's non-trivial to honour, because every request the web app makes puts exactly that data in a query string (`/?url=https%3A%2F%2Fletterboxd.com%2F<user>%2F`, `/tmdb?slug=<film>`), and Faro records full URLs automatically in **five** places:
+
+1. `meta.page.url` (`location.href`) — attached to every signal.
+2. OTel fetch spans set `http.url` to the full request URL.
+3. Faro's trace exporter flattens *every* span attribute into `faro.tracing.*` events — so (2) again.
+4. `faro.performance.resource` events track fetch/xhr by default and carry `name: <full URL>`.
+5. Console instrumentation captures `console.warn` and `console.error` by default (only DEBUG/TRACE/LOG are off), so any diagnostic interpolating a film title ships it.
+
+The defences, all in `src/web/`:
+
+- **`handoff.ts`** — captures and strips `?url=` from the address bar. `main.tsx` calls it **before `initFaro()`**. Keep that order; reversing it re-opens leak (1).
+- **`faro.ts`** — `applyCustomAttributesOnSpan` rewrites `http.url` at the span level, which fixes (2) *and* (3), because the exporter reads span attributes after the span ends. `beforeSend` runs `scrubTransportItem` for (1) and (4).
+- **`telemetryPrivacy.ts`** — `sanitizeUrlForTelemetry` keeps origin + pathname and drops query + fragment; `sanitizeErrorMessage` strips URLs and quoted identifiers from free text.
+- **Diagnostics are content-free by convention** — no film titles, slugs, or poster URLs in `console.warn`, and thrown scraper errors don't quote slugs either, because they end up in `card_generate_failed`.
+
+If you add a `track()` call, a `console.warn`, or a new fetch, check it against the policy. `telemetryPrivacy.test.ts` covers the scrubbing itself.
+
+**The extension sends no telemetry at all** — Faro is imported only from `src/web/`, and the policy says so. Don't import it anywhere else.
+
+## Worker notes (`worker/index.ts`)
+
+Two routes:
+- `GET /?url=<target>[&accept=image]` — proxies an allowlisted host (`letterboxd.com`, `a.ltrbxd.com`, `s.ltrbxd.com`, `boxd.it`, `image.tmdb.org` and subdomains). 60s cache.
+- `GET /tmdb?slug=<letterboxd-slug>` — scrapes `data-tmdb-id` off the film page, then queries TMDB. 7-day cache. Needs `TMDB_API_KEY` or returns 503.
+
+Things that are load-bearing:
+- **Every worker-generated response must carry CORS headers** — use `errorResponse()`, never a bare `new Response(msg, {status})`. Without them the browser rejects the response outright, `fetch` throws a TypeError instead of resolving, and the web app can't read the status to show a useful message.
+- **The allowlist is checked twice** — once on the requested URL, once on `upstream.url` after redirects. `boxd.it` is a redirector; a one-sided check could be walked off the allowlist.
+- **`accept=image` responses must actually be images.** Letterboxd's CDNs host user-uploaded content; relaying an HTML content type would let it render as a document on our origin.
+- **Never log response bodies.** `[observability.logs] persist = true`, and those bodies are Letterboxd page content. Status + `cf-ray` only.
+- **Rate limiting** is wired but not enabled — the worker reads an optional `RATE_LIMITER` binding and fails open without it. See `wrangler.toml` for how to switch it on. Worth doing: abuse of this open proxy means Letterboxd sees the traffic as ours.
+
+## DOM selectors (verified against live Letterboxd HTML)
+
+Both scrapers rely on these. Letterboxd changes them without notice; when a card type breaks, check here first.
+
+**LazyPoster** — the shared pattern behind nearly every card type:
+```
+.react-component[data-component-class="LazyPoster"]
+  @data-item-name    "Dune (2021)"   ← title + year
+  @data-film-id      "371378"
+  @data-poster-url   "/film/dune-2021/image-150/"
+img.image                            ← resolved poster, or an empty-poster placeholder
+```
+`img.src` starts as `empty-poster-*.png` and is swapped in by Letterboxd's React after load. The extension checks for `empty-poster` and falls back to `data-poster-url`; the web app always uses `data-poster-url`, since fetched HTML is never lazily resolved.
+
+| What | Selector |
+|------|----------|
+| Recent activity (last four) | `section#recent-activity li.griditem` (first 4) |
+| Films page fallback | `ul.poster-list li.poster-container` / `ul.grid li.griditem` |
+| Favorites | `section#favourites li.griditem` (first 4; never has ratings) |
+| Diary rows | `table#diary-table tbody tr.diary-entry-row` |
+| Diary rating / date | `td.col-rating .hide-for-owner .rating`, `.col-monthdate .monthdate a.month\|a.year`, `.col-daydate a.daydate` |
+| List entries | `ul.js-list-entries li.posteritem, li.film-detail` |
+| List meta | `.list-title-intro h1.title-1`, `.list-title-intro .body-text p` (skip paragraphs starting "Updated") |
+| Tags | `ul.tags li a` |
+| Review list items | `div.viewing-list div.listitem.js-listitem` |
+| Review title / year | `.inline-production-masthead h2.primaryname a`, `.inline-production-masthead .releasedate a` |
+| Review rating | `.content-reactions-strip .inline-rating svg` → `@aria-label` (`"★★★★½"`) |
+| Review body | `.js-review-body p` |
+| Page owner | `document.body.dataset.owner` |
+| Logged-in user | `window.person` (extension, via `chrome.scripting` MAIN world) / inline `<head>` script (web) |
+| Backdrop | `[data-backdrop-retina]`, `[data-backdrop]` |
+
+**Diary month/year carry forward** — only the first row of each month carries `a.month`/`a.year`; subsequent rows inherit.
+
+**Truncated reviews** — on list pages `.js-review-body` also carries `data-full-text-url="/s/full-text/viewing:{id}/"`. Fetch it for the full text; absent means the review is already complete.
+
+**Parsing fetched HTML: use `DOMParser`, never `innerHTML`.** A detached `<div>` does *not* make markup inert — Chrome still starts image loads for `<img onerror=…>` created via `innerHTML`. In the content script it's worse: inline handlers compile in the *page's* main world, so a Letterboxd sanitizer slip would run script in the viewer's session. Both `fetchFullText` implementations use `DOMParser` for this reason.
+
+## Card layout
+
+`computeLayout(filmCount, titleAreaH)` in `renderCard.ts`:
+
+| filmCount | cols | posterW | posterH | base height |
+|-----------|------|---------|---------|-------------|
+| ≤ 4 | 4 | 200 | 300 | 560 |
+| 5–20 | 5 | 208 | 312 | dynamic |
+
+5-column math: `posterLeft=40`, `gap=20` → `5×208 + 4×20 = 1120 = 1200 − 2×40`.
+
+`titleAreaH` shifts `posterTop`, `footerY`, and `cardHeight` together to make room for text above the grid (list title/description, or the card-type label).
+
+**Drawing order (poster-grid):** background → logo → header date → title area → poster grid → footer.
+
+**Review cards** use a two-pass layout: `measureReviewRows()` sizes each row on a temp canvas, then the real canvas is created at the computed height. Each row is poster (200×300 at `x=40`) plus a right column at `x=270, w=890` holding title → rating → date → tag pills → wrapped review text. Row height is `max(300, contentHeight)`, rows separated by `RV_ROW_GAP = 28`.
+
+**Backdrop** (review + list): drawn blurred (`blur(20px)`, oversized by `3×blur` so the edge fade doesn't show) under `rgba(0,0,0,0.72)`. Falls back silently to `BG_COLOR`.
+
+**Footer:** own profile → `[avatar] username` left, "generated by Boxd Card" right. Someone else's → `[your avatar] you 🔗 [their avatar] them`. Avatars are 32px circular clips.
+
+**Every poster draw is wrapped in try/catch** with a grey placeholder rect, so one failed image degrades the card instead of failing it. `loadImage` has a 10s timeout for the same reason — an image that never settles used to wedge the UI in "Generating…" forever.
+
+## Testing
+
+Vitest + jsdom, `test/setup.ts` mocks `chrome.*` and the Canvas 2D context. `worker/index.test.ts` exercises the worker's `fetch` handler directly.
+
+When fixing a bug, add the test that fails against the old code first — the worker's missing CORS headers survived a full suite because the tests asserted status codes but never headers.
+
+## Known gaps
+
+- Favorites have no star ratings — not in the DOM by design.
+- Sparse layouts (1–3 films) centre correctly but look thin. Accepted.
+- Stats cards are extension-only; Letterboxd blocks external requests to stats pages.
+- `elementText()` falls back to `textContent` under `DOMParser`, so `<br>` in a review doesn't become a newline. Letterboxd reviews rarely use it.

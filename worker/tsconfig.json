@@ -1,0 +1,23 @@
+{
+  // The worker was never typechecked: the root tsconfig's `include` covered
+  // only `src`, so a deployed service had no type coverage at all.
+  //
+  // It needs its own config because it targets the Workers runtime — no DOM,
+  // and `Request`/`Response`/`fetch` come from @cloudflare/workers-types.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noEmit": true,
+    "types": ["@cloudflare/workers-types"]
+  },
+  "include": ["index.ts"]
+}

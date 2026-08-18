@@ -3,11 +3,17 @@ name: PR Checks
 on:
   pull_request:
     branches:
+      # `main` is where development actually merges — it previously had no test
+      # or build gate at all, so a break only surfaced at the main → release
+      # promotion, several PRs deep.
+      - main
       - release
 
 jobs:
   version-check:
     name: Version Check
+    # Only meaningful for release PRs; main PRs don't carry a version bump.
+    if: github.base_ref == 'release'
     runs-on: ubuntu-latest
 
     steps:
@@ -46,14 +52,28 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
 
       - name: Run tests
         run: npm run test:run
 
       - name: Build extension
         run: npm run build
+
+      # Verifies the web app still compiles. Deliberately not compared against
+      # the committed docs/app/: the Faro rollup plugin injects a fresh bundle
+      # id on every build, so the output hash never matches byte-for-byte and
+      # such a check would be permanently red. Keeping docs/app/ in sync is the
+      # .githooks/pre-commit hook's job.
+      - name: Build web app
+        run: npm run build:web

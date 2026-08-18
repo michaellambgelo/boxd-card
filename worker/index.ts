@@ -21,12 +21,64 @@
 
 const ALLOWED_HOSTS = ['letterboxd.com', 'a.ltrbxd.com', 's.ltrbxd.com', 'boxd.it', 'image.tmdb.org']
 
+/**
+ * Cloudflare's rate-limiting binding. Optional: when the binding isn't
+ * configured the worker fails open and behaves exactly as before, so this can
+ * be switched on with a wrangler.toml uncomment and a deploy.
+ */
+interface RateLimiter {
+  limit(options: { key: string }): Promise<{ success: boolean }>
+}
+
 interface Env {
   TMDB_API_KEY: string
+  RATE_LIMITER?: RateLimiter
+}
+
+/**
+ * Throttle per client IP.
+ *
+ * This proxy is unauthenticated and open to anyone, and every request it serves
+ * is a request to Letterboxd from a Cloudflare egress IP under a User-Agent
+ * naming boxd-card.com. The cost of abuse isn't the Workers bill — it's
+ * Letterboxd blocking that traffic, which takes the product down with it.
+ *
+ * Fails open on a missing binding or a binding error: throttling is a
+ * protection, not a dependency.
+ */
+async function isRateLimited(request: Request, env: Env): Promise<boolean> {
+  const limiter = env.RATE_LIMITER
+  if (!limiter) return false
+  const key = request.headers.get('CF-Connecting-IP') ?? 'unknown'
+  try {
+    const { success } = await limiter.limit({ key })
+    return !success
+  } catch {
+    return false
+  }
 }
 
 function isAllowedHost(hostname: string): boolean {
   return ALLOWED_HOSTS.some(h => hostname === h || hostname.endsWith(`.${h}`))
+}
+
+/**
+ * Check the URL a fetch actually resolved to, after any redirects.
+ *
+ * An empty `Response.url` means "no redirect information available" — that's
+ * what a hand-constructed Response carries, and it's what we get back when the
+ * runtime doesn't populate it. Treat it as no redirect having happened: the
+ * requested host was already vetted, so allowing it here can't widen the
+ * allowlist. Only a URL we can parse *and* that resolves off-allowlist is a
+ * block.
+ */
+function isAllowedFinalUrl(finalUrl: string): boolean {
+  if (!finalUrl) return true
+  try {
+    return isAllowedHost(new URL(finalUrl).hostname)
+  } catch {
+    return true
+  }
 }
 
 function corsHeaders(): Record<string, string> {
@@ -36,6 +88,20 @@ function corsHeaders(): Record<string, string> {
     'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Max-Age': '86400',
   }
+}
+
+/**
+ * Every response the worker generates itself must carry CORS headers, or the
+ * browser rejects it outright and `fetch` throws a TypeError instead of
+ * resolving with a status — so the web app can't read the reason and shows a
+ * generic network error. Upstream responses already go out through the success
+ * path, which sets them.
+ */
+function errorResponse(message: string, status: number): Response {
+  return new Response(message, {
+    status,
+    headers: { ...corsHeaders(), 'Content-Type': 'text/plain; charset=utf-8' },
+  })
 }
 
 async function fetchUpstream(target: string, wantsImage: boolean): Promise<Response> {
@@ -59,47 +125,68 @@ async function handleProxy(request: Request): Promise<Response> {
   const target = requestUrl.searchParams.get('url')
 
   if (!target) {
-    return new Response('Missing required query param: url', { status: 400 })
+    return errorResponse('Missing required query param: url', 400)
   }
 
   let targetUrl: URL
   try {
     targetUrl = new URL(target)
   } catch {
-    return new Response('Invalid url param', { status: 400 })
+    return errorResponse('Invalid url param', 400)
   }
 
   if (targetUrl.protocol !== 'https:') {
-    return new Response('Only https targets are allowed', { status: 400 })
+    return errorResponse('Only https targets are allowed', 400)
   }
 
   if (!isAllowedHost(targetUrl.hostname)) {
-    return new Response('Target host not allowed', { status: 403 })
+    return errorResponse('Target host not allowed', 403)
   }
 
   const wantsImage = requestUrl.searchParams.get('accept') === 'image'
 
   try {
     const upstream = await fetchUpstream(target, wantsImage)
-    const contentType = upstream.headers.get('Content-Type') ?? 'application/octet-stream'
+
+    // The allowlist above only vets the URL we *asked* for. `redirect: 'follow'`
+    // means an open redirect on an allowed host (boxd.it is a redirector by
+    // design) could land us somewhere else entirely and hand the body back with
+    // `Access-Control-Allow-Origin: *`. Re-check where we actually ended up.
+    if (!isAllowedFinalUrl(upstream.url)) {
+      console.log(`[proxy] blocked off-allowlist redirect for ${targetUrl.hostname}`)
+      return errorResponse('Redirected to a host that is not allowed', 403)
+    }
+
+    const upstreamType = upstream.headers.get('Content-Type') ?? 'application/octet-stream'
+    // When an image was asked for, refuse to relay anything else. Letterboxd's
+    // CDNs host user-uploaded content, and echoing an HTML content type would
+    // let a response render as a document on the api.boxd-card.com origin.
+    if (wantsImage && !upstreamType.startsWith('image/')) {
+      return errorResponse(`Expected an image, upstream sent ${upstreamType}`, 502)
+    }
+
     const body = await upstream.arrayBuffer()
 
     if (!upstream.ok) {
-      const snippet = new TextDecoder().decode(body.slice(0, 512))
-      console.log(`[proxy] upstream ${upstream.status} for ${target} | cf-ray: ${upstream.headers.get('cf-ray')} | body: ${snippet}`)
+      // Status and cf-ray only. The body is Letterboxd page content and these
+      // logs are persisted (see wrangler.toml [observability.logs]).
+      console.log(`[proxy] upstream ${upstream.status} for ${targetUrl.hostname}${targetUrl.pathname} | cf-ray: ${upstream.headers.get('cf-ray')}`)
     }
 
     return new Response(body, {
       status: upstream.status,
       headers: {
         ...corsHeaders(),
-        'Content-Type': contentType,
+        'Content-Type': upstreamType,
+        // Don't let a browser sniff a relayed response into something
+        // executable on our origin.
+        'X-Content-Type-Options': 'nosniff',
         // Short cache: Letterboxd content updates frequently
         'Cache-Control': 'public, max-age=60',
       },
     })
   } catch (err) {
-    return new Response(`Upstream fetch failed: ${String(err)}`, { status: 502 })
+    return errorResponse(`Upstream fetch failed: ${String(err)}`, 502)
   }
 }
 
@@ -163,25 +250,19 @@ async function handleTmdb(request: Request, env: Env): Promise<Response> {
   const apiKey = env.TMDB_API_KEY
   if (!apiKey) {
     console.log('[tmdb] TMDB_API_KEY secret not configured')
-    return new Response('TMDB not configured', {
-      status: 503,
-      headers: corsHeaders(),
-    })
+    return errorResponse('TMDB not configured', 503)
   }
 
   const requestUrl = new URL(request.url)
   const slug = requestUrl.searchParams.get('slug')
   if (!slug) {
-    return new Response('Missing required query param: slug', {
-      status: 400,
-      headers: corsHeaders(),
-    })
+    return errorResponse('Missing required query param: slug', 400)
   }
 
   // Letterboxd slugs are alphanumeric words separated by single hyphens.
   // Reject consecutive hyphens, leading/trailing hyphens, and non-alphanum chars.
   if (!/^[a-z0-9]+(-[a-z0-9]+)*$/i.test(slug)) {
-    return new Response('Invalid slug', { status: 400, headers: corsHeaders() })
+    return errorResponse('Invalid slug', 400)
   }
 
   // Step 1: fetch the Letterboxd film page for data-tmdb-id.
@@ -191,25 +272,16 @@ async function handleTmdb(request: Request, env: Env): Promise<Response> {
     const page = await fetchUpstream(filmPageUrl, false)
     if (!page.ok) {
       console.log(`[tmdb] letterboxd ${page.status} for ${filmPageUrl}`)
-      return new Response('Letterboxd page not found', {
-        status: 404,
-        headers: corsHeaders(),
-      })
+      return errorResponse('Letterboxd page not found', 404)
     }
     pageHtml = await page.text()
   } catch (err) {
-    return new Response(`Letterboxd fetch failed: ${String(err)}`, {
-      status: 502,
-      headers: corsHeaders(),
-    })
+    return errorResponse(`Letterboxd fetch failed: ${String(err)}`, 502)
   }
 
   const extracted = extractTmdbIdFromHtml(pageHtml)
   if (!extracted) {
-    return new Response('No TMDB ID found on Letterboxd page', {
-      status: 404,
-      headers: corsHeaders(),
-    })
+    return errorResponse('No TMDB ID found on Letterboxd page', 404)
   }
 
   const type = extracted.type === 'tv' ? 'tv' : 'movie'
@@ -226,18 +298,12 @@ async function handleTmdb(request: Request, env: Env): Promise<Response> {
     })
     if (!tmdbRes.ok) {
       console.log(`[tmdb] upstream ${tmdbRes.status} for ${type}/${extracted.id}`)
-      return new Response('TMDB upstream error', {
-        status: 502,
-        headers: corsHeaders(),
-      })
+      return errorResponse('TMDB upstream error', 502)
     }
     tmdbData = (await tmdbRes.json()) as TmdbMovieResponse
   } catch (err) {
     console.log(`[tmdb] fetch threw: ${String(err)}`)
-    return new Response('TMDB fetch failed', {
-      status: 502,
-      headers: corsHeaders(),
-    })
+    return errorResponse('TMDB fetch failed', 502)
   }
 
   const posterPath = tmdbData.poster_path ?? ''
@@ -282,7 +348,14 @@ export default {
     }
 
     if (request.method !== 'GET') {
-      return new Response('Method not allowed', { status: 405 })
+      return errorResponse('Method not allowed', 405)
+    }
+
+    if (await isRateLimited(request, env)) {
+      return new Response('Too many requests', {
+        status: 429,
+        headers: { ...corsHeaders(), 'Content-Type': 'text/plain; charset=utf-8', 'Retry-After': '60' },
+      })
     }
 
     const { pathname } = new URL(request.url)

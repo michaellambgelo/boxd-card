@@ -505,3 +505,217 @@ describe('Cloudflare Worker proxy', () => {
     })
   })
 })
+
+// ── Regression cover for the audit fixes ────────────────────────────────────
+
+describe('CORS headers on worker-generated responses', () => {
+  beforeEach(() => { vi.restoreAllMocks() })
+
+  // Without these headers the browser rejects the response outright: fetch
+  // throws a TypeError instead of resolving, so the web app can never read the
+  // status and shows a generic network error instead of the real reason. The
+  // original tests asserted only the status codes, which is why this regressed
+  // unnoticed.
+  const cases: Array<[string, string, TestEnv?]> = [
+    ['missing url param',   'http://localhost:8787/'],
+    ['invalid url param',   'http://localhost:8787/?url=not-a-url'],
+    ['non-https target',    'http://localhost:8787/?url=' + encodeURIComponent('http://letterboxd.com/')],
+    ['disallowed host',     'http://localhost:8787/?url=' + encodeURIComponent('https://evil.com/')],
+    ['tmdb not configured', 'http://localhost:8787/tmdb?slug=dune-2021'],
+    ['tmdb missing slug',   'http://localhost:8787/tmdb', { TMDB_API_KEY: 'test-key' }],
+    ['tmdb invalid slug',   'http://localhost:8787/tmdb?slug=--bad--', { TMDB_API_KEY: 'test-key' }],
+  ]
+
+  for (const [name, url, env] of cases) {
+    it(`sets Access-Control-Allow-Origin on the ${name} error`, async () => {
+      const res = await workerFetch(makeRequest(url), env)
+      expect(res.status).toBeGreaterThanOrEqual(400)
+      expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*')
+    })
+  }
+
+  it('sets Access-Control-Allow-Origin on the 405', async () => {
+    const res = await workerFetch(makeRequest('http://localhost:8787/', 'POST'))
+    expect(res.status).toBe(405)
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*')
+  })
+
+  it('sets Access-Control-Allow-Origin when the upstream fetch throws', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('boom')))
+    const res = await workerFetch(
+      makeRequest('http://localhost:8787/?url=' + encodeURIComponent('https://letterboxd.com/')),
+    )
+    expect(res.status).toBe(502)
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*')
+    vi.unstubAllGlobals()
+  })
+})
+
+describe('redirect allowlist re-check', () => {
+  beforeEach(() => { vi.restoreAllMocks() })
+
+  function responseRedirectedTo(finalUrl: string, contentType = 'text/html'): Response {
+    const res = new Response('body', { status: 200, headers: { 'Content-Type': contentType } })
+    // Response.url is read-only; emulate what the runtime sets after a redirect.
+    Object.defineProperty(res, 'url', { value: finalUrl })
+    return res
+  }
+
+  it('blocks a redirect that lands off the allowlist', async () => {
+    // boxd.it is a redirector by design — the pre-fetch allowlist check can't
+    // see where it sends us.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(responseRedirectedTo('https://evil.example/payload')))
+    const res = await workerFetch(
+      makeRequest('http://localhost:8787/?url=' + encodeURIComponent('https://boxd.it/abcd')),
+    )
+    expect(res.status).toBe(403)
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*')
+    vi.unstubAllGlobals()
+  })
+
+  it('allows a redirect that stays on the allowlist', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      responseRedirectedTo('https://letterboxd.com/someone/list/best/'),
+    ))
+    const res = await workerFetch(
+      makeRequest('http://localhost:8787/?url=' + encodeURIComponent('https://boxd.it/abcd')),
+    )
+    expect(res.status).toBe(200)
+    vi.unstubAllGlobals()
+  })
+
+  it('allows a response with no redirect information', async () => {
+    // A hand-constructed Response has url === ''. The requested host was
+    // already vetted, so this must not be treated as a redirect off-allowlist.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response('ok', { status: 200, headers: { 'Content-Type': 'text/html' } }),
+    ))
+    const res = await workerFetch(
+      makeRequest('http://localhost:8787/?url=' + encodeURIComponent('https://letterboxd.com/someone/')),
+    )
+    expect(res.status).toBe(200)
+    vi.unstubAllGlobals()
+  })
+})
+
+describe('image content-type enforcement', () => {
+  beforeEach(() => { vi.restoreAllMocks() })
+
+  it('refuses to relay non-image content when accept=image', async () => {
+    // Letterboxd CDNs host user-uploaded content; echoing an HTML content type
+    // would let a response render as a document on the api.boxd-card.com origin.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response('<script>alert(1)</script>', { status: 200, headers: { 'Content-Type': 'text/html' } }),
+    ))
+    const res = await workerFetch(
+      makeRequest('http://localhost:8787/?accept=image&url=' + encodeURIComponent('https://a.ltrbxd.com/x.jpg')),
+    )
+    expect(res.status).toBe(502)
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*')
+    vi.unstubAllGlobals()
+  })
+
+  it('relays a genuine image and marks it nosniff', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response('img', { status: 200, headers: { 'Content-Type': 'image/jpeg' } }),
+    ))
+    const res = await workerFetch(
+      makeRequest('http://localhost:8787/?accept=image&url=' + encodeURIComponent('https://a.ltrbxd.com/x.jpg')),
+    )
+    expect(res.status).toBe(200)
+    expect(res.headers.get('Content-Type')).toBe('image/jpeg')
+    expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff')
+    vi.unstubAllGlobals()
+  })
+
+  it('still relays HTML when accept=image was not asked for', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response('<html></html>', { status: 200, headers: { 'Content-Type': 'text/html' } }),
+    ))
+    const res = await workerFetch(
+      makeRequest('http://localhost:8787/?url=' + encodeURIComponent('https://letterboxd.com/someone/')),
+    )
+    expect(res.status).toBe(200)
+    vi.unstubAllGlobals()
+  })
+})
+
+describe('rate limiting', () => {
+  beforeEach(() => { vi.restoreAllMocks() })
+
+  it('returns 429 with CORS + Retry-After when the limiter rejects', async () => {
+    const env = {
+      TMDB_API_KEY: '',
+      RATE_LIMITER: { limit: vi.fn().mockResolvedValue({ success: false }) },
+    }
+    const res = await workerFetch(
+      makeRequest('http://localhost:8787/?url=' + encodeURIComponent('https://letterboxd.com/')),
+      env as unknown as TestEnv,
+    )
+    expect(res.status).toBe(429)
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*')
+    expect(res.headers.get('Retry-After')).toBe('60')
+  })
+
+  it('keys the limiter on the client IP', async () => {
+    const limit = vi.fn().mockResolvedValue({ success: true })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response('ok', { status: 200, headers: { 'Content-Type': 'text/html' } }),
+    ))
+    const request = new Request(
+      'http://localhost:8787/?url=' + encodeURIComponent('https://letterboxd.com/'),
+      { headers: { 'CF-Connecting-IP': '203.0.113.7' } },
+    )
+    await workerFetch(request, { TMDB_API_KEY: '', RATE_LIMITER: { limit } } as unknown as TestEnv)
+    expect(limit).toHaveBeenCalledWith({ key: '203.0.113.7' })
+    vi.unstubAllGlobals()
+  })
+
+  it('fails open when no limiter is bound', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response('ok', { status: 200, headers: { 'Content-Type': 'text/html' } }),
+    ))
+    const res = await workerFetch(
+      makeRequest('http://localhost:8787/?url=' + encodeURIComponent('https://letterboxd.com/')),
+    )
+    expect(res.status).toBe(200)
+    vi.unstubAllGlobals()
+  })
+
+  it('fails open when the limiter throws', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response('ok', { status: 200, headers: { 'Content-Type': 'text/html' } }),
+    ))
+    const env = {
+      TMDB_API_KEY: '',
+      RATE_LIMITER: { limit: vi.fn().mockRejectedValue(new Error('limiter down')) },
+    }
+    const res = await workerFetch(
+      makeRequest('http://localhost:8787/?url=' + encodeURIComponent('https://letterboxd.com/')),
+      env as unknown as TestEnv,
+    )
+    expect(res.status).toBe(200)
+    vi.unstubAllGlobals()
+  })
+})
+
+describe('upstream error logging', () => {
+  beforeEach(() => { vi.restoreAllMocks() })
+
+  it('does not log the upstream response body', async () => {
+    // These logs are persisted (wrangler.toml [observability.logs]) and the
+    // body is Letterboxd page content.
+    const secret = 'SENSITIVE-PAGE-CONTENT'
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response(secret, { status: 403, headers: { 'Content-Type': 'text/html' } }),
+    ))
+    await workerFetch(
+      makeRequest('http://localhost:8787/?url=' + encodeURIComponent('https://letterboxd.com/someone/')),
+    )
+    const logged = log.mock.calls.flat().join(' ')
+    expect(logged).toContain('403')
+    expect(logged).not.toContain(secret)
+    vi.unstubAllGlobals()
+  })
+})

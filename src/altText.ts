@@ -41,7 +41,7 @@ export function generateAltText(input: AltTextInput): string {
   if (!films.length) return `Boxd Card by ${username}`
 
   // Build opening line
-  let opening = ''
+  let opening: string
   if (cardType === 'review') {
     opening = `Boxd Card: review by ${username}`
   } else if (cardType === 'list') {

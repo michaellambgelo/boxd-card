@@ -901,7 +901,6 @@ async function renderByWeekChart(
       ctx.textBaseline = 'top'
       ctx.fillText(dayOfWeek[i].day.charAt(0), bx + bw / 2, y + daysH - 20)
     }
-    y += daysH + 10
   }
 
   const footerY = cardHeight - 64
@@ -1734,11 +1733,31 @@ async function drawFooter(
   }
 }
 
+/**
+ * How long to wait for a single image before giving up. Inputs are data: URLs
+ * so decoding is local and fast; the timeout exists so a decode that neither
+ * loads nor errors can't wedge the whole render in a permanent "Generating…".
+ * Callers already treat a rejection as "draw a placeholder box".
+ */
+export const IMAGE_LOAD_TIMEOUT_MS = 10_000
+
 export async function loadImage(dataUrl: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image()
-    img.onload = () => resolve(img)
-    img.onerror = reject
+    const timer = setTimeout(() => {
+      img.onload = null
+      img.onerror = null
+      reject(new Error(`Image load timed out after ${IMAGE_LOAD_TIMEOUT_MS}ms`))
+    }, IMAGE_LOAD_TIMEOUT_MS)
+
+    img.onload = () => {
+      clearTimeout(timer)
+      resolve(img)
+    }
+    img.onerror = () => {
+      clearTimeout(timer)
+      reject(new Error('Image failed to load'))
+    }
     img.src = dataUrl
   })
 }

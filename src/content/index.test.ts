@@ -918,7 +918,7 @@ describe('scrapeReviewsList', () => {
 
 describe('scrapeLoggedInUser', () => {
   afterEach(() => {
-    // @ts-ignore
+    // @ts-expect-error -- `person` is injected by Letterboxd, not in the DOM lib
     delete window.person
     document.head.innerHTML = ''
   })
@@ -928,13 +928,13 @@ describe('scrapeLoggedInUser', () => {
   })
 
   it('extracts username from global person object (Pass 1)', () => {
-    // @ts-ignore
+    // @ts-expect-error -- `person` is injected by Letterboxd, not in the DOM lib
     window.person = { loggedIn: true, username: 'michaellamb', avatarURL24: '' }
     expect(scrapeLoggedInUser().username).toBe('michaellamb')
   })
 
   it('extracts and upsizes avatarUrl from global person object (Pass 1)', () => {
-    // @ts-ignore
+    // @ts-expect-error -- `person` is injected by Letterboxd, not in the DOM lib
     window.person = {
       loggedIn: true,
       username: 'michaellamb',
@@ -946,7 +946,7 @@ describe('scrapeLoggedInUser', () => {
   })
 
   it('returns empty strings when person.loggedIn is false (Pass 1)', () => {
-    // @ts-ignore
+    // @ts-expect-error -- `person` is injected by Letterboxd, not in the DOM lib
     window.person = {
       loggedIn: false,
       username: 'michaellamb',

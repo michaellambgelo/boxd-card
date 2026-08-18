@@ -595,6 +595,23 @@
         if (window.GrafanaFaroWebTracing) {
           instrumentations.push(new window.GrafanaFaroWebTracing.TracingInstrumentation());
         }
+        // Keep origin + pathname, drop query + fragment. Mirrors
+        // sanitizeUrlForTelemetry in src/web/telemetryPrivacy.ts — the web app
+        // and this page make the same promise in /privacy, so they need the
+        // same scrub. Faro attaches meta.page.url (= location.href) to every
+        // signal, so without this any query string on the landing page is
+        // recorded verbatim.
+        function scrubUrl(value) {
+          if (typeof value !== 'string' || !value) return value;
+          if (!/^https?:\/\//i.test(value)) return value;
+          try {
+            var u = new URL(value);
+            return u.origin + u.pathname;
+          } catch (e) {
+            return value.split(/[?#]/)[0];
+          }
+        }
+
         var faro = SDK.initializeFaro({
           url: (isLocalDev ? 'http://localhost:8787' : 'https://grafana.michaellamb.dev') + '/faro-proxy?app=boxd-card',
           app: {
@@ -603,6 +620,22 @@
             environment: isLocalDev ? 'development' : 'production',
           },
           instrumentations: instrumentations,
+          beforeSend: function (item) {
+            if (item && item.meta && item.meta.page && typeof item.meta.page.url === 'string') {
+              item.meta.page.url = scrubUrl(item.meta.page.url);
+            }
+            var payload = item && item.payload;
+            if (payload && payload.attributes) {
+              for (var k in payload.attributes) {
+                if (!Object.prototype.hasOwnProperty.call(payload.attributes, k)) continue;
+                var v = payload.attributes[k];
+                if (typeof v === 'string' && /^https?:\/\//i.test(v)) {
+                  payload.attributes[k] = scrubUrl(v);
+                }
+              }
+            }
+            return item;
+          },
         });
 
         function classify(href) {
