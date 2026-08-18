@@ -109,6 +109,14 @@ Certifications (all required to be true, and are true):
 
 ## Change log
 
+- **2026-08 (v0.8.1)** — Security and reliability pass, no new features and no
+  permission changes. Fetched review text is now parsed inertly, so markup in a
+  review can never execute. The background image fetcher only accepts the hosts
+  already listed in host permissions, and only responds to messages from the
+  extension itself. A poster that fails to load now times out and draws a
+  placeholder instead of leaving the popup stuck on "Generating…", and a failed
+  clipboard copy says so instead of doing nothing visibly. Fixed a bug where
+  reopening the popup could revert a setting changed moments earlier.
 - **2026-06 (v0.8.0)** — Migrated to the production domain. The web app and
   hero page moved from `boxd-card.michaellamb.dev` to `boxd-card.com`, and the
   TMDB-enrichment worker moved from `boxd-card.michaellamb.workers.dev` to
