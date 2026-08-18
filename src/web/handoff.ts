@@ -1,5 +1,5 @@
 /**
- * Landing-page hand-off: /app/?url=<letterboxd url> auto-generates a card.
+ * Hand-off from the About page: /?url=<letterboxd url> auto-generates a card.
  *
  * This must be captured and stripped from the address bar *before* Faro
  * initializes. Faro attaches `meta.page.url` (= location.href) to every signal,

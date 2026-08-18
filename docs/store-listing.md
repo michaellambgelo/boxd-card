@@ -36,7 +36,7 @@ Listing URL: <https://chromewebstore.google.com/detail/boxd-card/kcholfdhfcojahe
 > - Banner (1500 × 750) — Twitter header
 >
 > Prefer not to install anything? The same card generator also runs as a web
-> app at <https://boxd-card.com/app/> — paste a Letterboxd URL and get
+> app at <https://boxd-card.com> — paste a Letterboxd URL and get
 > the card without leaving your browser.
 >
 > **How it works.** Boxd Card runs locally in your browser by default: it reads

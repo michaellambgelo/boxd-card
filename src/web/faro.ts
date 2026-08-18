@@ -41,7 +41,7 @@ export function initFaro(): void {
         }),
       ],
       // Second layer, covering what the span hook can't reach: `meta.page.url`
-      // (the /app/?url=… hand-off) and `faro.performance.resource` events,
+      // (the /?url=… hand-off) and `faro.performance.resource` events,
       // which carry the full resource URL as `name`.
       // scrubTransportItem rewrites in place, so hand back Faro's own item
       // rather than our structural view of it.

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { captureHandoffUrl, getHandoffUrl, __resetHandoffForTests } from './handoff'
 
 function setLocation(search: string, hash = ''): void {
-  window.history.replaceState(null, '', `/app/${search}${hash}`)
+  window.history.replaceState(null, '', `/${search}${hash}`)
 }
 
 describe('handoff', () => {

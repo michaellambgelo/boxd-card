@@ -17,6 +17,7 @@ import tmdbLogoUrl from '../assets/TMDB-blue-short.svg?url'
 import { track, startAction } from './faro'
 import { getHandoffUrl } from './handoff'
 import { sanitizeErrorMessage } from './telemetryPrivacy'
+import { canInstallChromeExtension, CHROME_WEB_STORE_URL } from './chromium'
 import styles from './App.module.css'
 
 type Status = 'idle' | 'loading' | 'ready' | 'error'
@@ -32,6 +33,10 @@ export default function App() {
   // in main.tsx). Reading it here rather than in an effect keeps the input
   // populated on first paint and avoids a setState-in-effect render cascade.
   const [handoffUrl] = useState(getHandoffUrl)
+  // Evaluated once — the browser can't change mid-session. Hidden entirely
+  // rather than disabled: an install button is a dead end on Safari, Firefox,
+  // and on mobile Chrome, which can't install extensions at all.
+  const [canInstall] = useState(() => canInstallChromeExtension())
   const [urlInput,    setUrlInput]    = useState(handoffUrl)
   const [detected,    setDetected]    = useState<ParsedLetterboxdUrl | null>(null)
   const [detectedFor, setDetectedFor] = useState<string>('')  // trimmed input that produced `detected`
@@ -96,9 +101,9 @@ export default function App() {
     })
   }, [])
 
-  // Auto-generate from a `?url=` hand-off (e.g. the landing page's Generate
-  // button opens /app/?url=…). The param itself was read and stripped from the
-  // address bar in main.tsx, before Faro initialized — see handoff.ts for why.
+  // Auto-generate from a `?url=` hand-off (the About page's Generate button
+  // opens /?url=…). The param itself was read and stripped from the address
+  // bar in main.tsx, before Faro initialized — see handoff.ts for why.
   //
   // The value seeds `urlInput` at construction (see its useState above) rather
   // than via setState here, so this effect only kicks off the generation. It
@@ -474,7 +479,7 @@ export default function App() {
             </>
           ) : (
             <>
-              <a href="https://boxd-card.com" className={styles.headerLink}>
+              <a href="/" className={styles.headerLink}>
                 <svg viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg" width="40" height="40" aria-hidden="true">
                   <defs>
                     <linearGradient id="bc-grad" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -493,15 +498,55 @@ export default function App() {
                 </svg>
                 <h1>Boxd Card</h1>
               </a>
-              <button className={styles.gearBtn} onClick={() => setView('settings')} aria-label="Settings" data-faro-user-action-name="open-settings">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <circle cx="12" cy="12" r="3"/>
-                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-                </svg>
-              </button>
+              <nav className={styles.headerNav}>
+                <a className={styles.navLink} href="/about">About</a>
+                <a
+                  className={styles.navLink}
+                  href="https://github.com/michaellambgelo/boxd-card"
+                  target="_blank"
+                  rel="noopener"
+                >
+                  GitHub
+                </a>
+                <button className={styles.gearBtn} onClick={() => setView('settings')} aria-label="Settings" data-faro-user-action-name="open-settings">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                  </svg>
+                </button>
+              </nav>
             </>
           )}
         </header>
+
+        {/* One line of orientation for anyone landing here cold — the apex is
+            the tool now, so nothing else explains what this is. The install
+            CTA sits under it: the extension is the better path (Letterboxd
+            firewalls some proxied requests, and stats cards are extension-only)
+            but only where it can actually be installed. */}
+        {view === 'main' && (
+          <div className={styles.intro}>
+            <p className={styles.headerSubtitle}>
+              Shareable image cards from your Letterboxd profile.{' '}
+              <a href="/about">How it works</a>
+            </p>
+            {canInstall && (
+              <a
+                className={styles.installBtn}
+                href={CHROME_WEB_STORE_URL}
+                target="_blank"
+                rel="noopener"
+                data-faro-user-action-name="add-to-chrome"
+                onClick={() => track('cta_click', { destination: 'chrome_web_store' })}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+                Add to Chrome
+              </a>
+            )}
+          </div>
+        )}
 
         {/* Settings panel */}
         {view === 'settings' && (
@@ -561,7 +606,7 @@ export default function App() {
               </label>
               <p className={styles.settingsHint}>
                 Available only in the{' '}
-                <a href="https://boxd-card.com" target="_blank" rel="noopener">
+                <a href={CHROME_WEB_STORE_URL} target="_blank" rel="noopener">
                   Chromium web extension
                 </a>
                 . The extension caches your Letterboxd username locally so the
@@ -838,9 +883,9 @@ export default function App() {
 
         <footer className={styles.footer}>
           <span>
-            <a href="https://boxd-card.com">Boxd Card</a>
+            <a href="/about">About</a>
             {' · '}
-            <a href="https://boxd-card.com/privacy">Privacy</a>
+            <a href="/privacy">Privacy</a>
           </span>
           <span>
             <a href="https://github.com/michaellambgelo/boxd-card">GitHub</a>

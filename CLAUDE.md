@@ -9,8 +9,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | Surface | Lives in | Served from | How it gets data |
 |---------|----------|-------------|------------------|
 | **Chrome MV3 extension** | `src/popup/`, `src/content/`, `src/background/` | Chrome Web Store (`kcholfdhfcojahebmneeeikelffkokdj`) | Content script scrapes the page DOM you're already on |
-| **Web app** | `src/web/` → built to `docs/app/` | GitHub Pages, `boxd-card.com/app/` | Fetches + parses Letterboxd HTML through the proxy worker |
-| **Landing page** | `docs/index.html` (hand-written) | GitHub Pages, `boxd-card.com` | Static; its Generate CTA hands off to `/app/?url=…` |
+| **Web app** | `src/web/` → built to `docs/` (the apex) | Cloudflare Pages, `boxd-card.com` | Fetches + parses Letterboxd HTML through the proxy worker |
+| **About page** | `docs/about/index.html` (hand-written) | Cloudflare Pages, `boxd-card.com/about` | Static marketing page; its Generate CTA hands off to `/?url=…` |
 
 Plus a **Cloudflare Worker** (`worker/`) at `api.boxd-card.com` that the web app and the extension both call.
 
@@ -108,7 +108,11 @@ boxd-card/
 │   ├── index.ts                   # Cloudflare Worker: /?url= proxy + /tmdb
 │   ├── wrangler.toml              # Deploy config (rate-limit binding documented here)
 │   └── tsconfig.json              # Workers-runtime typecheck (separate from the app)
-├── docs/                          # GitHub Pages root
+├── docs/                          # Cloudflare Pages root — MIXES build output with hand-written pages
+│   │                              #   Build output: index.html, assets/, favicon.svg (from src/web)
+│   │                              #   Hand-written: about/, privacy/, landing/assets/, _redirects, *.md
+│   │                              #   → vite.web.config.ts MUST keep emptyOutDir:false or the build
+│   │                              #     would delete the privacy policy and the redirects file.
 │   ├── index.html                 # Landing page (hand-written)
 │   ├── privacy/index.html         # Privacy policy — a promise backed by code, keep in sync
 │   ├── app/                       # BUILD OUTPUT of src/web — committed, do not hand-edit
@@ -125,7 +129,7 @@ boxd-card/
 npm run dev        # extension: build in watch mode → dist/
 npm run build      # extension: typecheck + one-shot production build
 npm run dev:web    # web app dev server (localhost:5174) — start the worker first
-npm run build:web  # web app: typecheck + build → docs/app/
+npm run build:web  # web app: typecheck + build → docs/ (apex)
 npm run typecheck  # tsc --noEmit across all three tsconfigs (app / node / worker)
 npm run lint       # ESLint, zero-warning policy
 npm run test       # Vitest watch
@@ -146,7 +150,7 @@ npx wrangler secret put TMDB_API_KEY   # v4 "API Read Access Token", NOT the v3 
 
 **PostToolUse hook:** any Edit/Write triggers `.claude/hooks/run-tests.sh` → `npm run test:run`.
 
-**Pre-commit hook** (`.githooks/pre-commit`, wired up by `npm install`): rebuilds `docs/app/` when `src/web/`, `vite.web.config.ts`, or `.env.production` are staged, and reconciles `package-lock.json` when `package.json` is staged.
+**Pre-commit hook** (`.githooks/pre-commit`, wired up by `npm install`): rebuilds the apex app (`docs/index.html`, `docs/assets/`, `docs/favicon.svg`) when `src/web/`, `vite.web.config.ts`, `package.json`, or `.env.production` are staged, and reconciles `package-lock.json` when `package.json` is staged.
 
 ## Environment
 

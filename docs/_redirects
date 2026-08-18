@@ -1,15 +1,24 @@
 # Cloudflare Pages redirects for boxd-card.com
 #
-# The apex (docs/index.html) IS the marketing landing page — served directly as
-# a static asset. (Cloudflare Pages does not honor a `/ -> /landing/index.html`
-# 200 rewrite, so the landing lives at the apex rather than behind a rewrite.)
+# The apex (docs/index.html) IS the web app — build output from src/web/, served
+# directly as a static asset. Cloudflare Pages does not honor a `/ -> /x 200`
+# rewrite (a fresh request to / returns 404; only the 301 rules apply), so
+# whatever lives at the apex has to be a real file there rather than a rewrite.
+#
+# The marketing page lives at /about (docs/about/index.html).
 
-# The interim /landing/ path and the retired /about page fold into the apex.
+# The web app used to be at /app/. Everything below it is gone, so a splat is
+# safe here — send old links, bookmarks and store-listing references to the apex.
+/app         /          301
+/app/        /          301
+/app/*       /          301
+
+# The interim /landing/ path folds into /about.
 # Exact matches only — do not use a splat here, or /landing/assets/* would break.
-/landing       /          301
-/landing/      /          301
-/about         /          301
-/about/        /          301
+# Those assets are still live: docs/about/index.html references them by
+# absolute path.
+/landing       /about     301
+/landing/      /about     301
 
 # Legacy flat privacy path → new directory location.
 /privacy.html  /privacy   301

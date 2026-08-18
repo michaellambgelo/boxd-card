@@ -8,7 +8,7 @@
  * SDK records full URLs in four places:
  *
  *   1. `meta.page.url` (= location.href) is attached to every signal.
- *      The landing page hands off via /app/?url=<letterboxd url>.
+ *      The About page hands off via /?url=<letterboxd url>.
  *   2. OTel fetch spans set `http.url` to the full request URL
  *      (@opentelemetry/instrumentation-fetch — `attributes[ATTR_HTTP_URL] = url`).
  *   3. Faro's trace exporter flattens *every* span attribute into a
