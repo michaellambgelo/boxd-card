@@ -499,6 +499,38 @@ export default function App() {
                 <h1>Boxd Card</h1>
               </a>
               <nav className={styles.headerNav}>
+                {/* The extension is the better path — Letterboxd firewalls some
+                    proxied requests and stats cards are extension-only — so the
+                    install CTA leads the nav. Rendered only where it can
+                    actually be installed; hidden, not disabled, elsewhere. */}
+                {canInstall && (
+                  <a
+                    className={styles.installBtn}
+                    href={CHROME_WEB_STORE_URL}
+                    target="_blank"
+                    rel="noopener"
+                    data-faro-user-action-name="add-to-chrome"
+                    onClick={() => track('cta_click', { destination: 'chrome_web_store' })}
+                  >
+                    {/* Chrome mark. Three 120° wedges with seams at 90°/210°/330°
+                        about a centre of (12,12) r=11 — red over the top, green
+                        lower-left, yellow lower-right — then the white gap ring
+                        and the blue core. Drawn from geometry rather than a
+                        pasted path so the proportions are checkable. */}
+                    <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M12 12 L2.47 6.5 A11 11 0 0 1 21.53 6.5 Z" fill="#EA4335" />
+                      <path d="M12 12 L12 23 A11 11 0 0 1 2.47 6.5 Z" fill="#34A853" />
+                      <path d="M12 12 L21.53 6.5 A11 11 0 0 1 12 23 Z" fill="#FBBC05" />
+                      <circle cx="12" cy="12" r="5.4" fill="#fff" />
+                      <circle cx="12" cy="12" r="4.4" fill="#4285F4" />
+                      {/* Hairline ring — the button's gradient runs orange
+                          behind this icon, which swallows the red wedge's edge.
+                          Keeps the mark defined wherever it lands. */}
+                      <circle cx="12" cy="12" r="11" fill="none" stroke="#fff" strokeOpacity="0.9" strokeWidth="1.2" />
+                    </svg>
+                    Add to Chrome
+                  </a>
+                )}
                 <a className={styles.navLink} href="/about">About</a>
                 <a
                   className={styles.navLink}
@@ -519,34 +551,6 @@ export default function App() {
           )}
         </header>
 
-        {/* One line of orientation for anyone landing here cold — the apex is
-            the tool now, so nothing else explains what this is. The install
-            CTA sits under it: the extension is the better path (Letterboxd
-            firewalls some proxied requests, and stats cards are extension-only)
-            but only where it can actually be installed. */}
-        {view === 'main' && (
-          <div className={styles.intro}>
-            <p className={styles.headerSubtitle}>
-              Shareable image cards from your Letterboxd profile.{' '}
-              <a href="/about">How it works</a>
-            </p>
-            {canInstall && (
-              <a
-                className={styles.installBtn}
-                href={CHROME_WEB_STORE_URL}
-                target="_blank"
-                rel="noopener"
-                data-faro-user-action-name="add-to-chrome"
-                onClick={() => track('cta_click', { destination: 'chrome_web_store' })}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-                Add to Chrome
-              </a>
-            )}
-          </div>
-        )}
 
         {/* Settings panel */}
         {view === 'settings' && (

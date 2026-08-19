@@ -89,32 +89,6 @@
   letter-spacing: 0.01em;
 }
 
-/* Tagline + install CTA, between the header rule and the form. */
-.intro {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 14px;
-  margin: -14px 0 28px;
-}
-
-.headerSubtitle {
-  margin: 0;
-  font-size: 15px;
-  line-height: 1.5;
-  color: var(--subtext);
-}
-
-.headerSubtitle a {
-  color: var(--subtext);
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-.headerSubtitle a:hover {
-  color: var(--text);
-}
-
 /* ── Header nav ──────────────────────────────────────────────── */
 
 .headerNav {
