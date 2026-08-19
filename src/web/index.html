@@ -4,15 +4,22 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="icon" type="image/svg+xml" href="%BASE_URL%favicon.svg" />
-  <title>Boxd Card – Web App</title>
-  <meta name="description" content="Generate a shareable image card from any Letterboxd profile — no extension needed." />
+  <!-- This page is the apex, so this head is what Slack/Discord/X unfurl for
+       boxd-card.com. The richer block came from the marketing page when it
+       moved to /about; keep the two in step if either is reworded. -->
+  <title>Boxd Card — Your film taste, as a card worth sharing</title>
+  <meta name="description" content="Paste a Letterboxd profile and Boxd Card renders a clean image of your last four watched, favorites, diary, lists, or reviews — ready for stories, posts, and group chats." />
+  <link rel="canonical" href="https://boxd-card.com/" />
+  <meta property="og:type"        content="website" />
+  <meta property="og:url"         content="https://boxd-card.com/" />
   <meta property="og:title"       content="Boxd Card" />
-  <meta property="og:description" content="Generate a shareable image card from any Letterboxd profile." />
+  <meta property="og:description" content="Turn your Letterboxd profile into a shareable image card. Chrome extension and web app." />
   <meta property="og:image"       content="https://boxd-card.com/social-preview.png" />
-  <meta property="og:url"         content="https://boxd-card.com/app/" />
+  <meta property="og:image:width"  content="1200" />
+  <meta property="og:image:height" content="630" />
   <meta name="twitter:card"        content="summary_large_image" />
   <meta name="twitter:title"       content="Boxd Card" />
-  <meta name="twitter:description" content="Generate a shareable image card from any Letterboxd profile." />
+  <meta name="twitter:description" content="Turn your Letterboxd profile into a shareable image card." />
   <meta name="twitter:image"       content="https://boxd-card.com/social-preview.png" />
   <style>
     /* Prevent flash of unstyled content; App.module.css takes over once React mounts. */

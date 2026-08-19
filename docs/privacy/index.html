@@ -72,8 +72,8 @@
       happens locally in your browser.
     </li>
     <li>
-      <strong>The landing page (<code>boxd-card.com</code>) and the web app
-      (<code>/app/</code>)</strong> send anonymous usage telemetry to our self-hosted Grafana
+      <strong>The web app (<code>boxd-card.com</code>) and the About page
+      (<code>/about</code>)</strong> send anonymous usage telemetry to our self-hosted Grafana
       Cloud instance via a Cloudflare Worker proxy at <code>grafana.michaellamb.dev</code>.
       Details below under <em>Web analytics</em>.
     </li>
@@ -90,10 +90,10 @@
     </li>
   </ul>
 
-  <h2>Web analytics (landing page and web app only)</h2>
+  <h2>Web analytics (web app and About page only)</h2>
   <p>
-    To understand which features people use and where errors happen, the landing page and web app
-    send anonymous usage events to our Grafana Cloud project. <strong>The Chrome extension does
+    To understand which features people use and where errors happen, the web app and the About
+    page send anonymous usage events to our Grafana Cloud project. <strong>The Chrome extension does
     not.</strong>
   </p>
   <p>What we collect:</p>
@@ -115,7 +115,7 @@
     request URLs by default. Before any telemetry leaves your browser we strip query strings and
     fragments from every recorded URL — page addresses, network timings, and traces alike — keeping
     only the origin and path. Free-text error messages are scrubbed the same way. The
-    <code>?url=</code> hand-off from the landing page is removed from the address bar before
+    <code>?url=</code> hand-off from the About page is removed from the address bar before
     analytics starts, so it is never recorded at all.
   </p>
   <p>

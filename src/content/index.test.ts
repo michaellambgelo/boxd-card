@@ -1016,3 +1016,113 @@ describe('scrapeBackdropUrl', () => {
     expect(scrapeBackdropUrl()).toBe('')
   })
 })
+
+// ── Custom poster detection ────────────────────────────────────────────────────
+// Letterboxd marks a non-default poster (a member's custom choice or a film-level
+// preferred alternative) with a preferredAlternativePosterId inside the
+// LazyPoster's data-resolvable-poster-path JSON. Fixtures mirror the real
+// (verified) DOM shape: a customised Midsommar carries the id; a default film omits it.
+describe('custom poster detection', () => {
+  afterEach(() => { document.body.innerHTML = '' })
+
+  // Build a recent-activity item; `custom` toggles preferredAlternativePosterId,
+  // matching how Letterboxd renders a chosen vs. default poster.
+  function customItem(custom: boolean): string {
+    const resolvable = JSON.stringify({
+      ...(custom ? { preferredAlternativePosterId: '137315' } : {}),
+      postered: { uid: 'film:459564' },
+      posteredBaseLink: '/film/midsommar/',
+      hasDefaultPoster: true,
+    })
+    return `
+      <li class="griditem">
+        <div class="react-component" data-component-class="LazyPoster"
+          data-item-name="Midsommar (2019)"
+          data-poster-url="/film/midsommar/image-150/"
+          data-resolvable-poster-path='${resolvable}'>
+          <img class="image" src="${REAL_POSTER}" />
+        </div>
+        <p class="poster-viewingdata"><span class="rating">★★★★</span></p>
+      </li>`
+  }
+
+  it('flags customPoster=true when preferredAlternativePosterId is present', () => {
+    setRecentActivityDOM([customItem(true)])
+    const [film] = scrapeRecentActivity()
+    expect(film.customPoster).toBe(true)
+  })
+
+  it('flags customPoster=false for a default poster', () => {
+    setRecentActivityDOM([customItem(false)])
+    const [film] = scrapeRecentActivity()
+    expect(film.customPoster).toBe(false)
+  })
+
+  it('flags customPoster=false when data-resolvable-poster-path is absent', () => {
+    setRecentActivityDOM([makeFilmItem()])
+    const [film] = scrapeRecentActivity()
+    expect(film.customPoster).toBe(false)
+  })
+})
+
+// ── Film id extraction ─────────────────────────────────────────────────────────
+// Current Letterboxd LazyPosters drop data-film-id; the id now lives only in the
+// JSON of data-postered-identifier / data-resolvable-poster-path as uid "film:N".
+describe('film id extraction', () => {
+  afterEach(() => { document.body.innerHTML = '' })
+
+  it('reads the legacy data-film-id attribute when present', () => {
+    setRecentActivityDOM([makeFilmItem({ filmId: '371378' })])
+    const [film] = scrapeRecentActivity()
+    expect(film.filmId).toBe('371378')
+  })
+
+  it('falls back to the uid in data-postered-identifier when data-film-id is absent', () => {
+    document.body.innerHTML = `
+      <section id="recent-activity"><ul class="grid -p150">
+        <li class="griditem">
+          <div class="react-component" data-component-class="LazyPoster"
+            data-item-name="Midsommar (2019)"
+            data-poster-url="/film/midsommar/image-150/"
+            data-postered-identifier='${JSON.stringify({ uid: 'film:459564' })}'>
+            <img class="image" src="${REAL_POSTER}" />
+          </div>
+          <p class="poster-viewingdata"><span class="rating">★★★★</span></p>
+        </li>
+      </ul></section>`
+    const [film] = scrapeRecentActivity()
+    expect(film.filmId).toBe('459564')
+  })
+
+  it('falls back to postered.uid in data-resolvable-poster-path', () => {
+    const resolvable = JSON.stringify({ postered: { uid: 'film:868558' }, hasDefaultPoster: true })
+    document.body.innerHTML = `
+      <section id="recent-activity"><ul class="grid -p150">
+        <li class="griditem">
+          <div class="react-component" data-component-class="LazyPoster"
+            data-item-name="Aftersun (2022)"
+            data-poster-url="/film/aftersun/image-150/"
+            data-resolvable-poster-path='${resolvable}'>
+            <img class="image" src="${REAL_POSTER}" />
+          </div>
+          <p class="poster-viewingdata"><span class="rating">★★★★★</span></p>
+        </li>
+      </ul></section>`
+    const [film] = scrapeRecentActivity()
+    expect(film.filmId).toBe('868558')
+  })
+
+  it('returns empty string when no id source is available', () => {
+    document.body.innerHTML = `
+      <section id="recent-activity"><ul class="grid -p150">
+        <li class="griditem">
+          <div class="react-component" data-component-class="LazyPoster"
+            data-item-name="No Id (2020)" data-poster-url="/film/no-id/image-150/">
+            <img class="image" src="${REAL_POSTER}" />
+          </div>
+        </li>
+      </ul></section>`
+    const [film] = scrapeRecentActivity()
+    expect(film.filmId).toBe('')
+  })
+})

@@ -22,13 +22,13 @@ describe('sanitizeUrlForTelemetry', () => {
 
   it('drops the ?url= hand-off from the app page URL', () => {
     expect(
-      sanitizeUrlForTelemetry('https://boxd-card.com/app/?url=letterboxd.com/someone/#top'),
-    ).toBe('https://boxd-card.com/app/')
+      sanitizeUrlForTelemetry('https://boxd-card.com/?url=letterboxd.com/someone/#top'),
+    ).toBe('https://boxd-card.com/')
   })
 
   it('keeps origin and pathname intact', () => {
-    expect(sanitizeUrlForTelemetry('https://boxd-card.com/app/'))
-      .toBe('https://boxd-card.com/app/')
+    expect(sanitizeUrlForTelemetry('https://boxd-card.com/'))
+      .toBe('https://boxd-card.com/')
   })
 
   it('leaves non-URL strings alone', () => {
@@ -64,10 +64,10 @@ describe('scrubTransportItem', () => {
   it('scrubs meta.page.url on every signal type', () => {
     const item = {
       type: 'event',
-      meta: { page: { url: 'https://boxd-card.com/app/?url=letterboxd.com/someone/' } },
+      meta: { page: { url: 'https://boxd-card.com/?url=letterboxd.com/someone/' } },
       payload: { name: 'page_view' },
     }
-    expect(scrubTransportItem(item).meta.page.url).toBe('https://boxd-card.com/app/')
+    expect(scrubTransportItem(item).meta.page.url).toBe('https://boxd-card.com/')
   })
 
   it('scrubs the name attribute of faro.performance.resource events', () => {
@@ -184,7 +184,7 @@ describe('scrubbing the URLs the app actually builds', () => {
   it('leaves no trace of either in a resource-timing event', () => {
     const item = {
       type: 'event',
-      meta: { page: { url: `https://boxd-card.com/app/?url=letterboxd.com/${USERNAME}/` } },
+      meta: { page: { url: `https://boxd-card.com/?url=letterboxd.com/${USERNAME}/` } },
       payload: {
         name: 'faro.performance.resource',
         attributes: { name: proxyUrl(`https://letterboxd.com/${USERNAME}/`) },

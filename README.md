@@ -11,7 +11,7 @@ Open the extension on a supported Letterboxd page, pick a card type, click **Gen
 
 Custom posters (a Letterboxd Pro/Patron feature) are supported automatically — they're already rendered in the DOM by the time the extension reads them, so no API access is required.
 
-Alternatively, a web app with most features backed by a Cloudflare Worker is available at [https://boxd-card.com/app/](https://boxd-card.com/app/) — best for users who aren't in a Chromium browser.
+A web app with most features, backed by a Cloudflare Worker, is at [boxd-card.com](https://boxd-card.com) — no install needed, and the only option outside a Chromium browser. The extension is the fuller experience: stats cards and remembered usernames are extension-only, and Letterboxd sometimes firewalls the web app's proxied requests.
 
 ## Card types
 
@@ -89,7 +89,7 @@ npm install
 npm run dev        # extension: build in watch mode → dist/
 npm run build      # extension: typecheck + one-shot production build
 npm run dev:web    # web app dev server on :5174 (start the worker first)
-npm run build:web  # web app: typecheck + build → docs/app/
+npm run build:web  # web app: typecheck + build → docs/ (the apex)
 npm run typecheck  # tsc --noEmit across app, build configs, and worker
 npm run lint       # ESLint, zero-warning policy
 npm run test       # Vitest in watch mode
