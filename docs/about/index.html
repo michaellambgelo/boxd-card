@@ -186,6 +186,13 @@
     }
     .poster .tile .sheen { position: absolute; inset: 0; background: linear-gradient(160deg, rgba(255,255,255,0.06), transparent 42%); }
     .poster .tile .tname { position: relative; color: rgba(255,255,255,0.74); font-weight: 700; font-size: 11px; line-height: 1.18; }
+    .poster .tile .art {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      object-fit: cover; display: block; z-index: 1;
+    }
+    /* alt="" + no intrinsic size means a failed load collapses silently,
+       leaving the coloured tile and film name underneath. */
+    .poster .tile .art:not([src]) { display: none; }
     .poster .ptitle { font-size: 11.5px; font-weight: 700; color: #fff; line-height: 1.2; }
     .poster .prating { font-size: 11px; color: var(--rating-gold); letter-spacing: 0.5px; }
     .gen-card .cardfoot { display: flex; align-items: center; justify-content: space-between; margin-top: 18px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.09); }
@@ -350,10 +357,10 @@
                 <span class="label">Favorites</span>
               </div>
               <div class="posters">
-                <div class="poster"><div class="tile" style="background:hsl(156,16%,20%);"><div class="sheen"></div><span class="tname">Stalker</span></div><div class="ptitle">Stalker</div><div class="prating">★★★★★</div></div>
-                <div class="poster"><div class="tile" style="background:hsl(144,16%,20%);"><div class="sheen"></div><span class="tname">Chungking Express</span></div><div class="ptitle">Chungking Express</div><div class="prating">★★★★½</div></div>
-                <div class="poster"><div class="tile" style="background:hsl(155,16%,20%);"><div class="sheen"></div><span class="tname">Burning</span></div><div class="ptitle">Burning</div><div class="prating">★★★★</div></div>
-                <div class="poster"><div class="tile" style="background:hsl(272,16%,20%);"><div class="sheen"></div><span class="tname">Columbus</span></div><div class="ptitle">Columbus</div><div class="prating">★★★★½</div></div>
+                <div class="poster"><div class="tile" style="background:hsl(156,16%,20%);"><div class="sheen"></div><span class="tname">Stalker</span><img class="art" src="https://image.tmdb.org/t/p/w342/1qhOyf5C4s9ZdvY8d5JDx9DFMeT.jpg" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" /></div><div class="ptitle">Stalker</div><div class="prating">★★★★★</div></div>
+                <div class="poster"><div class="tile" style="background:hsl(144,16%,20%);"><div class="sheen"></div><span class="tname">Chungking Express</span><img class="art" src="https://image.tmdb.org/t/p/w342/43I9DcNoCzpyzK8JCkJYpHqHqGG.jpg" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" /></div><div class="ptitle">Chungking Express</div><div class="prating">★★★★½</div></div>
+                <div class="poster"><div class="tile" style="background:hsl(155,16%,20%);"><div class="sheen"></div><span class="tname">Burning</span><img class="art" src="https://image.tmdb.org/t/p/w342/kXiF80o74fE9gf3Utf9moAI7ar0.jpg" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" /></div><div class="ptitle">Burning</div><div class="prating">★★★★</div></div>
+                <div class="poster"><div class="tile" style="background:hsl(272,16%,20%);"><div class="sheen"></div><span class="tname">Columbus</span><img class="art" src="https://image.tmdb.org/t/p/w342/3ZE5Wl3CdfUH4BkWRmyMKPHkWHx.jpg" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" /></div><div class="ptitle">Columbus</div><div class="prating">★★★★½</div></div>
               </div>
               <div class="cardfoot">
                 <div class="user"><span class="avatar">R</span><span class="uname">reels</span></div>
@@ -373,10 +380,10 @@
                 <span class="label">Last Four Watched</span>
               </div>
               <div class="posters">
-                <div class="poster"><div class="tile" style="background:hsl(24,16%,20%);"><div class="sheen"></div><span class="tname">In the Mood for Love</span></div><div class="ptitle">In the Mood for Love</div><div class="prating">★★★★★</div></div>
-                <div class="poster"><div class="tile" style="background:hsl(4,16%,20%);"><div class="sheen"></div><span class="tname">Paddington 2</span></div><div class="ptitle">Paddington 2</div><div class="prating">★★★★½</div></div>
-                <div class="poster"><div class="tile" style="background:hsl(240,16%,20%);"><div class="sheen"></div><span class="tname">Aftersun</span></div><div class="ptitle">Aftersun</div><div class="prating">★★★★½</div></div>
-                <div class="poster"><div class="tile" style="background:hsl(86,16%,20%);"><div class="sheen"></div><span class="tname">Drive My Car</span></div><div class="ptitle">Drive My Car</div><div class="prating">★★★★</div></div>
+                <div class="poster"><div class="tile" style="background:hsl(24,16%,20%);"><div class="sheen"></div><span class="tname">In the Mood for Love</span><img class="art" src="https://image.tmdb.org/t/p/w342/iYypPT4bhqXfq1b6EnmxvRt6b2Y.jpg" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" /></div><div class="ptitle">In the Mood for Love</div><div class="prating">★★★★★</div></div>
+                <div class="poster"><div class="tile" style="background:hsl(4,16%,20%);"><div class="sheen"></div><span class="tname">Paddington 2</span><img class="art" src="https://image.tmdb.org/t/p/w342/1OJ9vkD5xPt3skC6KguyXAgagRZ.jpg" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" /></div><div class="ptitle">Paddington 2</div><div class="prating">★★★★½</div></div>
+                <div class="poster"><div class="tile" style="background:hsl(240,16%,20%);"><div class="sheen"></div><span class="tname">Aftersun</span><img class="art" src="https://image.tmdb.org/t/p/w342/evKz85EKouVbIr51zy5fOtpNRPg.jpg" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" /></div><div class="ptitle">Aftersun</div><div class="prating">★★★★½</div></div>
+                <div class="poster"><div class="tile" style="background:hsl(86,16%,20%);"><div class="sheen"></div><span class="tname">Drive My Car</span><img class="art" src="https://image.tmdb.org/t/p/w342/a2lxHS6Au35k5XtFQEQW44yWHeH.jpg" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" /></div><div class="ptitle">Drive My Car</div><div class="prating">★★★★</div></div>
               </div>
               <div class="cardfoot">
                 <div class="user"><span class="avatar">C</span><span class="uname">cinephile</span></div>
