@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, type MouseEvent } from 'react'
 import type { FilmData, FilmDataResponse, GetFilmDataRequest } from '../content/index'
 import type { FetchImageResponse, FetchTmdbResponse } from '../background/service-worker'
+import { upscaleLetterboxdPoster } from '../shared/posters'
 import { renderCard } from '../canvas/renderCard'
 import { generateAltText } from '../altText'
 import { CARD_TYPES, CARD_TYPE_CONFIGS, LAYOUTS, LAYOUT_CONFIGS, STATS_CATEGORIES, STATS_CATEGORY_CONFIGS, formatUrlHint, formatUrlHintSegments, isStatsCategoryAvailable } from '../types'
@@ -21,7 +22,9 @@ const CWS_EXTENSION_ID = 'kcholfdhfcojahebmneeeikelffkokdj'
 async function fetchPosterDataUrl(url: string): Promise<string> {
   const response: FetchImageResponse = await chrome.runtime.sendMessage({
     type: 'FETCH_IMAGE',
-    url,
+    // Scraped Letterboxd posters come off the page at thumbnail size; ask the
+    // CDN for one big enough to draw. No-op for TMDB, avatars and backdrops.
+    url: upscaleLetterboxdPoster(url),
   })
   if (response.error) throw new Error(`Failed to fetch poster: ${response.error}`)
   return response.dataUrl!
