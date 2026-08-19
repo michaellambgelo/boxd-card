@@ -109,6 +109,12 @@ Certifications (all required to be true, and are true):
 
 ## Change log
 
+- **2026-08 (v0.8.2)** — Fixes cards built from your stats. Letterboxd changed how
+  it labels posters, which made every film on a Milestones card show the same
+  artwork; each milestone now shows its own again. If you use a custom poster for
+  a film, Boxd Card also keeps that poster when TMDB enrichment is on instead of
+  replacing it, while still using TMDB for the surrounding details. No new
+  permissions.
 - **2026-08 (v0.8.1)** — Security and reliability pass, no new features and no
   permission changes. Fetched review text is now parsed inertly, so markup in a
   review can never execute. The background image fetcher only accepts the hosts
