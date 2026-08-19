@@ -207,12 +207,23 @@ Both scrapers rely on these. Letterboxd changes them without notice; when a card
 **LazyPoster** — the shared pattern behind nearly every card type:
 ```
 .react-component[data-component-class="LazyPoster"]
-  @data-item-name    "Dune (2021)"   ← title + year
-  @data-film-id      "371378"
-  @data-poster-url   "/film/dune-2021/image-150/"
+  @data-item-name              "Dune (2021)"   ← title + year
+  @data-poster-url             "/film/dune-2021/image-150/"
+  @data-postered-identifier    '{"lid":"fA7G","uid":"film:371378","type":"film",…}'
+  @data-resolvable-poster-path '{"postered":{"uid":"film:371378"},"posteredBaseLink":"/film/dune-2021/",…}'
 img.image                            ← resolved poster, or an empty-poster placeholder
 ```
 `img.src` starts as `empty-poster-*.png` and is swapped in by Letterboxd's React after load. The extension checks for `empty-poster` and falls back to `data-poster-url`; the web app always uses `data-poster-url`, since fetched HTML is never lazily resolved.
+
+**Film id — `data-film-id` is gone.** Letterboxd removed it; verified against live markup, where it appears zero times while the two JSON attributes above appear on every poster. The numeric id now lives only inside `data-postered-identifier` (top-level `uid`) or `data-resolvable-poster-path` (`postered.uid`), as `"film:371378"`. `filmIdFromLazyPoster()` — duplicated in `content/index.ts` and `web/webScraper.ts` — prefers the legacy attribute if it ever returns, then parses the uid out.
+
+Note the attributes are single-quoted with `&quot;`-escaped JSON in the raw HTML; `getAttribute()` hands back the decoded string, so `JSON.parse` works in both the live DOM and under `DOMParser`.
+
+Getting this wrong is not obvious: `filmId` has exactly one consumer, the milestone poster map (`Popup.tsx` → `renderCard.ts`, `posterMap.get(entry.filmId)`). When every id is `''` the map collapses to a single key and **every milestone renders the same poster** rather than falling back to the grey placeholder.
+
+**Custom posters.** `data-resolvable-poster-path` carries `preferredAlternativePosterId` when Letterboxd renders a non-default poster — a Pro/Patron member's own choice, or a film-level preferred alternative. Default posters omit the field. `isCustomPoster()` reads it, and `mergeTmdbKeepCustomPoster()` in `shared/tmdb.ts` then keeps the Letterboxd poster while still enriching metadata and backdrop from TMDB.
+
+Do **not** use the sibling `hasDefaultPoster` field for this — it stays `true` even when a custom poster is displayed, because it describes the film, not what's on screen.
 
 | What | Selector |
 |------|----------|
