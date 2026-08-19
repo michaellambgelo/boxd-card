@@ -16,6 +16,7 @@ import type { CardType, ListCount, ReviewCount, StatsCategory, StatsSubCategory 
 import type { FilmData, FilmDataResponse, StatEntry, ChartDataSet, BreakdownData, BarChartData, WeekEntry } from '../content/index'
 import { fetchTmdbData } from './tmdbClient'
 import { mergeTmdb, slugFromPosterUrl } from '../shared/tmdb'
+import { upscaleLetterboxdPoster } from '../shared/posters'
 import { track } from './faro'
 import { sanitizeErrorMessage } from './telemetryPrivacy'
 
@@ -86,6 +87,10 @@ export async function fetchImageDataUrl(url: string): Promise<string> {
   if (filmPageMatch) {
     resolvedUrl = await resolvePosterCdnUrl(filmPageMatch[1])
   }
+
+  // After resolution, so URLs that arrive as /film/<slug>/image-NNN/ are
+  // upscaled too. No-op for TMDB, avatars and backdrops.
+  resolvedUrl = upscaleLetterboxdPoster(resolvedUrl)
 
   const res = await fetch(proxyUrl(resolvedUrl, 'image'))
   if (!res.ok) {
