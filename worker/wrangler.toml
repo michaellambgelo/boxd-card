@@ -8,21 +8,27 @@ compatibility_date = "2024-09-23"
 # under our User-Agent, so sustained abuse risks Letterboxd blocking the
 # traffic and taking the product down with it.
 #
-# The worker already reads an optional RATE_LIMITER binding and fails open when
-# it isn't bound (see isRateLimited in index.ts). Uncomment to switch it on:
+# ⚠️ MEASURED, NOT ASSUMED: this binding counts PER ISOLATE, not globally.
+# 695 requests against a single fixed key returned success:true every time,
+# because they spread across isolates and no individual counter approached the
+# limit. Treat it as a brake on one hot isolate, NOT as a global cap.
 #
-#   [[unsafe.bindings]]
-#   name = "RATE_LIMITER"
-#   type = "ratelimit"
-#   namespace_id = "1001"          # any stable integer, unique within this worker
-#   simple = { limit = 120, period = 60 }
+# The real control is a Cloudflare dashboard rate-limiting rule on
+# api.boxd-card.com, which is enforced at the edge per zone. That is still
+# worth adding; this binding does not replace it.
 #
-# then `npx wrangler deploy` and confirm with a burst:
-#   for i in $(seq 1 200); do curl -s -o /dev/null -w '%{http_code}\n' \
-#     'https://api.boxd-card.com/?url=https://letterboxd.com/'; done | sort | uniq -c
+# Sizing note: the limit is on SUBREQUESTS, not "cards per minute". One 20-film
+# list card with TMDB costs ~63 proxy requests — 1 page + 20 /tmdb + 20 posters
+# + 20 CDN-URL resolutions (/film/<slug>/image-NNN/ is HTML, so each poster
+# needs a second fetch to read the real URL from JSON-LD) + backdrop + avatar.
+# 600/min per isolate leaves a person iterating on layouts far clear of it.
 #
-# A Cloudflare dashboard rate-limiting rule on api.boxd-card.com is an
-# equivalent alternative and needs no deploy. Do one or the other.
+# isRateLimited() in index.ts fails open if the binding is ever removed.
+
+[[ratelimits]]
+name = "RATE_LIMITER"
+namespace_id = "1001"
+simple = { limit = 600, period = 60 }
 
 [observability]
 enabled = false

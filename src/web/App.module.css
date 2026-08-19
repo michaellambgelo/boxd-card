@@ -89,32 +89,6 @@
   letter-spacing: 0.01em;
 }
 
-/* Tagline + install CTA, between the header rule and the form. */
-.intro {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 14px;
-  margin: -14px 0 28px;
-}
-
-.headerSubtitle {
-  margin: 0;
-  font-size: 15px;
-  line-height: 1.5;
-  color: var(--subtext);
-}
-
-.headerSubtitle a {
-  color: var(--subtext);
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-.headerSubtitle a:hover {
-  color: var(--text);
-}
-
 /* ── Header nav ──────────────────────────────────────────────── */
 
 .headerNav {
@@ -123,16 +97,6 @@
   gap: 14px;
 }
 
-.navLink {
-  font-size: 14px;
-  color: var(--subtext);
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.navLink:hover {
-  color: var(--text);
-}
 
 /* Sized to sit next to the gear without crowding it. Uses the brand gradient
    so it reads as the one affirmative action in the header. */
@@ -153,13 +117,6 @@
 
 .installBtn:hover { opacity: 0.9; }
 .installBtn:active { opacity: 0.8; }
-
-@media (max-width: 520px) {
-  /* Both links live in the footer too, and the gear is the control that has to
-     stay reachable. No need to hide .installBtn — canInstall is already false
-     on every mobile browser, so it never renders at this width anyway. */
-  .navLink { display: none; }
-}
 
 /* ── Gear / back buttons ─────────────────────────────────────── */
 .gearBtn {
