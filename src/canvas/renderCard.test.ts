@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { renderCard, loadImage, computeLayout, wrapText, drawTagPills, gridTextAreaHeight, IMAGE_LOAD_TIMEOUT_MS } from './renderCard'
+import { renderCard, loadImage, computeLayout, wrapText, drawTagPills, gridTextAreaHeight, milestoneGrid, IMAGE_LOAD_TIMEOUT_MS } from './renderCard'
 
 // Auto-loading Image: fires onload immediately so renderCard doesn't hang in tests
 class AutoImage {
@@ -683,5 +683,100 @@ describe('renderCard — backdrop', () => {
       cardType: 'last-four-watched',
     })
     expect(blob).toBeInstanceOf(Blob)
+  })
+})
+
+// ── Milestone grid ───────────────────────────────────────────────────────────
+// The card height comes from the chosen Layout, not from the content. A single
+// row of posters capped at 160px left roughly 60% of a 3:4 card empty (observed
+// on a real 6-milestone card), so the posters now size to the available box and
+// wrap when that yields something bigger.
+
+// Available box after the header, stats header and "Milestones" title, per layout.
+const BOX = {
+  landscape: { w: 1120, h: 291 },
+  banner:    { w: 1420, h: 411 },
+  square:    { w: 1000, h: 741 },
+  '4:5':     { w: 1000, h: 1011 },
+  '3:4':     { w: 1000, h: 1101 },
+  story:     { w: 1000, h: 1581 },
+}
+const LABEL_H = 28, DATE_H = 30, GAP_X = 16, GAP_Y = 24
+
+function measure(count: number, w: number, h: number) {
+  const g = milestoneGrid(count, w, h)
+  const rows = Math.ceil(count / g.cols)
+  return {
+    ...g,
+    rows,
+    gridW: g.cols * g.posterW + (g.cols - 1) * GAP_X,
+    gridH: rows * (LABEL_H + g.posterH + DATE_H) + (rows - 1) * GAP_Y,
+  }
+}
+
+describe('milestoneGrid', () => {
+  const counts = [2, 3, 4, 6, 8, 12]
+
+  it('never overflows the box it was given, on any layout or entry count', () => {
+    for (const [layout, { w, h }] of Object.entries(BOX)) {
+      for (const n of counts) {
+        const m = measure(n, w, h)
+        expect(m.gridW, `${layout} n=${n} width`).toBeLessThanOrEqual(w)
+        expect(m.gridH, `${layout} n=${n} height`).toBeLessThanOrEqual(h)
+      }
+    }
+  })
+
+  it('keeps posters at a sane size and aspect', () => {
+    for (const [layout, { w, h }] of Object.entries(BOX)) {
+      for (const n of counts) {
+        const g = milestoneGrid(n, w, h)
+        expect(g.posterW, `${layout} n=${n}`).toBeGreaterThan(0)
+        expect(g.posterW, `${layout} n=${n}`).toBeLessThanOrEqual(280)
+        expect(g.posterH).toBe(Math.round(g.posterW * 1.5))
+        expect(g.cols).toBeGreaterThanOrEqual(1)
+        expect(g.cols).toBeLessThanOrEqual(n)
+      }
+    }
+  })
+
+  it('fills a tall card far better than the old fixed single row', () => {
+    // The regression case: 6 milestones on 3:4 used to draw 146px posters in one
+    // row and leave the bottom ~60% of the card empty.
+    const m = measure(6, BOX['3:4'].w, BOX['3:4'].h)
+    expect(m.posterW).toBeGreaterThan(160)
+    expect(m.rows).toBeGreaterThan(1)
+    expect(m.gridH / BOX['3:4'].h).toBeGreaterThan(0.8)
+  })
+
+  it('stays on one row when the card is wide and short', () => {
+    for (const layout of ['landscape', 'banner'] as const) {
+      expect(measure(6, BOX[layout].w, BOX[layout].h).rows, layout).toBe(1)
+    }
+  })
+
+  it('does not stack two entries into a single column on non-story layouts', () => {
+    // Both arrangements hit the size cap, so the tie-break decides. A lone
+    // column of two posters on a 3:4 card reads as a mistake.
+    for (const layout of ['landscape', 'banner', 'square', '4:5', '3:4'] as const) {
+      expect(measure(2, BOX[layout].w, BOX[layout].h).cols, layout).toBe(2)
+    }
+  })
+
+  it('prefers balanced rows over a ragged last one', () => {
+    // 4 entries on 4:5 fits 280px posters as either 2+2 or 3+1; pick 2+2.
+    expect(measure(4, BOX['4:5'].w, BOX['4:5'].h).cols).toBe(2)
+  })
+
+  it('degrades to a visible poster rather than nothing when the box is tiny', () => {
+    const g = milestoneGrid(12, 200, 80)
+    expect(g.posterW).toBeGreaterThan(0)
+    expect(g.posterH).toBeGreaterThan(0)
+  })
+
+  it('handles a single milestone', () => {
+    const g = milestoneGrid(1, BOX['3:4'].w, BOX['3:4'].h)
+    expect(g.cols).toBe(1)
+    expect(g.posterW).toBeGreaterThan(0)
   })
 })

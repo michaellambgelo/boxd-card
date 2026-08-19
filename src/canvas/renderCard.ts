@@ -1126,6 +1126,82 @@ async function renderBarChartCard(
 
 // ── Milestones renderer ─────────────────────────────────────────────────────
 
+// ── Milestones grid ──────────────────────────────────────────────────────────
+// Vertical metrics of one milestone cell: a bold label above the poster and a
+// date below it. Kept as constants because the grid solver has to reason about
+// cell height before anything is drawn.
+const MILESTONE_LABEL_H = 28
+const MILESTONE_DATE_H = 30
+const MILESTONE_GAP_X = 16
+const MILESTONE_GAP_Y = 24
+const MILESTONE_BOTTOM_PAD = 20
+// Posters stop growing here. Without a cap, two entries on a story layout
+// produce one absurd poster per row rather than a card.
+const MILESTONE_MAX_POSTER_W = 280
+const MILESTONE_MIN_POSTER_W = 60
+const POSTER_ASPECT = 1.5
+
+/**
+ * Choose a column count for the milestone posters.
+ *
+ * The card height comes from the chosen Layout, not from the content, so a
+ * single row of width-capped posters left roughly 60% of a 3:4 card empty. This
+ * picks whichever column count yields the largest poster that still fits the
+ * available box in *both* axes — which collapses to one row on wide, short
+ * layouts (landscape, banner) and wraps to a grid on tall ones (3:4, story).
+ *
+ * Entries stay in chronological order, reading left-to-right then top-to-bottom.
+ */
+export function milestoneGrid(
+  count: number, availW: number, availH: number,
+): { cols: number; posterW: number; posterH: number } {
+  const boxAspect = availW / availH
+  let best = { cols: count, posterW: 0, posterH: 0, aspectErr: Infinity }
+
+  for (let cols = 1; cols <= count; cols++) {
+    const rows = Math.ceil(count / cols)
+
+    // Width-bound: what fits across one row.
+    const byWidth = (availW - (cols - 1) * MILESTONE_GAP_X) / cols
+    // Height-bound: what fits down the rows, once labels and dates are paid for.
+    const cellH = (availH - (rows - 1) * MILESTONE_GAP_Y) / rows
+    const byHeight = (cellH - MILESTONE_LABEL_H - MILESTONE_DATE_H) / POSTER_ASPECT
+
+    const posterW = Math.floor(Math.min(byWidth, byHeight, MILESTONE_MAX_POSTER_W))
+    if (posterW <= 0) continue
+    const posterH = Math.round(posterW * POSTER_ASPECT)
+
+    // Ties are common because of the size cap: several column counts all reach
+    // MILESTONE_MAX_POSTER_W. Break them by whichever grid's own proportions
+    // sit closest to the space it has to fill, which keeps a wide card on one
+    // row and lets a story card stack into a taller timeline instead of
+    // stranding the posters in a band across the middle.
+    const gridW = cols * posterW + (cols - 1) * MILESTONE_GAP_X
+    const gridH = rows * (MILESTONE_LABEL_H + posterH + MILESTONE_DATE_H)
+      + (rows - 1) * MILESTONE_GAP_Y
+
+    // Plus a penalty for a ragged last row: four entries as 3+1 reads like a
+    // mistake next to 2+2, even though both hold the same poster size.
+    const orphaned = count % cols === 0 ? 0 : (cols - (count % cols)) / cols
+    const aspectErr = Math.abs(gridW / gridH - boxAspect) + orphaned
+
+    if (posterW > best.posterW || (posterW === best.posterW && aspectErr < best.aspectErr)) {
+      best = { cols, posterW, posterH, aspectErr }
+    }
+  }
+
+  // Nothing fit — fall back to a single row at the floor size rather than
+  // returning a zero-width poster and drawing an invisible card.
+  if (best.posterW < MILESTONE_MIN_POSTER_W) {
+    return {
+      cols: count,
+      posterW: MILESTONE_MIN_POSTER_W,
+      posterH: Math.round(MILESTONE_MIN_POSTER_W * POSTER_ASPECT),
+    }
+  }
+  return { cols: best.cols, posterW: best.posterW, posterH: best.posterH }
+}
+
 async function renderMilestonesCard(
   cardWidth: number, layout: Layout, options: CardOptions,
 ): Promise<Blob> {
@@ -1169,24 +1245,43 @@ async function renderMilestonesCard(
 
   const margin = 40
   const availW = cardWidth - 2 * margin
-  const slotW = Math.floor(availW / count)
-  const posterW = Math.min(160, slotW - 20)
-  const posterH = Math.round(posterW * 1.5)
+  const footerY = cardHeight - 64
+  const availH = footerY - y - MILESTONE_BOTTOM_PAD
+
+  const grid = milestoneGrid(count, availW, availH)
+  const { cols, posterW, posterH } = grid
+  const rows = Math.ceil(count / cols)
+
+  // Height of one cell and of the whole grid, so it can be centred in whatever
+  // vertical space the layout left us rather than hugging the title.
+  const cellH = MILESTONE_LABEL_H + posterH + MILESTONE_DATE_H
+  const gridH = rows * cellH + (rows - 1) * MILESTONE_GAP_Y
+  const gridTop = y + Math.max(0, Math.round((availH - gridH) / 2))
 
   for (let i = 0; i < count; i++) {
     const entry = entries[i]
-    const cx = margin + i * slotW + slotW / 2 // center of this slot
+    const col = i % cols
+    const row = Math.floor(i / cols)
+
+    // Centre each row independently, so a short final row (e.g. 6 entries in
+    // rows of 4) sits centred under the full one instead of left-aligned.
+    const inRow = Math.min(cols, count - row * cols)
+    const rowW = inRow * posterW + (inRow - 1) * MILESTONE_GAP_X
+    const rowLeft = margin + Math.round((availW - rowW) / 2)
+
+    const cx = rowLeft + col * (posterW + MILESTONE_GAP_X) + posterW / 2
+    const cellTop = gridTop + row * (cellH + MILESTONE_GAP_Y)
 
     // Section label (First Film / 50th / Last Film)
     ctx.fillStyle = SUBTEXT_COLOR
     ctx.font = 'bold 20px sans-serif'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'top'
-    ctx.fillText(entry.label, cx, y)
+    ctx.fillText(entry.label, cx, cellTop)
 
     // Poster
     const posterX = cx - posterW / 2
-    const posterY = y + 28
+    const posterY = cellTop + MILESTONE_LABEL_H
     const dataUrl = posterMap.get(entry.filmId)
     if (dataUrl) {
       try {
@@ -1210,7 +1305,6 @@ async function renderMilestonesCard(
     ctx.fillText(entry.date, cx, textY)
   }
 
-  const footerY = cardHeight - 64
   await drawFooter(ctx, footerY, cardWidth, username, footerAvatarDataUrl, showShareIcon, usedTmdb)
   return canvasToBlob(canvas)
 }
