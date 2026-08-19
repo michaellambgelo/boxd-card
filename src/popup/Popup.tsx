@@ -3,7 +3,7 @@ import type { FilmData, FilmDataResponse, GetFilmDataRequest } from '../content/
 import type { FetchImageResponse, FetchTmdbResponse } from '../background/service-worker'
 import { renderCard } from '../canvas/renderCard'
 import { generateAltText } from '../altText'
-import { CARD_TYPES, CARD_TYPE_CONFIGS, LAYOUTS, LAYOUT_CONFIGS, STATS_CATEGORIES, STATS_CATEGORY_CONFIGS, formatUrlHint, formatUrlHintSegments } from '../types'
+import { CARD_TYPES, CARD_TYPE_CONFIGS, LAYOUTS, LAYOUT_CONFIGS, STATS_CATEGORIES, STATS_CATEGORY_CONFIGS, formatUrlHint, formatUrlHintSegments, isStatsCategoryAvailable } from '../types'
 import type { CardType, ListCount, ReviewCount, Layout, StatsCategory, StatsSubCategory } from '../types'
 import { loadSettings, saveSettings, loadRememberedUser, saveRememberedUser, clearRememberedUser, type RememberedUser } from '../storage/settings'
 import { didUseTmdb, mergeTmdbKeepCustomPoster, slugFromPosterUrl, type TmdbFilmData } from '../shared/tmdb'
@@ -228,6 +228,10 @@ export default function Popup() {
         statsCategory: cardType === 'stats' ? statsCategory : undefined,
         statsSubCategory: cardType === 'stats' ? statsSubCategory : undefined,
       } satisfies GetFilmDataRequest)
+
+      // The scraper refused: either the category isn't on this page, or its
+      // markup moved. Its message is already user-facing, so surface it as-is.
+      if (filmData.error) throw new Error(filmData.error)
 
       // Non-poster stats categories (summary, chart, bar-chart, milestones) don't need films
       const needsFilms = statsRenderMode === undefined || statsRenderMode === 'poster-grid'
@@ -462,7 +466,21 @@ export default function Popup() {
   const isReviewListPage =
     cardType === 'review' && tabUrl !== null && /\/reviews\/?$/.test(tabUrl)
 
-  const buttonDisabled = status === 'loading' || isValidPage !== true
+  // The `stats` URL pattern matches two different pages, and three categories
+  // only exist on the Year in Review one. Treat picking such a category on the
+  // all-time page as an invalid page rather than letting Generate produce an
+  // error after a spinner.
+  //
+  // Gated on isValidPage: off a stats page entirely, "wrong stats page" is not
+  // the useful message — the navigation hint already tells them where to go, and
+  // showing both at once gives conflicting instructions.
+  const statsCategoryOffPage = (cat: StatsCategory) =>
+    cardType === 'stats' && isValidPage === true && tabUrl !== null
+    && !isStatsCategoryAvailable(cat, tabUrl)
+
+  const statsCategoryUnavailable = statsCategoryOffPage(statsCategory)
+
+  const buttonDisabled = status === 'loading' || isValidPage !== true || statsCategoryUnavailable
 
   return (
     <div className={styles.popup}>
@@ -704,13 +722,46 @@ export default function Popup() {
               }}
               className={styles.select}
             >
-              {STATS_CATEGORIES.map(cat => (
-                <option key={cat} value={cat} disabled={!STATS_CATEGORY_CONFIGS[cat].implemented}>
-                  {STATS_CATEGORY_CONFIGS[cat].label}{!STATS_CATEGORY_CONFIGS[cat].implemented ? ' (coming soon)' : ''}
-                </option>
-              ))}
+              {STATS_CATEGORIES.map(cat => {
+                const cfg = STATS_CATEGORY_CONFIGS[cat]
+                // While tabUrl is still null we leave everything enabled — the
+                // generate-time guard re-checks, so an unresolved tab can't ship
+                // a broken card.
+                const offPage = statsCategoryOffPage(cat)
+                const suffix = !cfg.implemented ? ' (coming soon)'
+                  : offPage ? ' (Year in Review only)'
+                  : ''
+                return (
+                  <option key={cat} value={cat} disabled={!cfg.implemented || offPage}>
+                    {cfg.label}{suffix}
+                  </option>
+                )
+              })}
             </select>
           </div>
+        )}
+
+        {/* A saved category can be restored onto the wrong page, in which case
+            the select shows it selected-but-disabled. Say why, and where to go. */}
+        {statsCategoryUnavailable && (
+          <p className={styles.hint}>
+            {STATS_CATEGORY_CONFIGS[statsCategory].label} is only on your Year in Review page.{' '}
+            {/* Only link when we know who they are — letterboxd.com/username/…
+                is a real URL belonging to someone else. Same rule as
+                formatUrlHintSegments, which renders plain text when logged out. */}
+            {loggedInUsername ? (
+              <a
+                href={`https://letterboxd.com/${loggedInUsername}/year/${new Date().getFullYear()}/`}
+                target="_blank"
+                rel="noreferrer"
+                className={styles.hintLink}
+              >
+                Open {new Date().getFullYear()} in review
+              </a>
+            ) : (
+              <>Open letterboxd.com/&lt;you&gt;/year/{new Date().getFullYear()}/</>
+            )}
+          </p>
         )}
 
         {/* Sub-category toggle for genres/countries/languages */}

@@ -1,4 +1,5 @@
 import type { CardType, ListCount, ReviewCount, StatsCategory, StatsSubCategory } from '../types'
+import { isStatsCategoryAvailable, isYearStatsUrl, statsCategoryUnavailableMessage } from '../types'
 import { slugFromPosterUrl } from '../shared/tmdb'
 
 // Letterboxd injects a `person` global on profile pages. It is reachable from
@@ -97,6 +98,12 @@ export interface FilmDataResponse {
   breakdownData?: BreakdownData
   barChartData?: BarChartData
   milestonesData?: MilestonesData
+  /**
+   * Set when the scrape could not produce a card. The popup surfaces this
+   * verbatim and renders nothing. Used for the two ways a stats scrape can come
+   * up empty: the category doesn't exist on this page, or its markup has moved.
+   */
+  error?: string
 }
 
 export interface GetFilmDataRequest {
@@ -774,7 +781,7 @@ export function scrapeStatsHighestRated(count: number = 12): FilmData[] {
 // yir-poster-grid elements, and data-owner-rating instead of yir-label.-detail.
 
 function isYearPage(): boolean {
-  return /\/year\/\d{4}\/?$/.test(window.location.pathname)
+  return isYearStatsUrl(window.location.pathname)
 }
 
 // Most Watched (Milestones) on the year page:
@@ -991,6 +998,58 @@ function scrapeBarChart(category: string, subCategory: string): Partial<FilmData
   }
 }
 
+function pageOwner(): string {
+  return (document.body as HTMLBodyElement & { dataset: DOMStringMap }).dataset.owner ?? ''
+}
+
+/**
+ * Did the scrape come back with nothing to draw?
+ *
+ * The page-availability guard catches the *known* mismatch. This catches the
+ * other cause: Letterboxd renaming markup out from under a selector, which this
+ * codebase has already been bitten by once (`data-film-id`). Without this check
+ * the card renders a header and footer around an empty body, which reads to the
+ * user as a broken product rather than a scrape that failed.
+ *
+ * An empty card is never a correct outcome, so failing here costs no false
+ * positives — and it converts every future DOM change from a silent blank into
+ * a visible error.
+ */
+export function statsScrapeEmptyMessage(
+  category: StatsCategory,
+  extra: Partial<FilmDataResponse>,
+): string | null {
+  const stale = (what: string) =>
+    `Couldn't read ${what} from this page. Letterboxd may have changed its layout — `
+    + 'please report it at github.com/michaellambgelo/boxd-card/issues.'
+
+  switch (category) {
+    case 'milestones': {
+      const m = extra.milestonesData
+      if (!m || (!m.firstFilm && !m.lastFilm && m.diaryMilestones.length === 0)) {
+        return stale('your milestones')
+      }
+      return null
+    }
+    case 'by-week': {
+      const c = extra.chartData
+      if (!c || (!c.weeklyFilms?.length && !c.dayOfWeek?.length && !c.summaryNumbers?.length)) {
+        return stale('your films by week')
+      }
+      return null
+    }
+    case 'breakdown': {
+      const b = extra.breakdownData
+      if (!b || (!b.ratingSpread.length && !b.pieRatios.total)) {
+        return stale('your ratings breakdown')
+      }
+      return null
+    }
+    default:
+      return null
+  }
+}
+
 // Async stats dispatcher: scrolls the target section into view so CSI loads
 // and LazyPoster resolves poster images, then scrapes.
 // Detects year page vs all-time stats page and uses the appropriate scrapers.
@@ -999,6 +1058,18 @@ async function scrapeStatsAsync(
   count: number,
   subCategory: string = 'most-watched',
 ): Promise<FilmDataResponse> {
+  // Guard before any scrolling. Milestones, Films by Week and Ratings &
+  // Breakdown exist only on /user/year/YYYY/; asking for them on /user/stats/
+  // otherwise scrolls the page hunting for a section that will never appear,
+  // burns the ensureStatsSectionLoaded timeout, and then draws an empty card.
+  if (!isStatsCategoryAvailable(category, window.location.pathname)) {
+    return {
+      films: [],
+      username: pageOwner(),
+      error: statsCategoryUnavailableMessage(category, pageOwner()),
+    }
+  }
+
   const scrollY = window.scrollY
 
   let films: FilmData[] = []
@@ -1050,7 +1121,13 @@ async function scrapeStatsAsync(
   // Restore scroll position
   window.scrollTo({ top: scrollY, behavior: 'instant' })
 
-  const username = (document.body as HTMLBodyElement & { dataset: DOMStringMap }).dataset.owner ?? ''
+  const username = pageOwner()
+
+  // The section was present but yielded nothing — fail loudly instead of
+  // handing the renderer an empty shape it will happily draw a blank card from.
+  const emptyMessage = statsScrapeEmptyMessage(category, extra)
+  if (emptyMessage) return { films: [], username, error: emptyMessage }
+
   const { username: loggedInUsername, avatarUrl: loggedInAvatarUrl } = scrapeLoggedInUser()
   return {
     films,
