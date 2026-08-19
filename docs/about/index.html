@@ -615,8 +615,22 @@
 
   <!-- Anonymous RUM for the landing page (same proxy + app as the web app;
        segmented downstream by the `surface` attribute). See /privacy. -->
-  <script src="https://unpkg.com/@grafana/faro-web-sdk@^2.5.0/dist/bundle/faro-web-sdk.iife.js"></script>
-  <script src="https://unpkg.com/@grafana/faro-web-tracing@^2.5.0/dist/bundle/faro-web-tracing.iife.js"></script>
+  <!-- Pinned to an exact version with Subresource Integrity. These are
+       third-party scripts with full DOM access on our own domain, and the
+       previous `@^2.5.0` range was resolving to 2.10.0 — five minors of drift
+       that nobody chose and nothing would have flagged. With `integrity`, a
+       changed or substituted file simply doesn't execute.
+       Bumping: fetch the new bundle, recompute, and update BOTH attributes —
+         curl -sL https://unpkg.com/@grafana/faro-web-sdk@<v>/dist/bundle/faro-web-sdk.iife.js \
+           | openssl dgst -sha384 -binary | openssl base64 -A
+       A mismatch fails closed and silently: Faro just never initialises, and
+       the page keeps working. Check the console after any bump. -->
+  <script src="https://unpkg.com/@grafana/faro-web-sdk@2.10.0/dist/bundle/faro-web-sdk.iife.js"
+          integrity="sha384-PvMC/A/RHFmcio8/Hymu3UVdvFARdqNMtCqQ7zxsldvW/vnikNCescetATS/wAeC"
+          crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@grafana/faro-web-tracing@2.10.0/dist/bundle/faro-web-tracing.iife.js"
+          integrity="sha384-K28KBbO7wd+Ik1Kwa9+ogBOjPCytYw0yzJoXfs0LOsui+ZIpGL0TRDVZyz7L4mTL"
+          crossorigin="anonymous"></script>
   <script>
     (function () {
       try {
