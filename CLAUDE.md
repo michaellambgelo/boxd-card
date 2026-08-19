@@ -32,9 +32,40 @@ Defined in `src/types.ts` as `CARD_TYPE_CONFIGS`. Each entry carries the URL pat
 - `ListCount` = `4 | 10 | 20` — Recent Diary, List, Stats.
 - `ReviewCount` = `1 | 2 | 3 | 4` — Review. Only offered on `/reviews/` list pages; a single film review page always yields exactly 1.
 - `Layout` = `landscape | square | 4:5 | 3:4 | story | banner` — output aspect ratio.
-- `StatsCategory` = `summary | most-watched | highest-rated | by-week | breakdown | genres | countries | languages | milestones`, each with a `renderMode` (`poster-grid | summary | chart | bar-chart | milestones`).
+- `StatsCategory` = `summary | most-watched | highest-rated | by-week | breakdown | genres | countries | languages | milestones`, each with a `renderMode` (`poster-grid | summary | chart | bar-chart | milestones`) and a `pages` availability (`both | year`).
 
 **Stats is extension-only.** Letterboxd blocks stats-page requests from external services, so the web app rejects those URLs with an explanatory message rather than failing at fetch time.
+
+### The two stats pages are not interchangeable
+
+`/<user>/stats/` (all-time) and `/<user>/year/<yyyy>/` (Year in Review) both match the
+`stats` `urlPattern` and are both built from the same `yir-*` stylesheet, but they expose
+**different sections**. Verified against live authenticated Pro markup, 2026-08:
+
+| category | `/stats/` | `/year/<yyyy>/` | anchor selector |
+|---|---|---|---|
+| `summary` | yes | yes | `.yir-member-stats .yir-member-statistic` |
+| `most-watched` | yes\* | yes\* | `.yir-most-rewatched` / `div.milestone-mostwatched` |
+| `highest-rated` | yes | yes | `a[name="variance-high"]` |
+| `genres` / `countries` / `languages` | yes | yes | `.film-breakdown-graph-bar` |
+| `by-week` | **no** | yes | `#entries-by-week-films` |
+| `breakdown` | **no** | yes | `.js-personal-pies[data-ratios]`, `#ratingspread` |
+| `milestones` | **no** | yes | `.milestone-group.-diaryevents` |
+
+\* `most-watched` reads different markup per page and branches on `isYearPage()` — it is the
+only category that was ever page-aware, which is why it alone survived.
+
+Encoded as `pages` in `STATS_CATEGORY_CONFIGS`; `isStatsCategoryAvailable()` is the single
+check, shared by the popup (disables the option, `(Year in Review only)`) and the content
+script (refuses to scrape, before scrolling).
+
+`/<user>/stats/<yyyy>/` **404s** — the `urlPattern` accepted it for a while. Don't re-add it.
+
+**Never let a stats scrape return an empty-but-truthy payload.** `scrapeMilestones()`
+returning `{diaryMilestones: []}` on a page with no container is what produced a card with a
+header and footer wrapped around nothing: the popup's "is there data?" check only tested for
+*presence*. `statsScrapeEmptyMessage()` is the backstop — it turns any future selector rot
+into a visible error instead of a blank card.
 
 ## Architecture
 
@@ -265,6 +296,8 @@ Do **not** use the sibling `hasDefaultPoster` field for this — it stays `true`
 **Drawing order (poster-grid):** background → logo → header date → title area → poster grid → footer.
 
 **Review cards** use a two-pass layout: `measureReviewRows()` sizes each row on a temp canvas, then the real canvas is created at the computed height. Each row is poster (200×300 at `x=40`) plus a right column at `x=270, w=890` holding title → rating → date → tag pills → wrapped review text. Row height is `max(300, contentHeight)`, rows separated by `RV_ROW_GAP = 28`.
+
+**Milestone cards** size their posters instead of fixing them. `milestoneGrid(count, availW, availH)` picks the column count whose poster is largest while fitting the box in *both* axes, then the grid is centred in whatever vertical space is left and each row is centred independently. Ties — common, because posters cap at 280px — go to the arrangement whose own proportions best match the box, plus a penalty for a ragged last row. In practice: one row on landscape/banner, 3×2 on 3:4, taller grids on story. The previous fixed single row at `min(160, slotW−20)` left ~60% of a 3:4 card empty.
 
 **Backdrop** (review + list): drawn blurred (`blur(20px)`, oversized by `3×blur` so the edge fade doesn't show) under `rgba(0,0,0,0.72)`. Falls back silently to `BG_COLOR`.
 

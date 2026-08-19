@@ -74,14 +74,31 @@ export const CARD_TYPE_CONFIGS: Record<CardType, CardTypeConfig> = {
     ],
   },
   'stats': {
+    // Two distinct pages share this config: all-time (/stats/) and Year in Review
+    // (/year/YYYY/). They are NOT interchangeable — see STATS_CATEGORY_CONFIGS.pages.
+    // `/stats/YYYY/` was accepted here for a while and 404s on Letterboxd; don't re-add it.
     label: 'Stats',
-    urlPattern: new RegExp(`^https://letterboxd\\.com/${U}/(?:stats(?:/\\d{4})?|year/\\d{4})/?$`),
+    urlPattern: new RegExp(`^https://letterboxd\\.com/${U}/(?:stats|year/\\d{4})/?$`),
     urlHint: 'letterboxd.com/{user}/stats/',
     hintHrefs: [
       { text: 'letterboxd.com/{user}/stats/', href: 'https://letterboxd.com/{user}/stats/' },
     ],
     proOnly: true,
   },
+}
+
+/**
+ * Is this URL the Year in Review page (/user/year/YYYY/) rather than all-time
+ * stats (/user/stats/)?
+ *
+ * Both pages match the `stats` urlPattern and both are built from the same
+ * `yir-*` stylesheet, but they expose different sections — three stats
+ * categories exist only on the year page. Shared by the popup (to disable
+ * unavailable categories) and the content script (to refuse to scrape them),
+ * so the two can't drift apart.
+ */
+export function isYearStatsUrl(url: string): boolean {
+  return /\/year\/\d{4}\/?$/.test(url)
 }
 
 export const CARD_TYPES = Object.keys(CARD_TYPE_CONFIGS) as CardType[]
@@ -154,6 +171,31 @@ export type StatsCategory =
 export type StatsRenderMode = 'poster-grid' | 'summary' | 'chart' | 'bar-chart' | 'milestones'
 export type StatsSubCategory = 'most-watched' | 'highest-rated'
 
+/**
+ * Which of the two stats pages a category's markup actually exists on.
+ *
+ * `'both'` — the section is present on all-time stats and on Year in Review.
+ * `'year'` — Year in Review only. Requesting it from /stats/ used to produce a
+ *   card with a header, a footer and an empty body, because the scraper found no
+ *   container and returned an empty shape rather than failing.
+ *
+ * Verified against a live authenticated Pro account (2026-08):
+ *
+ * | category                    | /stats/ | /year/YYYY/ |
+ * |-----------------------------|---------|-------------|
+ * | summary                     | yes     | yes         |
+ * | most-watched                | yes*    | yes*        |
+ * | highest-rated               | yes     | yes         |
+ * | genres / countries / langs  | yes     | yes         |
+ * | by-week                     | **no**  | yes         |
+ * | breakdown                   | **no**  | yes         |
+ * | milestones                  | **no**  | yes         |
+ *
+ * \* most-watched reads different markup per page and branches internally in
+ * scrapeStatsAsync; it is genuinely available on both.
+ */
+export type StatsPageAvailability = 'both' | 'year'
+
 export interface StatsCategoryConfig {
   label: string
   /** When false, the category is shown as disabled "(coming soon)" in the UI. */
@@ -161,18 +203,40 @@ export interface StatsCategoryConfig {
   renderMode: StatsRenderMode
   /** When true, show a Most Watched / Highest Rated sub-toggle. */
   hasSubToggle?: boolean
+  /** Which stats page(s) this category's markup exists on. */
+  pages: StatsPageAvailability
 }
 
 export const STATS_CATEGORY_CONFIGS: Record<StatsCategory, StatsCategoryConfig> = {
-  'summary':       { label: 'Summary',                    implemented: true,  renderMode: 'summary' },
-  'most-watched':  { label: 'Most Watched',               implemented: true,  renderMode: 'poster-grid' },
-  'highest-rated': { label: 'Rated Higher Than Average',   implemented: true,  renderMode: 'poster-grid' },
-  'by-week':       { label: 'Films by Week',               implemented: true,  renderMode: 'chart' },
-  'breakdown':     { label: 'Ratings & Breakdown',         implemented: true,  renderMode: 'chart' },
-  'genres':        { label: 'Genres',                      implemented: true,  renderMode: 'bar-chart', hasSubToggle: true },
-  'countries':     { label: 'Countries',                   implemented: true,  renderMode: 'bar-chart', hasSubToggle: true },
-  'languages':     { label: 'Languages',                   implemented: true,  renderMode: 'bar-chart', hasSubToggle: true },
-  'milestones':    { label: 'Milestones',                  implemented: true,  renderMode: 'milestones' },
+  'summary':       { label: 'Summary',                    implemented: true,  renderMode: 'summary',    pages: 'both' },
+  'most-watched':  { label: 'Most Watched',               implemented: true,  renderMode: 'poster-grid', pages: 'both' },
+  'highest-rated': { label: 'Rated Higher Than Average',   implemented: true,  renderMode: 'poster-grid', pages: 'both' },
+  'by-week':       { label: 'Films by Week',               implemented: true,  renderMode: 'chart',      pages: 'year' },
+  'breakdown':     { label: 'Ratings & Breakdown',         implemented: true,  renderMode: 'chart',      pages: 'year' },
+  'genres':        { label: 'Genres',                      implemented: true,  renderMode: 'bar-chart', hasSubToggle: true, pages: 'both' },
+  'countries':     { label: 'Countries',                   implemented: true,  renderMode: 'bar-chart', hasSubToggle: true, pages: 'both' },
+  'languages':     { label: 'Languages',                   implemented: true,  renderMode: 'bar-chart', hasSubToggle: true, pages: 'both' },
+  'milestones':    { label: 'Milestones',                  implemented: true,  renderMode: 'milestones', pages: 'year' },
+}
+
+/** Is this category scrapeable from the page currently open? */
+export function isStatsCategoryAvailable(category: StatsCategory, url: string): boolean {
+  return STATS_CATEGORY_CONFIGS[category].pages === 'both' || isYearStatsUrl(url)
+}
+
+/**
+ * Message shown when a category is picked on the page that doesn't have it.
+ * Points at the current year: Letterboxd publishes it as "<year> to date"
+ * (verified 2026-08 on an account with activity this year).
+ */
+export function statsCategoryUnavailableMessage(
+  category: StatsCategory,
+  username?: string,
+  year: number = new Date().getFullYear(),
+): string {
+  const user = username?.trim() || 'your-username'
+  return `${STATS_CATEGORY_CONFIGS[category].label} is only on your Year in Review page. `
+    + `Open letterboxd.com/${user}/year/${year}/ and try again.`
 }
 
 export const STATS_CATEGORIES = Object.keys(STATS_CATEGORY_CONFIGS) as StatsCategory[]

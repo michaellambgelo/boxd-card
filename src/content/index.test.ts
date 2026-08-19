@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
+  statsScrapeEmptyMessage,
   scrapeRecentActivity,
   scrapeFavorites,
   scrapeDiary,
@@ -1124,5 +1125,84 @@ describe('film id extraction', () => {
       </ul></section>`
     const [film] = scrapeRecentActivity()
     expect(film.filmId).toBe('')
+  })
+})
+
+// ── Empty-scrape guard ───────────────────────────────────────────────────────
+// The Milestones card once rendered a header and footer around an empty body:
+// scrapeMilestones() found no container and returned a *truthy* `{diaryMilestones: []}`,
+// which passed the popup's "is there data?" check. The page-availability guard in
+// types.ts stops the known cause (wrong stats page); this guard is the backstop for
+// the other one — Letterboxd renaming markup, which already happened once with
+// `data-film-id`. An empty card is never a correct outcome, so this converts any
+// future DOM change from a silent blank into a visible error.
+describe('statsScrapeEmptyMessage', () => {
+  it('rejects a milestones scrape with no entries and no first/last film', () => {
+    const msg = statsScrapeEmptyMessage('milestones', { milestonesData: { diaryMilestones: [] } })
+    expect(msg).toMatch(/milestones/i)
+    expect(msg).toMatch(/changed its layout/i)
+  })
+
+  it('accepts a milestones scrape carrying only a first film', () => {
+    expect(statsScrapeEmptyMessage('milestones', {
+      milestonesData: {
+        diaryMilestones: [],
+        firstFilm: { title: 'Rushmore', year: '1998', rating: '', posterUrl: '', filmId: '1', label: 'First Film', date: '' },
+      },
+    })).toBeNull()
+  })
+
+  it('accepts a milestones scrape carrying only diary entries', () => {
+    expect(statsScrapeEmptyMessage('milestones', {
+      milestonesData: {
+        diaryMilestones: [
+          { title: 'Heat', year: '1995', rating: '', posterUrl: '', filmId: '2', label: '100th film', date: 'Mar 2025' },
+        ],
+      },
+    })).toBeNull()
+  })
+
+  it('rejects a missing payload outright', () => {
+    expect(statsScrapeEmptyMessage('milestones', {})).toMatch(/milestones/i)
+    expect(statsScrapeEmptyMessage('by-week', {})).toMatch(/films by week/i)
+    expect(statsScrapeEmptyMessage('breakdown', {})).toMatch(/ratings breakdown/i)
+  })
+
+  it('rejects a by-week scrape whose charts all came back empty', () => {
+    expect(statsScrapeEmptyMessage('by-week', {
+      chartData: { weeklyFilms: [], weeklyLists: [], dayOfWeek: [], summaryNumbers: [] },
+    })).toMatch(/films by week/i)
+  })
+
+  it('accepts a by-week scrape with any one chart populated', () => {
+    expect(statsScrapeEmptyMessage('by-week', {
+      chartData: { weeklyFilms: [{ week: '1', label: 'Jan 1', count: 3 }], weeklyLists: [], dayOfWeek: [], summaryNumbers: [] },
+    })).toBeNull()
+  })
+
+  it('rejects a breakdown scrape with no spread and a zero-total pie', () => {
+    expect(statsScrapeEmptyMessage('breakdown', {
+      breakdownData: {
+        pieRatios: { total: 0, rewatched: 0, releasedThisYear: 0, reviewed: 0 },
+        ratingSpread: [],
+        watchlist: { watched: 0, added: 0 },
+      },
+    })).toMatch(/ratings breakdown/i)
+  })
+
+  it('accepts a breakdown scrape with a rating spread', () => {
+    expect(statsScrapeEmptyMessage('breakdown', {
+      breakdownData: {
+        pieRatios: { total: 0, rewatched: 0, releasedThisYear: 0, reviewed: 0 },
+        ratingSpread: [1, 4, 9],
+        watchlist: { watched: 0, added: 0 },
+      },
+    })).toBeNull()
+  })
+
+  it('never blocks categories that legitimately render without these payloads', () => {
+    for (const cat of ['summary', 'most-watched', 'highest-rated', 'genres', 'countries', 'languages'] as const) {
+      expect(statsScrapeEmptyMessage(cat, {}), cat).toBeNull()
+    }
   })
 })
