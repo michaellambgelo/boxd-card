@@ -49,14 +49,20 @@ jobs:
   # fontconfig rather than CoreText — so the remaining question is purely
   # empirical, and the only way to answer it is to actually run them here.
   #
-  # continue-on-error: this job REPORTS, it does not gate. A red result means
-  # "keep the skip", not "the PR is broken". If it goes green consistently,
-  # SKIP_IN_CI in test/visual/goldens.visual.test.ts can be dropped and this job
-  # promoted into a real gate.
+  # This job MEASURES; it does not gate. Goldens are expected to differ here, so
+  # a mismatch must not surface as a failed check: a red X on the PR reads as
+  # "something is broken" and, worse, says nothing about the size of the
+  # difference. The numbers go to the job summary instead, where they are useful.
+  #
+  # Note the granularity: only the golden comparison is tolerated. If npm ci or
+  # the node-canvas build fails, this job still goes red, because that IS broken.
+  #
+  # If the measured difference ever drops well below the size of a real
+  # regression, SKIP_IN_CI in test/visual/goldens.visual.test.ts can be dropped
+  # and this promoted into a genuine gate.
   golden-portability:
-    name: Golden portability (informational)
+    name: Golden portability (measurement)
     runs-on: ubuntu-latest
-    continue-on-error: true
 
     steps:
       - name: Checkout
@@ -71,13 +77,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run the golden suite on Linux
+      - name: Measure goldens against Linux rasterization
         env:
           RUN_VISUAL_IN_CI: '1'
-        run: npx vitest run --project visual
+        run: |
+          # Deliberately tolerated: a golden mismatch here is the measurement,
+          # not a failure. Infrastructure problems in the steps above still fail.
+          npx vitest run --project visual > /tmp/visual.log 2>&1 || true
+          cat /tmp/visual.log
+          node .github/scripts/summarize-goldens.mjs /tmp/visual.log >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload diffs
-        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: golden-diffs-linux
