@@ -12,6 +12,7 @@
     "build:web": "npm run typecheck && rm -rf docs/assets && vite build --config vite.web.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p worker/tsconfig.json && tsc --noEmit -p tsconfig.visual.json",
     "studio": "vitest run --project generate",
+    "goldens:update": "UPDATE_GOLDENS=1 vitest run --project visual",
     "lint": "eslint . --max-warnings 0",
     "test": "vitest --project unit --project visual",
     "test:run": "vitest run --project unit --project visual",
