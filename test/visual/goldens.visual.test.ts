@@ -16,9 +16,26 @@ const UPDATE = process.env.UPDATE_GOLDENS === '1'
 // CoreText — freetype version differences between the two platforms can still
 // shift hinting and antialiasing enough to move every pixel comparison.
 //
-// Whether that actually happens here is an empirical question, and the draft PR
-// answers it: this constant is the one thing to flip once ubuntu-latest has been
-// observed agreeing with macOS.
+// ANSWERED, on ubuntu-24.04 (PR #68, golden-portability job):
+//
+//   The environment itself is fine on Linux — node-canvas builds, Inter
+//   registers, and every other visual test passes. Layout is portable too: all
+//   11 goldens kept their EXACT dimensions, so embedding Inter really did fix
+//   the metric-level divergence that generic `sans-serif` caused. Text wraps
+//   identically on both platforms.
+//
+//   What still differs is glyph-edge antialiasing — freetype hints differently
+//   from CoreText. Measured spread: 0.556% to 1.874% of pixels.
+//
+//   That range is why the gate stays. A deliberate 2px change to the grid
+//   posterGap moves grid-4-films by 2.472%. Raising the tolerance enough to
+//   absorb 1.874% of platform noise would leave almost no margin before it
+//   started swallowing real single-pixel layout regressions — which is the only
+//   thing these goldens exist to catch.
+//
+//   Revisit if the diff narrows (a pinned freetype, or baking goldens in a
+//   container that matches CI). The golden-portability job keeps measuring it on
+//   every PR, so the number is always current.
 //
 // DO NOT "fix" a red CI by deleting or re-baking the goldens. If they move, they
 // are telling you something. Re-bake only when a rendering change was intended,
