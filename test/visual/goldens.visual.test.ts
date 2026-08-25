@@ -23,7 +23,13 @@ const UPDATE = process.env.UPDATE_GOLDENS === '1'
 // DO NOT "fix" a red CI by deleting or re-baking the goldens. If they move, they
 // are telling you something. Re-bake only when a rendering change was intended,
 // and only with `npm run goldens:update` after looking at the diff images.
-const SKIP_IN_CI = !!process.env.CI
+//
+// RUN_VISUAL_IN_CI=1 forces them to run anyway. The golden-portability job in
+// pr-checks.yml sets it and is continue-on-error, so the question gets asked on
+// every PR without its answer gating the build. Without that escape hatch the
+// skip would be self-sealing: the experiment could never run, so the gate could
+// never be justifiably removed.
+const SKIP_IN_CI = !!process.env.CI && process.env.RUN_VISUAL_IN_CI !== '1'
 
 describe.skipIf(SKIP_IN_CI)('golden images', () => {
   it.each(GOLDENS.map((g) => [g.name, g] as const))('%s', async (name, golden) => {

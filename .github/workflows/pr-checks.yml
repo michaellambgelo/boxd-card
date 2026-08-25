@@ -41,6 +41,49 @@ jobs:
           echo "ERROR: Tag $TAG exists but points outside the current history. Bump the version in package.json and manifest.json before opening a release PR."
           exit 1
 
+  # Are macOS-baked goldens reproducible on Linux?
+  #
+  # The visual suite skips under CI because goldens are baked on Michael's Mac
+  # and freetype on ubuntu-latest can hint and antialias differently. Embedding
+  # Inter removed the original cause — a generic `sans-serif` resolving through
+  # fontconfig rather than CoreText — so the remaining question is purely
+  # empirical, and the only way to answer it is to actually run them here.
+  #
+  # continue-on-error: this job REPORTS, it does not gate. A red result means
+  # "keep the skip", not "the PR is broken". If it goes green consistently,
+  # SKIP_IN_CI in test/visual/goldens.visual.test.ts can be dropped and this job
+  # promoted into a real gate.
+  golden-portability:
+    name: Golden portability (informational)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run the golden suite on Linux
+        env:
+          RUN_VISUAL_IN_CI: '1'
+        run: npx vitest run --project visual
+
+      - name: Upload diffs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-diffs-linux
+          path: studio-out/golden-failures/
+          if-no-files-found: ignore
+
   test-and-build:
     name: Test & Build
     runs-on: ubuntu-latest
