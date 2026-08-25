@@ -2,7 +2,8 @@ import type { CardType, ListCount, ReviewCount, Layout, StatsCategory } from '..
 import type { StatEntry, ChartDataSet, BreakdownData, BarChartData, MilestonesData } from '../content/index'
 import logoUrl from '../assets/letterboxd-logo-h-neg-rgb.svg?url'
 import tmdbLogoUrl from '../assets/TMDB-blue-short.svg?url'
-import { CARD_FONT_STACK, ensureCardFontsLoaded } from './fonts'
+import { ensureCardFontsLoaded } from './fonts'
+import { TYPE_SCALE, cardFont } from './typeScale'
 
 export interface FilmEntry {
   title: string
@@ -114,10 +115,8 @@ export function gridTextAreaHeight(opts: {
   return Math.max(h, TEXT_AREA_H)
 }
 
-// Font sizes for poster-grid card text (title/rating/date under each poster)
-const GRID_TITLE_FS    = 24
-const GRID_META_FS     = 24
-const GRID_DATE_FS     = 21
+// Poster-grid text sizes now live in TYPE_SCALE (./typeScale); the line heights
+// below stay here because they are layout metrics, not type sizes.
 const GRID_LINE_H      = 28  // line height for 24px text
 const GRID_DATE_LINE_H = 25  // line height for 21px text
 const GRID_LINE_GAP    =  4  // gap between consecutive text lines
@@ -406,7 +405,7 @@ export function wrapText(
 }
 
 // ── Tag pills ────────────────────────────────────────────────────────────────
-const TAG_FONT     = `28px ${CARD_FONT_STACK}`
+const TAG_FONT     = cardFont(TYPE_SCALE.tag)
 const TAG_PILL_H   = 56
 const TAG_PAD_X    = 20
 const TAG_GAP      = 15   // horizontal gap between pills
@@ -683,14 +682,14 @@ function measureReviewRows(
     if (showGenres && film.genres?.length) addMetaLine(cfg.metaH)
     if (showOverview && film.overview) {
       if (!firstMeta) contentH += cfg.metaGap
-      measureCtx.font = `italic ${cfg.reviewFs}px ${CARD_FONT_STACK}`
+      measureCtx.font = cardFont(cfg.reviewFs, 'italic')
       contentH += wrapText(measureCtx, film.overview, 0, 0, rvContentW, cfg.reviewLineH, false)
       firstMeta = false
     }
 
     if (film.reviewText) {
       if (!firstMeta) contentH += 21  // gap before review text
-      measureCtx.font = `${cfg.reviewFs}px ${CARD_FONT_STACK}`
+      measureCtx.font = cardFont(cfg.reviewFs)
       contentH += wrapText(measureCtx, film.reviewText, 0, 0, rvContentW, cfg.reviewLineH, false)
     }
 
@@ -765,7 +764,7 @@ function drawStatsHeader(
   let y = startY
   if (statsTitle) {
     ctx.fillStyle = TEXT_COLOR
-    ctx.font = `bold 48px ${CARD_FONT_STACK}`
+    ctx.font = cardFont(TYPE_SCALE.statsTitle, 'bold')
     ctx.textAlign = 'center'
     ctx.textBaseline = 'top'
     ctx.fillText(statsTitle, cardWidth / 2, y)
@@ -773,7 +772,7 @@ function drawStatsHeader(
   }
   if (statsSubtitle) {
     ctx.fillStyle = SUBTEXT_COLOR
-    ctx.font = `28px ${CARD_FONT_STACK}`
+    ctx.font = cardFont(TYPE_SCALE.statsSubtitle)
     ctx.textAlign = 'center'
     ctx.textBaseline = 'top'
     ctx.fillText(statsSubtitle, cardWidth / 2, y)
@@ -815,13 +814,13 @@ async function renderStatsSummary(
     const cy = y + row * cellH
 
     ctx.fillStyle = TEXT_COLOR
-    ctx.font = `bold 56px ${CARD_FONT_STACK}`
+    ctx.font = cardFont(TYPE_SCALE.statsSummaryValue, 'bold')
     ctx.textAlign = 'center'
     ctx.textBaseline = 'top'
     ctx.fillText(stats[i].value, cx, cy)
 
     ctx.fillStyle = SUBTEXT_COLOR
-    ctx.font = `24px ${CARD_FONT_STACK}`
+    ctx.font = cardFont(TYPE_SCALE.statsSummaryLabel)
     ctx.fillText(stats[i].label, cx, cy + 64)
   }
 
@@ -870,7 +869,7 @@ async function renderByWeekChart(
 
     // X-axis labels
     ctx.fillStyle = DIM_COLOR
-    ctx.font = `20px ${CARD_FONT_STACK}`
+    ctx.font = cardFont(TYPE_SCALE.byWeekAxis)
     ctx.textAlign = 'left'
     ctx.textBaseline = 'top'
     ctx.fillText('Jan', chartLeft, y + chartH + 8)
@@ -887,12 +886,12 @@ async function renderByWeekChart(
     for (let i = 0; i < summaryNumbers.length; i++) {
       const cx = 40 + i * segW + segW / 2
       ctx.fillStyle = TEXT_COLOR
-      ctx.font = `bold 40px ${CARD_FONT_STACK}`
+      ctx.font = cardFont(TYPE_SCALE.byWeekTotal, 'bold')
       ctx.textAlign = 'center'
       ctx.textBaseline = 'top'
       ctx.fillText(summaryNumbers[i].value, cx, y)
       ctx.fillStyle = SUBTEXT_COLOR
-      ctx.font = `22px ${CARD_FONT_STACK}`
+      ctx.font = cardFont(TYPE_SCALE.byWeekTotalLabel)
       ctx.fillText(summaryNumbers[i].label, cx, y + 48)
     }
     y += 90
@@ -915,7 +914,7 @@ async function renderByWeekChart(
       ctx.fillRect(bx, by, bw, bh)
 
       ctx.fillStyle = DIM_COLOR
-      ctx.font = `18px ${CARD_FONT_STACK}`
+      ctx.font = cardFont(TYPE_SCALE.byWeekTick)
       ctx.textAlign = 'center'
       ctx.textBaseline = 'top'
       ctx.fillText(dayOfWeek[i].day.charAt(0), bx + bw / 2, y + daysH - 20)
@@ -991,7 +990,7 @@ async function renderBreakdownCard(
 
   for (const r of ratios) {
     ctx.fillStyle = SUBTEXT_COLOR
-    ctx.font = `20px ${CARD_FONT_STACK}`
+    ctx.font = cardFont(TYPE_SCALE.breakdownSectionLabel)
     ctx.textAlign = 'left'
     ctx.textBaseline = 'top'
     ctx.fillText(r.label, barLeft, y)
@@ -1004,7 +1003,7 @@ async function renderBreakdownCard(
     ctx.fillRect(barLeft + prim, y, barW - prim, barH)
 
     ctx.fillStyle = TEXT_COLOR
-    ctx.font = `bold 16px ${CARD_FONT_STACK}`
+    ctx.font = cardFont(TYPE_SCALE.breakdownPieCenter, 'bold')
     ctx.textBaseline = 'middle'
     if (prim > 40) {
       ctx.textAlign = 'left'
@@ -1021,7 +1020,7 @@ async function renderBreakdownCard(
   y += 16
   if (bd.ratingSpread.length > 0) {
     ctx.fillStyle = SUBTEXT_COLOR
-    ctx.font = `20px ${CARD_FONT_STACK}`
+    ctx.font = cardFont(TYPE_SCALE.breakdownLegend)
     ctx.textAlign = 'left'
     ctx.textBaseline = 'top'
     ctx.fillText('Rating Spread', barLeft, y)
@@ -1046,7 +1045,7 @@ async function renderBreakdownCard(
 
       // Star label below bars
       ctx.fillStyle = DIM_COLOR
-      ctx.font = `14px ${CARD_FONT_STACK}`
+      ctx.font = cardFont(TYPE_SCALE.breakdownSpreadTick)
       ctx.textAlign = 'center'
       ctx.textBaseline = 'top'
       ctx.fillText(starLabels[i] ?? '', bx + bw / 2, barsTop + histH + 4)
@@ -1054,7 +1053,7 @@ async function renderBreakdownCard(
       // Count above bar
       if (bd.ratingSpread[i] > 0) {
         ctx.fillStyle = SUBTEXT_COLOR
-        ctx.font = `14px ${CARD_FONT_STACK}`
+        ctx.font = cardFont(TYPE_SCALE.breakdownSpreadCount)
         ctx.textAlign = 'center'
         ctx.textBaseline = 'bottom'
         ctx.fillText(String(bd.ratingSpread[i]), bx + bw / 2, by - 2)
@@ -1066,7 +1065,7 @@ async function renderBreakdownCard(
   // Watchlist
   if (bd.watchlist.watched > 0 || bd.watchlist.added > 0) {
     ctx.fillStyle = SUBTEXT_COLOR
-    ctx.font = `22px ${CARD_FONT_STACK}`
+    ctx.font = cardFont(TYPE_SCALE.breakdownWatchlist)
     ctx.textAlign = 'center'
     ctx.textBaseline = 'top'
     ctx.fillText(
@@ -1104,7 +1103,7 @@ async function renderBarChartCard(
   const categoryLabel = bd.category.charAt(0).toUpperCase() + bd.category.slice(1)
 
   ctx.fillStyle = TEXT_COLOR
-  ctx.font = `bold 30px ${CARD_FONT_STACK}`
+  ctx.font = cardFont(TYPE_SCALE.barChartHeading, 'bold')
   ctx.textAlign = 'center'
   ctx.textBaseline = 'top'
   ctx.fillText(`${categoryLabel} — ${subLabel}`, cardWidth / 2, y)
@@ -1119,14 +1118,14 @@ async function renderBarChartCard(
   for (const bar of bars) {
     // Label
     ctx.fillStyle = TEXT_COLOR
-    ctx.font = `22px ${CARD_FONT_STACK}`
+    ctx.font = cardFont(TYPE_SCALE.barChartLabel)
     ctx.textAlign = 'left'
     ctx.textBaseline = 'top'
     ctx.fillText(bar.label, barLeft, y)
 
     // Count on far right
     ctx.fillStyle = SUBTEXT_COLOR
-    ctx.font = `22px ${CARD_FONT_STACK}`
+    ctx.font = cardFont(TYPE_SCALE.barChartCount)
     ctx.textAlign = 'right'
     ctx.fillText(String(bar.count), cardWidth - 60, y)
 
@@ -1248,7 +1247,7 @@ async function renderMilestonesCard(
 
   // "Milestones" section title
   ctx.fillStyle = TEXT_COLOR
-  ctx.font = `bold 32px ${CARD_FONT_STACK}`
+  ctx.font = cardFont(TYPE_SCALE.milestoneHeading, 'bold')
   ctx.textAlign = 'center'
   ctx.textBaseline = 'top'
   ctx.fillText('Milestones', cardWidth / 2, y)
@@ -1293,7 +1292,7 @@ async function renderMilestonesCard(
 
     // Section label (First Film / 50th / Last Film)
     ctx.fillStyle = SUBTEXT_COLOR
-    ctx.font = `bold 20px ${CARD_FONT_STACK}`
+    ctx.font = cardFont(TYPE_SCALE.milestoneLabel, 'bold')
     ctx.textAlign = 'center'
     ctx.textBaseline = 'top'
     ctx.fillText(entry.label, cx, cellTop)
@@ -1318,7 +1317,7 @@ async function renderMilestonesCard(
     // Date below poster
     const textY = posterY + posterH + 10
     ctx.fillStyle = SUBTEXT_COLOR
-    ctx.font = `20px ${CARD_FONT_STACK}`
+    ctx.font = cardFont(TYPE_SCALE.milestoneMeta)
     ctx.textAlign = 'center'
     ctx.textBaseline = 'top'
     ctx.fillText(entry.date, cx, textY)
@@ -1413,7 +1412,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
       if (showTitle) {
         drawMetaLine(cfg.titleH, () => {
           ctx.fillStyle = TEXT_COLOR
-          ctx.font = `bold ${cfg.titleFs}px ${CARD_FONT_STACK}`
+          ctx.font = cardFont(cfg.titleFs, 'bold')
           ctx.textAlign = 'left'
           ctx.textBaseline = 'top'
           ctx.fillText(truncate(ctx, film.title, rvContentW), textX, contentY)
@@ -1423,7 +1422,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
       if (showYear && film.year) {
         drawMetaLine(cfg.metaH, () => {
           ctx.fillStyle = SUBTEXT_COLOR
-          ctx.font = `${cfg.metaFs}px ${CARD_FONT_STACK}`
+          ctx.font = cardFont(cfg.metaFs)
           ctx.textAlign = 'left'
           ctx.textBaseline = 'top'
           ctx.fillText(film.year, textX, contentY)
@@ -1433,7 +1432,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
       if (showRuntime && film.runtime) {
         drawMetaLine(cfg.metaH, () => {
           ctx.fillStyle = SUBTEXT_COLOR
-          ctx.font = `${cfg.metaFs}px ${CARD_FONT_STACK}`
+          ctx.font = cardFont(cfg.metaFs)
           ctx.textAlign = 'left'
           ctx.textBaseline = 'top'
           ctx.fillText(`${film.runtime} min`, textX, contentY)
@@ -1443,7 +1442,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
       if (showDirector && film.director) {
         drawMetaLine(cfg.metaH, () => {
           ctx.fillStyle = SUBTEXT_COLOR
-          ctx.font = `${cfg.metaFs}px ${CARD_FONT_STACK}`
+          ctx.font = cardFont(cfg.metaFs)
           ctx.textAlign = 'left'
           ctx.textBaseline = 'top'
           ctx.fillText(truncate(ctx, `Directed by ${film.director}`, rvContentW), textX, contentY)
@@ -1453,7 +1452,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
       if (showRating && film.rating) {
         drawMetaLine(cfg.metaH, () => {
           ctx.fillStyle = '#FFB020'
-          ctx.font = `${cfg.metaFs + 3}px ${CARD_FONT_STACK}`
+          ctx.font = cardFont(cfg.metaFs + 3)
           ctx.textAlign = 'left'
           ctx.textBaseline = 'top'
           ctx.fillText(film.rating, textX, contentY)
@@ -1463,7 +1462,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
       if (showDate && film.date) {
         drawMetaLine(cfg.metaH, () => {
           ctx.fillStyle = SUBTEXT_COLOR
-          ctx.font = `${cfg.metaFs}px ${CARD_FONT_STACK}`
+          ctx.font = cardFont(cfg.metaFs)
           ctx.textAlign = 'left'
           ctx.textBaseline = 'top'
           ctx.fillText(film.date!, textX, contentY)
@@ -1479,7 +1478,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
       if (showGenres && film.genres?.length) {
         drawMetaLine(cfg.metaH, () => {
           ctx.fillStyle = SUBTEXT_COLOR
-          ctx.font = `${cfg.metaFs}px ${CARD_FONT_STACK}`
+          ctx.font = cardFont(cfg.metaFs)
           ctx.textAlign = 'left'
           ctx.textBaseline = 'top'
           ctx.fillText(truncate(ctx, film.genres!.join(' · '), rvContentW), textX, contentY)
@@ -1489,7 +1488,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
       if (showOverview && film.overview) {
         if (!firstMeta) contentY += cfg.metaGap
         ctx.fillStyle = SUBTEXT_COLOR
-        ctx.font = `italic ${cfg.reviewFs}px ${CARD_FONT_STACK}`
+        ctx.font = cardFont(cfg.reviewFs, 'italic')
         ctx.textAlign = 'left'
         ctx.textBaseline = 'top'
         contentY += wrapText(ctx, film.overview, textX, contentY, rvContentW, cfg.reviewLineH, true)
@@ -1499,7 +1498,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
       if (film.reviewText) {
         if (!firstMeta) contentY += 21
         ctx.fillStyle = TEXT_COLOR
-        ctx.font = `${cfg.reviewFs}px ${CARD_FONT_STACK}`
+        ctx.font = cardFont(cfg.reviewFs)
         ctx.textAlign = 'left'
         ctx.textBaseline = 'top'
         wrapText(ctx, film.reviewText, textX, contentY, rvContentW, cfg.reviewLineH, true)
@@ -1608,7 +1607,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
       month: 'long', day: 'numeric', year: 'numeric',
     })
     ctx.fillStyle = SUBTEXT_COLOR
-    ctx.font = `30px ${CARD_FONT_STACK}`
+    ctx.font = cardFont(TYPE_SCALE.headerDate)
     ctx.textAlign = 'right'
     ctx.textBaseline = 'middle'
     ctx.fillText(dateStr, layout.cardWidth - 40, headerMidY)
@@ -1617,7 +1616,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
   // ── List title / description / card type label ────────────
   if (showingListTitle && listTitle) {
     ctx.fillStyle = TEXT_COLOR
-    ctx.font = `bold 36px ${CARD_FONT_STACK}`
+    ctx.font = cardFont(TYPE_SCALE.listTitle, 'bold')
     ctx.textAlign = 'left'
     ctx.textBaseline = 'top'
     ctx.fillText(truncate(ctx, listTitle, layout.cardWidth - 80), 40, POSTER_TOP + LIST_PADDING)
@@ -1625,7 +1624,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
   if (showingListDesc && listDescription) {
     const descY = POSTER_TOP + LIST_PADDING + (showingListTitle ? LIST_TITLE_H : 0)
     ctx.fillStyle = SUBTEXT_COLOR
-    ctx.font = `19px ${CARD_FONT_STACK}`
+    ctx.font = cardFont(TYPE_SCALE.listDescription)
     ctx.textAlign = 'left'
     ctx.textBaseline = 'top'
     ctx.fillText(truncate(ctx, listDescription, layout.cardWidth - 80), 40, descY)
@@ -1639,7 +1638,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
   }
   if (showingCardTypeLabel && cardTypeLabel) {
     ctx.fillStyle = TEXT_COLOR
-    ctx.font = `bold 36px ${CARD_FONT_STACK}`
+    ctx.font = cardFont(TYPE_SCALE.cardTypeLabel, 'bold')
     ctx.textAlign = 'left'
     ctx.textBaseline = 'top'
     ctx.fillText(cardTypeLabel, 40, POSTER_TOP + LIST_PADDING)
@@ -1683,9 +1682,9 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
       ctx.fillStyle = TEXT_COLOR
       ctx.textAlign = 'left'
       ctx.textBaseline = 'top'
-      const titleFS = layout.sideLayout ? 34 : GRID_TITLE_FS
+      const titleFS = layout.sideLayout ? 34 : TYPE_SCALE.gridTitle
       const titleLH = layout.sideLayout ? 38 : GRID_LINE_H
-      ctx.font = `bold ${titleFS}px ${CARD_FONT_STACK}`
+      ctx.font = cardFont(titleFS, 'bold')
       // Word-wrap title, max 2 lines; truncate last line if still overflows
       const words = film.title.split(' ')
       let line1 = ''
@@ -1709,7 +1708,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
 
     if (showYear && film.year) {
       ctx.fillStyle = SUBTEXT_COLOR
-      ctx.font = layout.sideLayout ? `26px ${CARD_FONT_STACK}` : `${GRID_META_FS}px ${CARD_FONT_STACK}`
+      ctx.font = layout.sideLayout ? cardFont(26) : cardFont(TYPE_SCALE.gridMeta)
       ctx.textAlign = 'left'
       ctx.textBaseline = 'top'
       ctx.fillText(film.year, textX, textY)
@@ -1718,7 +1717,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
 
     if (showRating && film.rating) {
       ctx.fillStyle = '#FFB020'
-      ctx.font = layout.sideLayout ? `30px ${CARD_FONT_STACK}` : `${GRID_META_FS}px ${CARD_FONT_STACK}`
+      ctx.font = layout.sideLayout ? cardFont(30) : cardFont(TYPE_SCALE.gridMeta)
       ctx.textAlign = 'left'
       ctx.textBaseline = 'top'
       ctx.fillText(film.rating, textX, textY)
@@ -1728,7 +1727,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
     // For diary type: show per-film watch date under the rating when showDate is on
     if (cardType === 'recent-diary' && showDate && film.date) {
       ctx.fillStyle = SUBTEXT_COLOR
-      ctx.font = layout.sideLayout ? `26px ${CARD_FONT_STACK}` : `${GRID_DATE_FS}px ${CARD_FONT_STACK}`
+      ctx.font = layout.sideLayout ? cardFont(26) : cardFont(TYPE_SCALE.gridDate)
       ctx.textAlign = 'left'
       ctx.textBaseline = 'top'
       ctx.fillText(film.date, textX, textY)
@@ -1830,7 +1829,7 @@ async function drawFooter(
     }
 
     ctx.fillStyle = SUBTEXT_COLOR
-    ctx.font = `27px ${CARD_FONT_STACK}`
+    ctx.font = cardFont(TYPE_SCALE.footerUsername)
     ctx.textAlign = 'left'
     ctx.textBaseline = 'middle'
     ctx.fillText(username, x, footerY)
@@ -1838,7 +1837,7 @@ async function drawFooter(
 
   // Right side attribution
   ctx.fillStyle = DIM_COLOR
-  ctx.font = `23px ${CARD_FONT_STACK}`
+  ctx.font = cardFont(TYPE_SCALE.footerAttribution)
   ctx.textAlign = 'right'
   ctx.textBaseline = 'middle'
   const attributionText = 'generated by Boxd Card'
