@@ -179,6 +179,18 @@ npx wrangler secret put TMDB_API_KEY   # v4 "API Read Access Token", NOT the v3 
 
 **Loading the extension:** `npm run build` → `chrome://extensions` → Developer mode → Load unpacked → `dist/`. Reload after each build; also refresh the Letterboxd tab for content-script changes.
 
+**The social preview is a real card, not a generated asset.** `docs/social-preview.png` (the
+`og:image` for both `docs/index.html` and `docs/about/index.html`) is an actual Favorites card
+generated from the extension and committed by hand. To refresh it: generate a Favorites card in the
+extension, download it, and replace the file.
+
+There used to be a `scripts/generate-social-preview.mjs` behind `npm run generate:preview` that
+re-implemented the card layout in a second renderer — its own copy of the constants, gradient
+rectangles instead of posters, and a hand-drawn imitation of the Letterboxd logo. It was superseded
+the moment the preview was replaced with a real render, and from then on running it would have
+silently downgraded the marketing image. Both are deleted. **If you need a preview, render one with
+the real product; do not reintroduce a second renderer.**
+
 **PostToolUse hook:** any Edit/Write triggers `.claude/hooks/run-tests.sh` → `npm run test:run`.
 
 **Pre-commit hook** (`.githooks/pre-commit`, wired up by `npm install`): rebuilds the apex app (`docs/index.html`, `docs/assets/`, `docs/favicon.svg`) when `src/web/`, `vite.web.config.ts`, `package.json`, or `.env.production` are staged, and reconciles `package-lock.json` when `package.json` is staged.

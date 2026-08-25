@@ -15,7 +15,6 @@
     "test": "vitest",
     "test:run": "vitest run",
     "coverage": "vitest run --coverage",
-    "generate:preview": "node scripts/generate-social-preview.mjs",
     "prepare": "git config core.hooksPath .githooks || true"
   },
   "dependencies": {
