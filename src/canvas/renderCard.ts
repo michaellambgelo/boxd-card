@@ -700,10 +700,28 @@ function measureReviewRows(
     currentY += rowH + (i < count - 1 ? cfg.rowGap : 0)
   }
 
-  const footerY = currentY + cfg.footerGap
-  const dynamicH = footerY + 64
-  const cardHeight = cfg.fixedHeight != null ? cfg.fixedHeight : dynamicH
-  return { rows, footerY: cfg.fixedHeight != null ? cfg.fixedHeight - 64 : footerY, cardHeight }
+  const dynamicFooterY = currentY + cfg.footerGap
+  const cardHeight = cfg.fixedHeight != null ? cfg.fixedHeight : dynamicFooterY + 64
+  const footerY = cfg.fixedHeight != null ? cfg.fixedHeight - 64 : dynamicFooterY
+
+  // Landscape grows to fit its content; every other layout is a fixed platform
+  // size (Instagram feed, Twitter header) and cannot. There, a row that does not
+  // fit must not be drawn AT ALL — drawing it and relying on the clip produces a
+  // review cut off mid-sentence with the footer painted over the remains, which
+  // is what Review + Banner did for any content taller than 750px.
+  //
+  // Dropping the row is the honest failure: the card shows fewer reviews than
+  // were asked for, but every one it shows is complete. Growing the card instead
+  // would defeat the point of a fixed aspect ratio.
+  let visibleRows = rows
+  if (cfg.fixedHeight != null) {
+    const contentBottom = footerY - cfg.footerGap
+    const fitting = rows.filter((r) => r.y + r.rowH <= contentBottom)
+    // Never return nothing: one clipped row still beats an empty card.
+    visibleRows = fitting.length > 0 ? fitting : rows.slice(0, 1)
+  }
+
+  return { rows: visibleRows, footerY, cardHeight }
 }
 
 const LIST_PADDING = 12
@@ -1358,7 +1376,9 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
 
     await drawLogo(ctx, 40, HEADER_H / 2)
 
-    for (let i = 0; i < count; i++) {
+    // rows may be shorter than `count` on fixed-height layouts, where rows that
+    // could not fit were dropped by measureReviewRows rather than clipped.
+    for (let i = 0; i < rows.length; i++) {
       const film = films[i]
       const rowY = rows[i].y
 

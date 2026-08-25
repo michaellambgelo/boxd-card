@@ -7,6 +7,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { CardOptions } from '../../src/canvas/renderCard'
 import { renderCard } from '../../src/canvas/renderCard'
+import { resetRandom } from '../canvasEnv'
 
 export interface RenderedCard {
   name: string
@@ -20,7 +21,16 @@ export function pngSize(buf: Buffer): { width: number; height: number } {
   return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) }
 }
 
+/**
+ * Render one card to PNG bytes.
+ *
+ * The seed is reset per RENDER, not per test. drawBrandGradient() consumes
+ * three Math.random() values every time it runs, so two renders inside one test
+ * would otherwise draw different backgrounds and compare unequal for a reason
+ * that has nothing to do with what is being tested. Goldens depend on this too.
+ */
 export async function renderToBuffer(options: CardOptions): Promise<Buffer> {
+  resetRandom()
   const blob = await renderCard(options)
   return Buffer.from(await blob.arrayBuffer())
 }
