@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { loadImage } from '../../src/canvas/renderCard'
+import { CARD_FONT_STACK } from '../../src/canvas/fonts'
 import tmdbLogoUrl from '../../src/assets/TMDB-blue-short.svg?url'
 import logoUrl from '../../src/assets/letterboxd-logo-h-neg-rgb.svg?url'
 
@@ -38,6 +39,21 @@ describe('canvasEnv', () => {
     const img = await loadImage(String(url))
     expect(img.width).toBe(w)
     expect(img.height).toBe(h)
+  })
+
+  // A silent fallback to the host sans-serif is the failure mode that would
+  // make every golden wrong while everything still passed. Inter is measurably
+  // wider than the system face at the same size, so compare the two directly.
+  it('actually resolves Inter, rather than falling back to sans-serif', () => {
+    const ctx = document.createElement('canvas').getContext('2d') as CanvasRenderingContext2D
+    const sample = 'Aftersun 2022'
+    ctx.font = '22px sans-serif'
+    const system = ctx.measureText(sample).width
+    ctx.font = `22px ${CARD_FONT_STACK}`
+    const inter = ctx.measureText(sample).width
+    expect(inter).not.toBeCloseTo(system, 1)
+    ctx.font = `bold 22px ${CARD_FONT_STACK}`
+    expect(ctx.measureText(sample).width).toBeGreaterThan(inter)
   })
 
   it('makes Math.random deterministic across renders', () => {

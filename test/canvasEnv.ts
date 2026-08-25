@@ -23,9 +23,30 @@ import { extname, resolve as resolvePath } from 'node:path'
 import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
-const { Image: NodeCanvasImage } = require('canvas')
+const { Image: NodeCanvasImage, registerFont } = require('canvas')
 
 const ROOT = process.cwd()
+
+// The card typeface, for the node-canvas side.
+//
+// The browser gets Inter through @font-face (src/assets/fonts/fonts.css) and
+// renderCard awaits document.fonts before drawing. node-canvas has no CSS, so
+// the faces must be registered up front — and it cannot read woff2, which is
+// why test/fixtures/fonts carries TTFs of the same outlines.
+//
+// Without this, every canvas font string falls through Inter to sans-serif and
+// the goldens quietly record the host face instead of the shipped one.
+const FONT_DIR = resolvePath(ROOT, 'test/fixtures/fonts')
+for (const [file, weight] of [['Inter-Regular.ttf', 'normal'], ['Inter-Bold.ttf', 'bold']] as const) {
+  const path = resolvePath(FONT_DIR, file)
+  if (!existsSync(path)) {
+    throw new Error(
+      `Missing ${path}. The visual suite renders in Inter; without it every card ` +
+      'would silently fall back to the host sans-serif and the goldens would be wrong.',
+    )
+  }
+  registerFont(path, { family: 'Inter', weight })
+}
 
 const MIME: Record<string, string> = {
   '.svg': 'image/svg+xml',
