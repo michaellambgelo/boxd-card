@@ -443,6 +443,24 @@ export function drawTagPills(
   return (curY - y) + TAG_PILL_H
 }
 
+
+/**
+ * Does this title need a second line at the grid title size?
+ *
+ * Shared by the row pre-pass and the draw itself so the two cannot disagree — if
+ * they did, a cell would reserve one number of lines and then draw another.
+ */
+function titleWrapsToTwoLines(ctx: CanvasRenderingContext2D, title: string, maxTextW: number): boolean {
+  const words = title.split(' ')
+  let line = ''
+  for (let w = 0; w < words.length; w++) {
+    const test = line ? `${line} ${words[w]}` : words[w]
+    if (line && ctx.measureText(test).width > maxTextW) return true
+    line = test
+  }
+  return false
+}
+
 // ── Background (solid or blurred backdrop) ───────────────────────────────────
 const BACKDROP_BLUR = 20
 
@@ -1633,6 +1651,29 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
     ctx.fillText(cardTypeLabel, 40, POSTER_TOP + LIST_PADDING)
   }
 
+  // Which rows contain a title that wraps to two lines?
+  //
+  // Titles are top-aligned with metadata hanging below, so a two-line title
+  // pushes its own year and rating a line lower than a one-line neighbour's and
+  // the row reads as ragged. Reserving two lines for every cell in an affected
+  // row gives them a shared baseline — the effect letterboxd-graphics gets from
+  // `.film-foot { margin-top: auto }`, where a grid row sizes to its tallest cell.
+  //
+  // Scoped to the row rather than applied globally, because that is what the CSS
+  // does: a row where nothing wraps keeps its metadata tucked under the title and
+  // gains no gap it did not need.
+  const drawCount = Math.min(films.length, filmCount)
+  const rowHasWrappedTitle: boolean[] = []
+  if (showTitle) {
+    const measureCtx = document.createElement('canvas').getContext('2d')!
+    measureCtx.font = cardFont(TYPE_SCALE.gridTitle, 'bold')
+    for (let i = 0; i < drawCount; i++) {
+      const r = Math.floor(i / layout.cols)
+      if (rowHasWrappedTitle[r]) continue
+      rowHasWrappedTitle[r] = titleWrapsToTwoLines(measureCtx, films[i].title, layout.posterW)
+    }
+  }
+
   // ── Posters ───────────────────────────────────────────────
   for (let i = 0; i < Math.min(films.length, filmCount); i++) {
     const film = films[i]
@@ -1662,6 +1703,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
       const titleLH = GRID_LINE_H
       ctx.font = cardFont(titleFS, 'bold')
       // Word-wrap title, max 2 lines; truncate last line if still overflows
+      const titleTop = textY
       const words = film.title.split(' ')
       let line1 = ''
       let remaining = ''
@@ -1674,12 +1716,15 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
         line1 = test
       }
       ctx.fillText(line1 || film.title, textX, textY)
-      textY += titleLH
       if (remaining) {
-        ctx.fillText(truncate(ctx, remaining, maxTextW), textX, textY)
-        textY += titleLH
+        ctx.fillText(truncate(ctx, remaining, maxTextW), textX, titleTop + titleLH)
       }
-      if (!remaining) textY += GRID_LINE_GAP
+
+      // Every cell in a row reserves the same number of title lines, so the
+      // metadata below shares a baseline across the row. gridTextAreaHeight()
+      // already reserves the two-line worst case for every row, so the taller
+      // case costs no extra card height.
+      textY = titleTop + titleLH * (rowHasWrappedTitle[row] ? 2 : 1) + GRID_LINE_GAP
     }
 
     if (showYear && film.year) {
