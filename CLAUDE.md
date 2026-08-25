@@ -327,9 +327,23 @@ Do **not** use the sibling `hasDefaultPoster` field for this — it stays `true`
 
 ## Testing
 
-Vitest + jsdom, `test/setup.ts` mocks `chrome.*` and the Canvas 2D context. `worker/index.test.ts` exercises the worker's `fetch` handler directly.
+Vitest + jsdom, in **three projects** (`vitest.config.ts`):
 
-When fixing a bug, add the test that fails against the old code first — the worker's missing CORS headers survived a full suite because the tests asserted status codes but never headers.
+| Project | Runs | Setup |
+|---|---|---|
+| `unit` | everything except `*.visual.test.ts` / `*.gen.test.ts` | `setup.chrome.ts` + `setup.canvasMock.ts` |
+| `visual` | `*.visual.test.ts` — golden images | `setup.chrome.ts` + `canvasEnv.ts` (**no** canvas mock) |
+| `generate` | `*.gen.test.ts` — the studio. Not run by `test:run` | same as `visual` |
+
+`npm run test:run` runs `unit` + `visual`. `worker/index.test.ts` exercises the worker's `fetch` handler directly.
+
+**The canvas mock and the real canvas are deliberately separated.** `setup.canvasMock.ts` replaces `getContext` and `toBlob` with `vi.fn()`s and pins `measureText` to a constant 80 — so the structural tests exercise `wrapText` against a fiction, and real metrics wrap differently. The `visual` project omits that mock, letting jsdom's node-canvas backing rasterize for real. **If the visual suite disagrees with a structural test about where text breaks, the visual suite is the one telling the truth.**
+
+**Goldens** live in `test/goldens/`, keyed to *draw path* rather than card type — all four poster-grid card types funnel through the same `renderCard` path, so a golden per card type would be redundant while leaving the stats renderers unguarded. Re-bake only when a rendering change was intended: `npm run goldens:update`, after looking at the diff images in `studio-out/golden-failures/`. **They are skipped under `CI` for now** (see the comment in `goldens.visual.test.ts`); don't "fix" a red CI by deleting them.
+
+**`npm run studio`** renders all 96 card type x layout combinations plus a contact sheet into `studio-out/` (gitignored). It is how design changes get reviewed, and it is what found the review-card clipping bug.
+
+When fixing a bug, add the test that fails against the old code first — the worker's missing CORS headers survived a full suite because the tests asserted status codes but never headers. The same discipline applies to goldens: a regression suite never observed failing is not known to work.
 
 ## Known gaps
 
