@@ -24,5 +24,5 @@
     "noFallthroughCasesInSwitch": true,
     "types": ["node", "chrome", "vite/client"]
   },
-  "include": ["test/canvasEnv.ts", "src/**/*.visual.test.ts", "test/**/*.visual.test.ts"]
+  "include": ["test/canvasEnv.ts", "test/visual/**/*.ts", "src/**/*.visual.test.ts"]
 }

@@ -11,10 +11,11 @@
     "dev:web": "vite --config vite.web.config.ts",
     "build:web": "npm run typecheck && rm -rf docs/assets && vite build --config vite.web.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p worker/tsconfig.json && tsc --noEmit -p tsconfig.visual.json",
+    "studio": "vitest run --project generate",
     "lint": "eslint . --max-warnings 0",
-    "test": "vitest",
-    "test:run": "vitest run",
-    "coverage": "vitest run --coverage",
+    "test": "vitest --project unit --project visual",
+    "test:run": "vitest run --project unit --project visual",
+    "coverage": "vitest run --project unit --project visual --coverage",
     "prepare": "git config core.hooksPath .githooks || true"
   },
   "dependencies": {

@@ -21,7 +21,20 @@ export default defineConfig({
           environment: 'jsdom',
           globals: true,
           setupFiles: ['./test/setup.chrome.ts', './test/setup.canvasMock.ts'],
-          exclude: ['**/node_modules/**', '**/dist/**', '**/*.visual.test.ts'],
+          exclude: ['**/node_modules/**', '**/dist/**', '**/*.visual.test.ts', '**/*.gen.test.ts'],
+        },
+      },
+      {
+        // Generators: the studio and anything else that writes files. Excluded
+        // from `npm run test:run` on purpose, so CI never writes and a normal
+        // test run never rewrites studio output.
+        test: {
+          name: 'generate',
+          environment: 'jsdom',
+          globals: true,
+          setupFiles: ['./test/setup.chrome.ts', './test/canvasEnv.ts'],
+          include: ['**/*.gen.test.ts'],
+          exclude: ['**/node_modules/**', '**/dist/**'],
         },
       },
       {
@@ -31,7 +44,7 @@ export default defineConfig({
           globals: true,
           setupFiles: ['./test/setup.chrome.ts', './test/canvasEnv.ts'],
           include: ['**/*.visual.test.ts'],
-          exclude: ['**/node_modules/**', '**/dist/**'],
+          exclude: ['**/node_modules/**', '**/dist/**', '**/*.gen.test.ts'],
         },
       },
     ],

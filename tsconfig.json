@@ -31,5 +31,5 @@
   "include": ["src", "test", "worker/index.test.ts", "manifest.json"],
   // The visual suite needs Node types as well as DOM, so it is typechecked by
   // tsconfig.visual.json instead. Including it here would fail on node:fs.
-  "exclude": ["test/canvasEnv.ts", "src/**/*.visual.test.ts", "test/**/*.visual.test.ts"]
+  "exclude": ["test/canvasEnv.ts", "test/visual", "src/**/*.visual.test.ts"]
 }
