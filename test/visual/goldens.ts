@@ -14,10 +14,9 @@
 //
 // drawFooter comes free with every one of them.
 //
-// Note layout.sideLayout is dead — constructed false at all ten sites, never
-// assigned true, and both tests that touch it assert toBe(false). Its three font
-// sites are unreachable, so no golden here tries to reach them. 40 reachable
-// sites, not 43.
+// These pin 40 reachable font sites. The other three lived in layout.sideLayout's
+// true-arm, which was unreachable — the flag was constructed false everywhere and
+// never assigned true — and has since been deleted.
 import type { CardOptions } from '../../src/canvas/renderCard'
 import { cardOptionsFor } from './fixtures'
 

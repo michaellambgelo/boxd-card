@@ -73,8 +73,6 @@ export interface CardLayout {
   rows: number
   footerY: number
   textAreaH: number
-  /** When true, text is drawn to the right of each poster instead of below. */
-  sideLayout: boolean
 }
 
 const HEADER_H    = 90
@@ -157,7 +155,6 @@ export function computeLayout(
         posterLeft, posterTop: pt,
         cols: effectiveCols, rows: 1,
         footerY, textAreaH: TAH,
-        sideLayout: false,
       }
     }
 
@@ -172,7 +169,6 @@ export function computeLayout(
       posterLeft: 40, posterTop: pt,
       cols, rows, footerY,
       textAreaH: TAH,
-      sideLayout: false,
     }
   }
 
@@ -201,7 +197,6 @@ export function computeLayout(
         posterW, posterH, posterGap,
         posterLeft, posterTop: pt,
         cols, rows, footerY, textAreaH: TAH,
-        sideLayout: false,
       }
     }
 
@@ -217,7 +212,6 @@ export function computeLayout(
       posterLeft, posterTop: pt,
       cols, rows, footerY,
       textAreaH: TAH,
-      sideLayout: false,
     }
   }
 
@@ -242,7 +236,6 @@ export function computeLayout(
         posterLeft, posterTop: pt,
         cols: effectiveCols, rows: 1,
         footerY, textAreaH,
-        sideLayout: false,
       }
     }
 
@@ -257,7 +250,6 @@ export function computeLayout(
       posterLeft: 40, posterTop: pt,
       cols, rows, footerY,
       textAreaH: TAH,
-      sideLayout: false,
     }
   }
 
@@ -277,7 +269,6 @@ export function computeLayout(
       posterLeft, posterTop: pt,
       cols: 1, rows: 1,
       footerY, textAreaH,
-      sideLayout: false,
     }
   }
 
@@ -299,7 +290,6 @@ export function computeLayout(
       posterW, posterH, posterGap,
       posterLeft, posterTop: pt,
       cols, rows, footerY, textAreaH,
-      sideLayout: false,
     }
   }
 
@@ -316,7 +306,6 @@ export function computeLayout(
     posterW, posterH, posterGap: 20,
     posterLeft, posterTop: pt,
     cols, rows, footerY, textAreaH,
-    sideLayout: false,
   }
 }
 
@@ -1650,10 +1639,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
     const col = i % layout.cols
     const row = Math.floor(i / layout.cols)
     const x = layout.posterLeft + col * (layout.posterW + layout.posterGap)
-    const sideRowGap = 20  // vertical gap between rows in sideLayout
-    const y = layout.sideLayout
-      ? layout.posterTop + row * (layout.posterH + sideRowGap)
-      : layout.posterTop + row * (layout.posterH + layout.textAreaH)
+    const y = layout.posterTop + row * (layout.posterH + layout.textAreaH)
 
     try {
       const img = await loadImage(film.posterDataUrl)
@@ -1663,27 +1649,17 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
       ctx.fillRect(x, y, layout.posterW, layout.posterH)
     }
 
-    // Text position: beside poster (sideLayout) or below poster (grid)
-    const sideTextPad = 16  // gap between poster and text in sideLayout
-    const textX = layout.sideLayout ? x + layout.posterW + sideTextPad : x
-    let maxTextW: number
-    if (layout.sideLayout) {
-      const isLastCol = col === layout.cols - 1
-      const rightEdge = isLastCol
-        ? layout.cardWidth - layout.posterLeft         // mirror left margin
-        : x + layout.posterW + layout.posterGap - 12   // stop before next poster
-      maxTextW = rightEdge - textX
-    } else {
-      maxTextW = layout.posterW
-    }
-    let textY = layout.sideLayout ? y : y + layout.posterH + GRID_TEXT_PAD
+    // Text sits below each poster, within that poster's column width.
+    const textX = x
+    const maxTextW = layout.posterW
+    let textY = y + layout.posterH + GRID_TEXT_PAD
 
     if (showTitle) {
       ctx.fillStyle = TEXT_COLOR
       ctx.textAlign = 'left'
       ctx.textBaseline = 'top'
-      const titleFS = layout.sideLayout ? 34 : TYPE_SCALE.gridTitle
-      const titleLH = layout.sideLayout ? 38 : GRID_LINE_H
+      const titleFS = TYPE_SCALE.gridTitle
+      const titleLH = GRID_LINE_H
       ctx.font = cardFont(titleFS, 'bold')
       // Word-wrap title, max 2 lines; truncate last line if still overflows
       const words = film.title.split(' ')
@@ -1703,12 +1679,12 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
         ctx.fillText(truncate(ctx, remaining, maxTextW), textX, textY)
         textY += titleLH
       }
-      if (!layout.sideLayout && !remaining) textY += GRID_LINE_GAP
+      if (!remaining) textY += GRID_LINE_GAP
     }
 
     if (showYear && film.year) {
       ctx.fillStyle = SUBTEXT_COLOR
-      ctx.font = layout.sideLayout ? cardFont(26) : cardFont(TYPE_SCALE.gridMeta)
+      ctx.font = cardFont(TYPE_SCALE.gridMeta)
       ctx.textAlign = 'left'
       ctx.textBaseline = 'top'
       ctx.fillText(film.year, textX, textY)
@@ -1717,7 +1693,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
 
     if (showRating && film.rating) {
       ctx.fillStyle = '#FFB020'
-      ctx.font = layout.sideLayout ? cardFont(30) : cardFont(TYPE_SCALE.gridMeta)
+      ctx.font = cardFont(TYPE_SCALE.gridMeta)
       ctx.textAlign = 'left'
       ctx.textBaseline = 'top'
       ctx.fillText(film.rating, textX, textY)
@@ -1727,7 +1703,7 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
     // For diary type: show per-film watch date under the rating when showDate is on
     if (cardType === 'recent-diary' && showDate && film.date) {
       ctx.fillStyle = SUBTEXT_COLOR
-      ctx.font = layout.sideLayout ? cardFont(26) : cardFont(TYPE_SCALE.gridDate)
+      ctx.font = cardFont(TYPE_SCALE.gridDate)
       ctx.textAlign = 'left'
       ctx.textBaseline = 'top'
       ctx.fillText(film.date, textX, textY)
