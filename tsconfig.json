@@ -28,5 +28,8 @@
   // against the Workers runtime. Its test file is listed here instead, because
   // that's how it actually runs: under vitest, in jsdom, with DOM types.
   // Build configs run in Node and get tsconfig.node.json.
-  "include": ["src", "test", "worker/index.test.ts", "manifest.json"]
+  "include": ["src", "test", "worker/index.test.ts", "manifest.json"],
+  // The visual suite needs Node types as well as DOM, so it is typechecked by
+  // tsconfig.visual.json instead. Including it here would fail on node:fs.
+  "exclude": ["test/canvasEnv.ts", "src/**/*.visual.test.ts", "test/**/*.visual.test.ts"]
 }

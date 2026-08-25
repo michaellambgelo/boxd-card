@@ -11,3 +11,6 @@ worker/.dev.vars
 # deletes them after upload, but a build without GRAFANA_FARO_API_KEY skips
 # that plugin entirely — never publish unminified sources to Pages.
 docs/assets/*.map
+
+# Visual studio output — regenerate with npm run studio
+studio-out/
