@@ -1,0 +1,4 @@
+rendered 96/96 cards -> studio-out/
+contact sheet -> studio-out/_contact-sheet.png
+
+card types: Last Four Watched, Favorites, Recent Diary, List, Review, Stats

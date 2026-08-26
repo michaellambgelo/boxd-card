@@ -4,6 +4,15 @@ on:
   push:
     branches:
       - release
+  # Manual runs exist so the first upload of a new setup can land as a draft and
+  # stop there. Checkout is pinned to `release` below, so a dispatch from any
+  # branch still builds the release branch.
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Submit to the Chrome Web Store for review after uploading"
+        type: boolean
+        default: true
 
 jobs:
   release:
@@ -51,6 +60,88 @@ jobs:
         run: |
           cd dist
           zip -r ../boxd-card-${{ steps.version.outputs.version }}.zip .
+
+      - name: Authenticate to Google
+        id: gauth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.CWS_SERVICE_ACCOUNT_KEY }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/chromewebstore
+
+      - name: Upload to the Chrome Web Store
+        id: upload
+        env:
+          TOKEN:        ${{ steps.gauth.outputs.access_token }}
+          PUBLISHER_ID: ${{ vars.CWS_PUBLISHER_ID }}
+          EXTENSION_ID: ${{ vars.CWS_EXTENSION_ID }}
+          ZIP: boxd-card-${{ steps.version.outputs.version }}.zip
+        run: |
+          set -uo pipefail
+          # Body and status are captured separately on purpose: a REJECTED upload
+          # still returns HTTP 200 with the verdict in the body, and on a genuine
+          # HTTP error we still want that body in the log rather than a bare code.
+          HTTP=$(curl -sS -o upload.json -w '%{http_code}' \
+            -H "Authorization: Bearer $TOKEN" \
+            -X POST -T "$ZIP" \
+            "https://chromewebstore.googleapis.com/upload/v2/publishers/$PUBLISHER_ID/items/$EXTENSION_ID:upload")
+          echo "HTTP $HTTP"
+          cat upload.json
+
+          STATE=$(jq -r '.uploadState // "UNKNOWN"' upload.json)
+          case "$STATE" in
+            SUCCESS)
+              echo "Uploaded version ${{ steps.version.outputs.version }} as a draft."
+              ;;
+            UPLOAD_IN_PROGRESS)
+              echo "::warning::Store is still processing the package; publish may need a retry."
+              ;;
+            *)
+              echo "::error::Upload failed (HTTP $HTTP, uploadState=$STATE)"
+              jq -r '.itemError[]?.errorDetail // empty' upload.json
+              exit 1
+              ;;
+          esac
+
+      # `github.event_name == 'push' || inputs.publish` rather than a string
+      # comparison: a workflow_dispatch boolean arrives as a real boolean, and
+      # Actions casts across mismatched types — so `inputs.publish != 'false'`
+      # evaluates TRUE with the box unticked and publishes anyway.
+      - name: Submit for review
+        if: github.event_name == 'push' || inputs.publish
+        env:
+          TOKEN:        ${{ steps.gauth.outputs.access_token }}
+          PUBLISHER_ID: ${{ vars.CWS_PUBLISHER_ID }}
+          EXTENSION_ID: ${{ vars.CWS_EXTENSION_ID }}
+        run: |
+          set -uo pipefail
+          HTTP=$(curl -sS -o publish.json -w '%{http_code}' \
+            -H "Authorization: Bearer $TOKEN" \
+            -X POST \
+            "https://chromewebstore.googleapis.com/v2/publishers/$PUBLISHER_ID/items/$EXTENSION_ID:publish")
+          echo "HTTP $HTTP"
+          cat publish.json
+          if [ "$HTTP" -ge 400 ]; then
+            echo "::error::Publish failed (HTTP $HTTP)"
+            exit 1
+          fi
+          echo "Submitted for review. Review is asynchronous — this does not mean live."
+
+      - name: Summarise the store submission
+        if: always() && steps.upload.outcome == 'success'
+        run: |
+          {
+            echo "## Chrome Web Store"
+            echo ""
+            echo "Version \`${{ steps.version.outputs.version }}\` uploaded."
+            if [ "${{ github.event_name }}" = "push" ] || [ "${{ inputs.publish }}" = "true" ]; then
+              echo "Submitted for review — asynchronous, so this is not yet live."
+            else
+              echo "Left as a **draft**; publish was not requested."
+            fi
+            echo ""
+            echo "[Open the dashboard](https://chrome.google.com/webstore/devconsole/)"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Tag release
         env:
