@@ -19,17 +19,28 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Authenticate to Google
-        id: gauth
-        uses: google-github-actions/auth@v2
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          credentials_json: ${{ secrets.CWS_SERVICE_ACCOUNT_KEY }}
-          token_format: access_token
-          access_token_scopes: https://www.googleapis.com/auth/chromewebstore
+          node-version: 22
+
+      - name: Mint a Chrome Web Store access token
+        id: gauth
+        env:
+          GCP_SERVICE_ACCOUNT_KEY: ${{ secrets.CWS_SERVICE_ACCOUNT_KEY }}
+        run: |
+          set -euo pipefail
+          TOKEN=$(node scripts/gcp-access-token.mjs https://www.googleapis.com/auth/chromewebstore)
+          # Mask before the value can reach any later log line.
+          echo "::add-mask::$TOKEN"
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
 
       - name: Fetch item status
         env:
-          TOKEN:        ${{ steps.gauth.outputs.access_token }}
+          TOKEN:        ${{ steps.gauth.outputs.token }}
           PUBLISHER_ID: ${{ vars.CWS_PUBLISHER_ID }}
           EXTENSION_ID: ${{ vars.CWS_EXTENSION_ID }}
         run: |

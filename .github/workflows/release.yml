@@ -61,18 +61,21 @@ jobs:
           cd dist
           zip -r ../boxd-card-${{ steps.version.outputs.version }}.zip .
 
-      - name: Authenticate to Google
+      - name: Mint a Chrome Web Store access token
         id: gauth
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.CWS_SERVICE_ACCOUNT_KEY }}
-          token_format: access_token
-          access_token_scopes: https://www.googleapis.com/auth/chromewebstore
+        env:
+          GCP_SERVICE_ACCOUNT_KEY: ${{ secrets.CWS_SERVICE_ACCOUNT_KEY }}
+        run: |
+          set -euo pipefail
+          TOKEN=$(node scripts/gcp-access-token.mjs https://www.googleapis.com/auth/chromewebstore)
+          # Mask before the value can reach any later log line.
+          echo "::add-mask::$TOKEN"
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
 
       - name: Upload to the Chrome Web Store
         id: upload
         env:
-          TOKEN:        ${{ steps.gauth.outputs.access_token }}
+          TOKEN:        ${{ steps.gauth.outputs.token }}
           PUBLISHER_ID: ${{ vars.CWS_PUBLISHER_ID }}
           EXTENSION_ID: ${{ vars.CWS_EXTENSION_ID }}
           ZIP: boxd-card-${{ steps.version.outputs.version }}.zip
@@ -110,7 +113,7 @@ jobs:
       - name: Submit for review
         if: github.event_name == 'push' || inputs.publish
         env:
-          TOKEN:        ${{ steps.gauth.outputs.access_token }}
+          TOKEN:        ${{ steps.gauth.outputs.token }}
           PUBLISHER_ID: ${{ vars.CWS_PUBLISHER_ID }}
           EXTENSION_ID: ${{ vars.CWS_EXTENSION_ID }}
         run: |
