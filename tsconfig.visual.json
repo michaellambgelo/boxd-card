@@ -1,0 +1,28 @@
+{
+  // The visual (golden-image) suite is the one place that needs BOTH DOM and
+  // Node types: it drives renderCard() through jsdom while reading fixtures and
+  // writing golden PNGs off the filesystem.
+  //
+  // It gets its own config rather than adding "node" to tsconfig.json, because
+  // that file deliberately withholds Node types so app sources can't pick up
+  // Node globals (setTimeout returning NodeJS.Timeout being the classic leak).
+  // Keeping the two apart preserves that guarantee.
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "types": ["node", "chrome", "vite/client"]
+  },
+  "include": ["test/canvasEnv.ts", "test/visual/**/*.ts", "src/**/*.visual.test.ts"]
+}

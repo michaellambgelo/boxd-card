@@ -1,4 +1,5 @@
 import React from 'react'
+import '../assets/fonts/fonts.css'
 import ReactDOM from 'react-dom/client'
 import App from './App'
 import { captureHandoffUrl } from './handoff'

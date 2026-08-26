@@ -1,30 +1,16 @@
 import { vi } from 'vitest'
 
-// Mock Chrome extension APIs before any module imports them
-const mockMessageListeners: Array<(...args: unknown[]) => unknown> = []
-
-globalThis.chrome = {
-  runtime: {
-    id: 'test-extension-id',
-    onMessage:   { addListener: vi.fn((fn) => mockMessageListeners.push(fn)) },
-    onInstalled: { addListener: vi.fn() },
-    sendMessage: vi.fn(),
-  },
-  tabs: {
-    query: vi.fn(),
-    sendMessage: vi.fn(),
-  },
-  declarativeContent: {
-    onPageChanged: {
-      removeRules: vi.fn((_rules, cb) => cb?.()),
-      addRules: vi.fn(),
-    },
-    PageStateMatcher: vi.fn(),
-    ShowAction: vi.fn(),
-  },
-} as unknown as typeof chrome
-
-// Mock Canvas API (jsdom does not implement 2D context)
+// Mock Canvas API (jsdom does not implement 2D context).
+//
+// This file is loaded by the DEFAULT vitest project only. The `visual` project
+// deliberately omits it and loads test/canvasEnv.ts instead, so that the golden
+// image suite rasterizes for real through node-canvas.
+//
+// Note what this mock costs: measureText is pinned to a constant 80, so every
+// structural test that exercises wrapText() is measuring against a fiction.
+// Real metrics wrap differently. If the visual suite disagrees with a
+// structural test about where text breaks, the visual suite is the one telling
+// the truth.
 const mockCtx = {
   fillStyle: '',
   font: '',
