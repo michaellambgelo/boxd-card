@@ -1,0 +1,17 @@
+/* Inter — see ./README.md for provenance and licence.
+   Declared once and imported by both browser entry points, so the extension
+   popup and the web app resolve the same faces the canvas renderer asks for. */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./Inter-Regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./Inter-Bold.woff2') format('woff2');
+}

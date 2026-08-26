@@ -14,8 +14,19 @@ compatibility_date = "2024-09-23"
 # limit. Treat it as a brake on one hot isolate, NOT as a global cap.
 #
 # The real control is a Cloudflare dashboard rate-limiting rule on
-# api.boxd-card.com, which is enforced at the edge per zone. That is still
-# worth adding; this binding does not replace it.
+# api.boxd-card.com, enforced at the edge per zone. That rule is now LIVE
+# (added 2026-08-19, Free plan — which allows exactly one rule): 100 requests
+# per 10s per IP, expression `(http.host eq "api.boxd-card.com")`, action
+# Block. Proven to fire: 400 concurrent requests returned 105 through and 295
+# blocked with 429, recovering on its own.
+#
+# Sizing that rule is the same subrequest math as below, not "cards per
+# minute": one 20-film card costs ~63 requests in a burst, so 100/10s leaves
+# one heavy card comfortable headroom and trips only on two back to back.
+# Verified against a real 20-film Recent Diary card with TMDB on.
+#
+# This binding does not replace that rule, and the rule does not replace this
+# binding — different scopes (per isolate vs per zone/IP).
 #
 # Sizing note: the limit is on SUBREQUESTS, not "cards per minute". One 20-film
 # list card with TMDB costs ~63 proxy requests — 1 page + 20 /tmdb + 20 posters

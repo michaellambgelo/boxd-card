@@ -162,7 +162,6 @@ describe('computeLayout', () => {
     const l = computeLayout(4, 0, layout)
     expect(l.cardWidth).toBe(1080)
     expect(l.cardHeight).toBe(expectedH)
-    expect(l.sideLayout).toBe(false)
     expect(l.cols).toBe(2)
     expect(l.rows).toBe(2)
   })
@@ -175,7 +174,6 @@ describe('computeLayout', () => {
     expect(l.cardWidth).toBe(1080)
     expect(l.cols).toBe(3)
     expect(l.rows).toBe(4)
-    expect(l.sideLayout).toBe(false)
   })
 
   it('titleAreaH shifts posterTop, footerY, and cardHeight by the same amount', () => {

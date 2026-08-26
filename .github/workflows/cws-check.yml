@@ -1,0 +1,91 @@
+name: Check Store Credentials
+
+# Read-only smoke test for the Chrome Web Store publishing setup.
+#
+# It authenticates as the service account and asks the store for the current
+# state of the item. It uploads nothing, publishes nothing, and changes nothing,
+# so it is safe to run at any time — including while a review is pending.
+#
+# Run this once after the credentials are in place. It exercises every part that
+# can be misconfigured (the key, the service-account link, the publisher ID, the
+# extension ID) without a release riding on the answer.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: Fetch item status
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Mint a Chrome Web Store access token
+        id: gauth
+        env:
+          GCP_SERVICE_ACCOUNT_KEY: ${{ secrets.CWS_SERVICE_ACCOUNT_KEY }}
+        run: |
+          set -euo pipefail
+          TOKEN=$(node scripts/gcp-access-token.mjs https://www.googleapis.com/auth/chromewebstore)
+          # Mask before the value can reach any later log line.
+          echo "::add-mask::$TOKEN"
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch item status
+        env:
+          TOKEN:        ${{ steps.gauth.outputs.token }}
+          PUBLISHER_ID: ${{ vars.CWS_PUBLISHER_ID }}
+          EXTENSION_ID: ${{ vars.CWS_EXTENSION_ID }}
+        run: |
+          set -uo pipefail
+
+          if [ -z "$PUBLISHER_ID" ] || [ -z "$EXTENSION_ID" ]; then
+            echo "::error::CWS_PUBLISHER_ID and CWS_EXTENSION_ID must both be set as repository variables."
+            exit 1
+          fi
+
+          HTTP=$(curl -sS -o status.json -w '%{http_code}' \
+            -H "Authorization: Bearer $TOKEN" \
+            -X GET \
+            "https://chromewebstore.googleapis.com/v2/publishers/$PUBLISHER_ID/items/$EXTENSION_ID:fetchStatus")
+
+          echo "HTTP $HTTP"
+          cat status.json
+          echo
+
+          # Each failure mode here has a different cause, and the raw API error
+          # does not make the difference obvious.
+          case "$HTTP" in
+            200) ;;
+            401|403)
+              echo "::error::Authenticated, but not authorised. The service account is probably not linked under Account in the Developer Dashboard — or it is linked to a different publisher."
+              exit 1
+              ;;
+            404)
+              echo "::error::Not found. Check CWS_PUBLISHER_ID ($PUBLISHER_ID) and CWS_EXTENSION_ID ($EXTENSION_ID). A v1-shaped URL would also 404 here — v2 paths are publisher-scoped."
+              exit 1
+              ;;
+            *)
+              echo "::error::Unexpected HTTP $HTTP from fetchStatus."
+              exit 1
+              ;;
+          esac
+
+          {
+            echo "## Store credentials look good"
+            echo ""
+            echo "\`fetchStatus\` answered for publisher \`$PUBLISHER_ID\`, item \`$EXTENSION_ID\`."
+            echo ""
+            echo '```json'
+            cat status.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "OK — the key, the publisher link, and both IDs all check out."

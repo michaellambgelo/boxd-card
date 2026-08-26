@@ -179,6 +179,18 @@ npx wrangler secret put TMDB_API_KEY   # v4 "API Read Access Token", NOT the v3 
 
 **Loading the extension:** `npm run build` → `chrome://extensions` → Developer mode → Load unpacked → `dist/`. Reload after each build; also refresh the Letterboxd tab for content-script changes.
 
+**The social preview is a real card, not a generated asset.** `docs/social-preview.png` (the
+`og:image` for both `docs/index.html` and `docs/about/index.html`) is an actual Favorites card
+generated from the extension and committed by hand. To refresh it: generate a Favorites card in the
+extension, download it, and replace the file.
+
+There used to be a `scripts/generate-social-preview.mjs` behind `npm run generate:preview` that
+re-implemented the card layout in a second renderer — its own copy of the constants, gradient
+rectangles instead of posters, and a hand-drawn imitation of the Letterboxd logo. It was superseded
+the moment the preview was replaced with a real render, and from then on running it would have
+silently downgraded the marketing image. Both are deleted. **If you need a preview, render one with
+the real product; do not reintroduce a second renderer.**
+
 **PostToolUse hook:** any Edit/Write triggers `.claude/hooks/run-tests.sh` → `npm run test:run`.
 
 **Pre-commit hook** (`.githooks/pre-commit`, wired up by `npm install`): rebuilds the apex app (`docs/index.html`, `docs/assets/`, `docs/favicon.svg`) when `src/web/`, `vite.web.config.ts`, `package.json`, or `.env.production` are staged, and reconciles `package-lock.json` when `package.json` is staged.
@@ -252,7 +264,15 @@ Note the attributes are single-quoted with `&quot;`-escaped JSON in the raw HTML
 
 Getting this wrong is not obvious: `filmId` has exactly one consumer, the milestone poster map (`Popup.tsx` → `renderCard.ts`, `posterMap.get(entry.filmId)`). When every id is `''` the map collapses to a single key and **every milestone renders the same poster** rather than falling back to the grey placeholder.
 
-**Custom posters.** `data-resolvable-poster-path` carries `preferredAlternativePosterId` when Letterboxd renders a non-default poster — a Pro/Patron member's own choice, or a film-level preferred alternative. Default posters omit the field. `isCustomPoster()` reads it, and `mergeTmdbKeepCustomPoster()` in `shared/tmdb.ts` then keeps the Letterboxd poster while still enriching metadata and backdrop from TMDB.
+**Custom posters.** `data-resolvable-poster-path` carries `preferredAlternativePosterId` when Letterboxd renders a non-default poster — a Pro/Patron member's own choice, or a film-level preferred alternative. Default posters omit the field. `isCustomPoster()` reads it, and `mergeTmdbKeepCustomPoster()` in `shared/tmdb.ts` then keeps the Letterboxd poster while still enriching metadata and backdrop from TMDB. Note a member can set a *different* custom poster per diary entry, so the same film legitimately appears twice in one card with different artwork — that is not a bug.
+
+**Poster size is a request, not a fixed asset.** In a resized CDN URL (`a.ltrbxd.com/resized/...`), the `0-<w>-0-<h>-crop` segment asks the CDN to render that size on demand. Verified live: for one image, `0-70-0-105` (2 KB), `0-230-0-345` (12 KB), `0-460-0-690` (15 KB) and `0-1000-0-1500` (77 KB) all return 200.
+
+This matters because page markup serves poster thumbnails as small as **70×105** while cards draw posters at **200–208px** (grids) and up to **280px** (Milestones) — so a scraped URL used as-is is upscaled ~3× onto the canvas and goes illegible. `upscaleLetterboxdPoster()` in `shared/posters.ts` normalises scraped poster URLs to `0-460-0-690` at the two image-fetch choke points (`fetchPosterDataUrl` in the popup, `fetchImageDataUrl` in the web app).
+
+It only shows on posters we *keep* rather than replace — custom posters, and any card generated with TMDB enrichment off — because TMDB posters come from `/t/p/original`. That asymmetry is why it presented as "some posters look bad" rather than a uniform quality ceiling.
+
+Only 2:3 crops are rewritten. **Avatars are 1:1** and have their own separate rewrite at the scrape sites (`0-48-0-48-crop` → `0-80-0-80-crop`, `content/index.ts:566`); **backdrops** use a different four-number form (`1200-1200-675-675-crop`) and don't match the pattern. Both travel through the same image-fetch path, so widening them here would distort them.
 
 Do **not** use the sibling `hasDefaultPoster` field for this — it stays `true` even when a custom poster is displayed, because it describes the film, not what's on screen.
 
@@ -307,9 +327,23 @@ Do **not** use the sibling `hasDefaultPoster` field for this — it stays `true`
 
 ## Testing
 
-Vitest + jsdom, `test/setup.ts` mocks `chrome.*` and the Canvas 2D context. `worker/index.test.ts` exercises the worker's `fetch` handler directly.
+Vitest + jsdom, in **three projects** (`vitest.config.ts`):
 
-When fixing a bug, add the test that fails against the old code first — the worker's missing CORS headers survived a full suite because the tests asserted status codes but never headers.
+| Project | Runs | Setup |
+|---|---|---|
+| `unit` | everything except `*.visual.test.ts` / `*.gen.test.ts` | `setup.chrome.ts` + `setup.canvasMock.ts` |
+| `visual` | `*.visual.test.ts` — golden images | `setup.chrome.ts` + `canvasEnv.ts` (**no** canvas mock) |
+| `generate` | `*.gen.test.ts` — the studio. Not run by `test:run` | same as `visual` |
+
+`npm run test:run` runs `unit` + `visual`. `worker/index.test.ts` exercises the worker's `fetch` handler directly.
+
+**The canvas mock and the real canvas are deliberately separated.** `setup.canvasMock.ts` replaces `getContext` and `toBlob` with `vi.fn()`s and pins `measureText` to a constant 80 — so the structural tests exercise `wrapText` against a fiction, and real metrics wrap differently. The `visual` project omits that mock, letting jsdom's node-canvas backing rasterize for real. **If the visual suite disagrees with a structural test about where text breaks, the visual suite is the one telling the truth.**
+
+**Goldens** live in `test/goldens/`, keyed to *draw path* rather than card type — all four poster-grid card types funnel through the same `renderCard` path, so a golden per card type would be redundant while leaving the stats renderers unguarded. Re-bake only when a rendering change was intended: `npm run goldens:update`, after looking at the diff images in `studio-out/golden-failures/`. **They are skipped under `CI` for now** (see the comment in `goldens.visual.test.ts`); don't "fix" a red CI by deleting them.
+
+**`npm run studio`** renders all 96 card type x layout combinations plus a contact sheet into `studio-out/` (gitignored). It is how design changes get reviewed, and it is what found the review-card clipping bug.
+
+When fixing a bug, add the test that fails against the old code first — the worker's missing CORS headers survived a full suite because the tests asserted status codes but never headers. The same discipline applies to goldens: a regression suite never observed failing is not known to work.
 
 ## Known gaps
 
