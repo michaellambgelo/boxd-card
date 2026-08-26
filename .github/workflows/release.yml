@@ -91,9 +91,12 @@ jobs:
           echo "HTTP $HTTP"
           cat upload.json
 
+          # v2 returns SUCCEEDED. v1 returned SUCCESS, and taking that value on
+          # trust is what failed the first real release: the upload had worked,
+          # HTTP 200, crxVersion 0.9.0 — and the job rejected it anyway.
           STATE=$(jq -r '.uploadState // "UNKNOWN"' upload.json)
           case "$STATE" in
-            SUCCESS)
+            SUCCEEDED|SUCCESS)
               echo "Uploaded version ${{ steps.version.outputs.version }} as a draft."
               ;;
             UPLOAD_IN_PROGRESS)
