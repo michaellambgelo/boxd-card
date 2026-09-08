@@ -20,6 +20,10 @@ import { fetchTmdbData } from './tmdbClient'
 import { mergeTmdb, slugFromPosterUrl } from '../shared/tmdb'
 import { upscaleLetterboxdPoster } from '../shared/posters'
 import { filmIdFromLazyPoster, LIST_ENTRY_SELECTOR, resolveLazyPoster, type PosterRung } from '../shared/lazyPoster'
+import { NO_FILTER, withFilter, type UrlFilter } from '../shared/urlFilter'
+import { parseLetterboxdUrl, type ParsedLetterboxdUrl } from '../shared/letterboxdUrl'
+export { parseLetterboxdUrl, supportsCardType } from '../shared/letterboxdUrl'
+export type { ParsedLetterboxdUrl } from '../shared/letterboxdUrl'
 import { track } from './faro'
 import { sanitizeErrorMessage } from './telemetryPrivacy'
 
@@ -385,77 +389,6 @@ export function scrapeBackdropUrl(doc: Document): string {
 
 // ── URL parsing & resolution ──────────────────────────────────────────────────
 
-export interface ParsedLetterboxdUrl {
-  username: string
-  /** null when the URL is a profile page (ambiguous: could be last-four-watched or favorites) */
-  cardType: CardType | null
-  listSlug: string
-  /** true only for /reviews/ list pages; false for single film review pages */
-  isReviewListPage: boolean
-  /** non-empty for single film review pages: the film slug from the URL */
-  filmSlug: string
-}
-
-/**
- * Parse a letterboxd.com URL into its component parts.
- * Returns null when the URL is not a recognisable Letterboxd or boxd.it URL.
- * Returns { cardType: null } for profile-page URLs that are ambiguous between
- * last-four-watched and favorites.
- */
-export function parseLetterboxdUrl(input: string): ParsedLetterboxdUrl | null {
-  let parsed: URL
-  try { parsed = new URL(input) } catch { return null }
-
-  const hostname = parsed.hostname.replace(/^www\./, '')
-
-  // Short URL — card type can't be determined without fetching
-  if (hostname === 'boxd.it') {
-    return { username: '', cardType: null, listSlug: '', isReviewListPage: false, filmSlug: '' }
-  }
-
-  if (hostname !== 'letterboxd.com') return null
-
-  // Strip leading/trailing slashes, split path segments
-  const parts = parsed.pathname.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean)
-  const username = parts[0]
-  if (!username) return null
-
-  const section  = parts[1]  // undefined | 'films' | 'diary' | 'list' | 'reviews' | 'film' | ...
-  const subpart  = parts[2]  // undefined | diary-slug | list-slug | ...
-
-  if (!section) {
-    // https://letterboxd.com/username/
-    // Could be last-four-watched or favorites — let caller decide.
-    return { username, cardType: null, listSlug: '', isReviewListPage: false, filmSlug: '' }
-  }
-  if (section === 'films' && !subpart) {
-    return { username, cardType: 'last-four-watched', listSlug: '', isReviewListPage: false, filmSlug: '' }
-  }
-  if (section === 'diary' || (section === 'films' && subpart === 'diary')) {
-    return { username, cardType: 'recent-diary', listSlug: '', isReviewListPage: false, filmSlug: '' }
-  }
-  if (section === 'list' && subpart) {
-    return { username, cardType: 'list', listSlug: subpart, isReviewListPage: false, filmSlug: '' }
-  }
-  if (section === 'reviews') {
-    return { username, cardType: 'review', listSlug: '', isReviewListPage: true, filmSlug: '' }
-  }
-  if (section === 'film' && subpart) {
-    // Single film review: /username/film/slug/ or /username/film/slug/N/
-    const entryNum = parts[3] // e.g. '6' for the 6th viewing of the same film
-    const filmSlug = entryNum ? `${subpart}/${entryNum}` : subpart
-    return { username, cardType: 'review', listSlug: '', isReviewListPage: false, filmSlug }
-  }
-  if (section === 'stats') {
-    return { username, cardType: 'stats', listSlug: '', isReviewListPage: false, filmSlug: '' }
-  }
-  if (section === 'year' && subpart && /^\d{4}$/.test(subpart)) {
-    return { username, cardType: 'stats', listSlug: '', isReviewListPage: false, filmSlug: '' }
-  }
-
-  return null
-}
-
 /**
  * Resolve any Letterboxd or boxd.it URL to its canonical form, then parse it.
  * Use this when parseLetterboxdUrl returns null or { cardType: null } because
@@ -477,21 +410,29 @@ export async function resolveLetterboxdUrl(input: string): Promise<ParsedLetterb
 
 // ── Main entry point ──────────────────────────────────────────────────────────
 
-/** Build the canonical Letterboxd URL for a username + card type. */
+/**
+ * Build the Letterboxd URL for a username + card type, putting back any filter
+ * the pasted URL carried.
+ *
+ * This function used to rebuild from username + cardType alone, which meant a
+ * filtered URL parsed fine and then silently fetched the UNFILTERED page — the
+ * card came out looking correct while showing the wrong entries.
+ */
 export function buildPageUrl(
   username: string,
   cardType: CardType,
   listSlug: string,
   filmSlug = '',
+  filter: UrlFilter = NO_FILTER,
 ): string {
-  const base = `https://letterboxd.com/${username}`
+  const at = (sectionPath: string) => withFilter(username, sectionPath, filter)
   switch (cardType) {
-    case 'last-four-watched': return `${base}/`
-    case 'favorites':         return `${base}/`
-    case 'recent-diary':      return `${base}/diary/`
-    case 'list':              return `${base}/list/${listSlug}/`
-    case 'review':            return filmSlug ? `${base}/film/${filmSlug}/` : `${base}/reviews/`
-    case 'stats':             return `${base}/stats/`
+    case 'last-four-watched': return at('')
+    case 'favorites':         return at('')
+    case 'recent-diary':      return at('diary')
+    case 'list':              return at(`list/${listSlug}`)
+    case 'review':            return filmSlug ? at(`film/${filmSlug}`) : at('reviews')
+    case 'stats':             return at('stats')
   }
 }
 
@@ -666,8 +607,9 @@ export async function scrapeLetterboxdPage(
   statsCategory?: StatsCategory,
   statsSubCategory?: StatsSubCategory,
   enrichWithTmdb = true,
+  filter: UrlFilter = NO_FILTER,
 ): Promise<FilmDataResponse> {
-  const url = buildPageUrl(username, cardType, listSlug, filmSlug)
+  const url = buildPageUrl(username, cardType, listSlug, filmSlug, filter)
   const doc = await fetchPageDocument(url)
 
   const pageUsername   = scrapeUsername(doc)

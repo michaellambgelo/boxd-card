@@ -18,8 +18,6 @@ export interface HintHref {
 
 export interface CardTypeConfig {
   label: string
-  /** Regex tested against the full tab URL to validate the page. */
-  urlPattern: RegExp
   /** Human-readable example URL shown in the navigation hint. `{user}` is substituted with the logged-in username when known. */
   urlHint: string
   /** Ordered list of substrings within `urlHint` that become individual clickable links when the user is logged in. Substrings must appear in `urlHint` in the same order. */
@@ -28,12 +26,10 @@ export interface CardTypeConfig {
   proOnly?: boolean
 }
 
-const U = '[^/]+'
 
 export const CARD_TYPE_CONFIGS: Record<CardType, CardTypeConfig> = {
   'last-four-watched': {
     label: 'Last Four Watched',
-    urlPattern: new RegExp(`^https://letterboxd\\.com/${U}/(?:films/)?$`),
     urlHint: 'letterboxd.com/{user}/ or letterboxd.com/{user}/films/',
     hintHrefs: [
       { text: 'letterboxd.com/{user}/',       href: 'https://letterboxd.com/{user}/' },
@@ -42,7 +38,6 @@ export const CARD_TYPE_CONFIGS: Record<CardType, CardTypeConfig> = {
   },
   'favorites': {
     label: 'Favorites',
-    urlPattern: new RegExp(`^https://letterboxd\\.com/${U}/?$`),
     urlHint: 'letterboxd.com/{user}/',
     hintHrefs: [
       { text: 'letterboxd.com/{user}/', href: 'https://letterboxd.com/{user}/' },
@@ -50,7 +45,6 @@ export const CARD_TYPE_CONFIGS: Record<CardType, CardTypeConfig> = {
   },
   'recent-diary': {
     label: 'Recent Diary',
-    urlPattern: new RegExp(`^https://letterboxd\\.com/${U}/(?:films/)?diary/?$`),
     urlHint: 'letterboxd.com/{user}/diary/',
     hintHrefs: [
       { text: 'letterboxd.com/{user}/diary/', href: 'https://letterboxd.com/{user}/diary/' },
@@ -58,7 +52,6 @@ export const CARD_TYPE_CONFIGS: Record<CardType, CardTypeConfig> = {
   },
   'list': {
     label: 'List',
-    urlPattern: new RegExp(`^https://letterboxd\\.com/${U}/list/${U}/(?:detail/?)?$`),
     urlHint: 'letterboxd.com/{user}/list/',
     // Link to the user's lists index so they can pick one.
     hintHrefs: [
@@ -67,18 +60,17 @@ export const CARD_TYPE_CONFIGS: Record<CardType, CardTypeConfig> = {
   },
   'review': {
     label: 'Review',
-    urlPattern: new RegExp(`^https://letterboxd\\.com/${U}/(?:reviews|film/${U}(?:/\\d+)?)/?$`),
     urlHint: 'letterboxd.com/{user}/reviews/',
     hintHrefs: [
       { text: 'letterboxd.com/{user}/reviews/', href: 'https://letterboxd.com/{user}/reviews/' },
     ],
   },
   'stats': {
-    // Two distinct pages share this config: all-time (/stats/) and Year in Review
-    // (/year/YYYY/). They are NOT interchangeable — see STATS_CATEGORY_CONFIGS.pages.
-    // `/stats/YYYY/` was accepted here for a while and 404s on Letterboxd; don't re-add it.
+    // Two distinct pages map to this card type: all-time (/stats/) and Year in
+    // Review (/year/YYYY/). They are NOT interchangeable — see
+    // STATS_CATEGORY_CONFIGS.pages. `/stats/YYYY/` was accepted for a while and
+    // 404s on Letterboxd; don't re-add it to parseLetterboxdUrl.
     label: 'Stats',
-    urlPattern: new RegExp(`^https://letterboxd\\.com/${U}/(?:stats|year/\\d{4})/?$`),
     urlHint: 'letterboxd.com/{user}/stats/',
     hintHrefs: [
       { text: 'letterboxd.com/{user}/stats/', href: 'https://letterboxd.com/{user}/stats/' },
