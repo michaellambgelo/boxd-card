@@ -13,6 +13,7 @@ import {
 import type { ParsedLetterboxdUrl } from './webScraper'
 import type { FilmData } from '../content/index'
 import { didUseTmdb } from '../shared/tmdb'
+import { isProxyBlockedFilter, labelWithFilter } from '../shared/urlFilter'
 import tmdbLogoUrl from '../assets/TMDB-blue-short.svg?url'
 import { track, startAction } from './faro'
 import { getHandoffUrl } from './handoff'
@@ -162,6 +163,18 @@ export default function App() {
       return null
     }
 
+    // Same shape of limitation as stats: Letterboxd's bot rules challenge the
+    // /tag/<tag>/ prefix for anything that isn't a browser, so the proxy gets a
+    // 403 where it gets a 200 for the unfiltered page. Measured with interleaved
+    // controls. Saying so beats fetching the unfiltered page and handing back a
+    // card that quietly shows the wrong entries.
+    if (isProxyBlockedFilter(parsed.filter)) {
+      if (isLatest()) {
+        setDetectError('Tag-filtered pages are only available in the Chrome extension. Letterboxd blocks them from external services. Other filters — decade, genre, rating, sort — work here.')
+      }
+      return null
+    }
+
     if (parsed.username) {
       if (isLatest()) {
         setDetected(parsed)
@@ -212,7 +225,7 @@ export default function App() {
     if (!resolvedDetected) return
 
     const resolvedCardType = resolvedDetected.cardType ?? profileCardType
-    const { username, listSlug, filmSlug, isReviewListPage } = resolvedDetected
+    const { username, listSlug, filmSlug, isReviewListPage, filter } = resolvedDetected
 
     // Wrap the async pipeline in a Faro user action so scraper_error,
     // image-fetch perf entries, and any thrown errors get correlated via
@@ -243,6 +256,7 @@ export default function App() {
         resolvedCardType === 'stats' ? statsCategory : undefined,
         resolvedCardType === 'stats' ? statsSubCategory : undefined,
         useTmdb,
+        filter,
       )
 
       if (needsFilms && !filmData.films.length) {
@@ -320,7 +334,7 @@ export default function App() {
         listTitle:           resolvedCardType === 'list' ? filmData.listTitle       : undefined,
         listDescription:     resolvedCardType === 'list' ? filmData.listDescription : undefined,
         showCardTypeLabel:   (resolvedCardType !== 'list' && resolvedCardType !== 'review') ? showCardTypeLabel : undefined,
-        cardTypeLabel:       (resolvedCardType !== 'list' && resolvedCardType !== 'review') ? CARD_TYPE_CONFIGS[resolvedCardType].label : undefined,
+        cardTypeLabel:       (resolvedCardType !== 'list' && resolvedCardType !== 'review') ? labelWithFilter(CARD_TYPE_CONFIGS[resolvedCardType].label, filter) : undefined,
         showTags:            (resolvedCardType === 'list' || resolvedCardType === 'review') ? showTags : undefined,
         listTags:            resolvedCardType === 'list' ? filmData.listTags : undefined,
         backdropDataUrl,
@@ -351,7 +365,7 @@ export default function App() {
           showRating,
           showDate,
           showCardTypeLabel: (resolvedCardType !== 'list' && resolvedCardType !== 'review') ? showCardTypeLabel : undefined,
-          cardTypeLabel:     (resolvedCardType !== 'list' && resolvedCardType !== 'review') ? CARD_TYPE_CONFIGS[resolvedCardType].label : undefined,
+          cardTypeLabel:     (resolvedCardType !== 'list' && resolvedCardType !== 'review') ? labelWithFilter(CARD_TYPE_CONFIGS[resolvedCardType].label, filter) : undefined,
           showListTitle:       resolvedCardType === 'list' ? showListTitle : undefined,
           listTitle:           resolvedCardType === 'list' ? filmData.listTitle : undefined,
           showListDescription: resolvedCardType === 'list' ? showListDesc : undefined,
@@ -455,7 +469,7 @@ export default function App() {
     if (detecting) return 'Detecting…'
     if (!detected) return null
     const label = detected.cardType
-      ? CARD_TYPE_CONFIGS[detected.cardType].label
+      ? labelWithFilter(CARD_TYPE_CONFIGS[detected.cardType].label, detected.filter)
       : 'Profile page'
     return `${label} · @${detected.username}`
   }

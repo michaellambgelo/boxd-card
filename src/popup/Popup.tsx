@@ -8,6 +8,8 @@ import { CARD_TYPES, CARD_TYPE_CONFIGS, LAYOUTS, LAYOUT_CONFIGS, STATS_CATEGORIE
 import type { CardType, ListCount, ReviewCount, Layout, StatsCategory, StatsSubCategory } from '../types'
 import { loadSettings, saveSettings, loadRememberedUser, saveRememberedUser, clearRememberedUser, type RememberedUser } from '../storage/settings'
 import { didUseTmdb, mergeTmdbKeepCustomPoster, slugFromPosterUrl, type TmdbFilmData } from '../shared/tmdb'
+import { detectCardType, supportsCardType, parseLetterboxdUrl } from '../shared/letterboxdUrl'
+import { labelWithFilter, NO_FILTER } from '../shared/urlFilter'
 import tmdbLogoUrl from '../assets/TMDB-blue-short.svg?url'
 import styles from './Popup.module.css'
 
@@ -48,6 +50,10 @@ export default function Popup() {
   const [reviewCount, setReviewCount] = useState<ReviewCount>(1)
   // null until the tab query resolves; drives the "checking…" state below.
   const [tabUrl, setTabUrl] = useState<string | null>(null)
+  // Whatever filter the current page carries — a /tag/<tag>/ prefix and/or
+  // trailing segments. Unlike the web app the extension scrapes the DOM in
+  // front of it, so every filter works here, tag filters included.
+  const tabFilter = (tabUrl && parseLetterboxdUrl(tabUrl)?.filter) || NO_FILTER
   const [loggedInUsername, setLoggedInUsername] = useState<string>('')
   const [showTitle,     setShowTitle]     = useState(true)
   const [showYear,      setShowYear]      = useState(true)
@@ -151,7 +157,7 @@ export default function Popup() {
     autoSelectedRef.current = true
     chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
       const url = (tab?.url ?? '').replace(/#.*$/, '')
-      const match = CARD_TYPES.find(t => CARD_TYPE_CONFIGS[t].urlPattern.test(url))
+      const match = detectCardType(url, CARD_TYPES)
       if (match && (!CARD_TYPE_CONFIGS[match].proOnly || letterboxdPro)) setCardType(match)
     })
   }, [settingsLoaded, letterboxdPro])
@@ -217,7 +223,7 @@ export default function Popup() {
 
       // Defensive re-check for race condition (user navigates away after button enabled)
       const url = (tab.url ?? '').replace(/#.*$/, '')
-      if (!CARD_TYPE_CONFIGS[cardType].urlPattern.test(url)) {
+      if (!supportsCardType(url, cardType)) {
         throw new Error(`Navigate to ${formatUrlHint(cardType, loggedInUsername)} first.`)
       }
 
@@ -248,9 +254,12 @@ export default function Popup() {
       // Optional TMDB enrichment — gated on the extensionUseTmdb setting.
       // Stats render modes other than poster-grid don't benefit from TMDB
       // enrichment (no per-film posters to upgrade), so skip in that case.
-      // Prefer scrape-time filmSlug (derived from data-poster-url) over
-      // parsing posterUrl — by document_idle the CDN URL no longer contains
-      // /film/<slug>/ so regex extraction would return ''.
+      // Prefer scrape-time filmSlug (from the LazyPoster attribute ladder in
+      // shared/lazyPoster.ts) over parsing posterUrl — by document_idle the CDN
+      // URL no longer contains /film/<slug>/ so regex extraction returns ''.
+      // Both halves of this expression used to depend on data-poster-url, so
+      // when Letterboxd removed it in Sept 2026 TMDB enrichment went silently
+      // dead. filmSlug now has its own sources.
       if (useTmdb && needsFilms && filmData.films.length > 0) {
         const slugs = filmData.films.map(f => f.filmSlug || slugFromPosterUrl(f.posterUrl))
         const results = await Promise.allSettled(slugs.map(fetchTmdbData))
@@ -362,7 +371,7 @@ export default function Popup() {
         listTitle:           cardType === 'list' ? filmData.listTitle       : undefined,
         listDescription:     cardType === 'list' ? filmData.listDescription : undefined,
         showCardTypeLabel:   (cardType !== 'list' && cardType !== 'review') ? showCardTypeLabel : undefined,
-        cardTypeLabel:       (cardType !== 'list' && cardType !== 'review') ? CARD_TYPE_CONFIGS[cardType].label : undefined,
+        cardTypeLabel:       (cardType !== 'list' && cardType !== 'review') ? labelWithFilter(CARD_TYPE_CONFIGS[cardType].label, tabFilter) : undefined,
         showTags:            (cardType === 'list' || cardType === 'review') ? showTags : undefined,
         listTags:            cardType === 'list' ? filmData.listTags : undefined,
         backdropDataUrl,
@@ -402,7 +411,7 @@ export default function Popup() {
           showRating,
           showDate,
           showCardTypeLabel: (cardType !== 'list' && cardType !== 'review') ? showCardTypeLabel : undefined,
-          cardTypeLabel:     (cardType !== 'list' && cardType !== 'review') ? CARD_TYPE_CONFIGS[cardType].label : undefined,
+          cardTypeLabel:     (cardType !== 'list' && cardType !== 'review') ? labelWithFilter(CARD_TYPE_CONFIGS[cardType].label, tabFilter) : undefined,
           showListTitle:       cardType === 'list' ? showListTitle : undefined,
           listTitle:           cardType === 'list' ? filmData.listTitle : undefined,
           showListDescription: cardType === 'list' ? showListDesc : undefined,
@@ -465,7 +474,7 @@ export default function Popup() {
   // Derived from tabUrl — no effect, no extra render pass. `null` means the tab
   // query hasn't resolved yet, which the UI shows as neither valid nor invalid.
   const isValidPage: boolean | null =
-    tabUrl === null ? null : CARD_TYPE_CONFIGS[cardType].urlPattern.test(tabUrl)
+    tabUrl === null ? null : supportsCardType(tabUrl, cardType)
   const isReviewListPage =
     cardType === 'review' && tabUrl !== null && /\/reviews\/?$/.test(tabUrl)
 

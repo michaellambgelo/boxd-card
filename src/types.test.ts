@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { formatUrlHint, formatUrlHintSegments, CARD_TYPE_CONFIGS, CARD_TYPES, STATS_CATEGORIES, isYearStatsUrl, isStatsCategoryAvailable, statsCategoryUnavailableMessage } from './types'
 import type { StatsCategory } from './types'
+import { supportsCardType } from './shared/letterboxdUrl'
 
 describe('formatUrlHint', () => {
   it('substitutes a real username into a single-placeholder hint', () => {
@@ -145,16 +146,18 @@ describe('isStatsCategoryAvailable', () => {
   })
 })
 
-describe('CARD_TYPE_CONFIGS.stats urlPattern', () => {
+// urlPattern is gone — parseLetterboxdUrl in shared/letterboxdUrl.ts is now the
+// only answer to "does this URL support this card type". These assertions moved
+// with it rather than being deleted; the behaviour they pin is still real.
+describe('stats page routing', () => {
   it('accepts both stats pages', () => {
-    const { urlPattern } = CARD_TYPE_CONFIGS.stats
-    expect(urlPattern.test(ALL_TIME)).toBe(true)
-    expect(urlPattern.test(YEAR)).toBe(true)
+    expect(supportsCardType(ALL_TIME, 'stats')).toBe(true)
+    expect(supportsCardType(YEAR, 'stats')).toBe(true)
   })
 
   it('rejects /stats/YYYY/, which 404s on Letterboxd', () => {
     // It was accepted for a while; a hint pointing there would dead-end.
-    expect(CARD_TYPE_CONFIGS.stats.urlPattern.test('https://letterboxd.com/michaellamb/stats/2025/')).toBe(false)
+    expect(supportsCardType('https://letterboxd.com/michaellamb/stats/2025/', 'stats')).toBe(false)
   })
 })
 

@@ -24,27 +24,69 @@ function makeDoc(html: string): Document {
   return new DOMParser().parseFromString(html, 'text/html')
 }
 
+/**
+ * Current live LazyPoster attributes, verified through the production proxy on
+ * 2026-09-08 across profile / diary / list / films / review pages.
+ *
+ * data-poster-url and data-film-id are BOTH GONE from server-rendered HTML.
+ * These builders default to what Letterboxd actually serves, so a test that
+ * passes here is evidence about production. Pass legacyPosterUrl / legacyFilmId
+ * to exercise the backward-compatible rungs of the ladder.
+ */
+function lazyPosterAttrs(opts: {
+  name: string
+  slug?: string
+  filmId?: string
+  legacyPosterUrl?: string
+  legacyFilmId?: string
+  customPosterId?: string
+}): string {
+  const {
+    name,
+    slug = 'dune-2021',
+    filmId = '371378',
+    legacyPosterUrl = '',
+    legacyFilmId = '',
+    customPosterId = '',
+  } = opts
+  const resolvable = {
+    ...(customPosterId ? { preferredAlternativePosterId: customPosterId } : {}),
+    postered: { uid: `film:${filmId}`, type: 'film' },
+    posteredBaseLink: `/film/${slug}/`,
+    hasDefaultPoster: true,
+  }
+  return [
+    `data-item-name="${name}"`,
+    `data-item-slug="${slug}"`,
+    `data-item-link="/film/${slug}/"`,
+    `data-postered-identifier='${JSON.stringify({ uid: `film:${filmId}`, type: 'film' })}'`,
+    `data-resolvable-poster-path='${JSON.stringify(resolvable)}'`,
+    `data-empty-poster-src="https://s.ltrbxd.com/static/img/empty-poster-150-DtnLDE3k.png"`,
+    legacyPosterUrl ? `data-poster-url="${legacyPosterUrl}"` : '',
+    legacyFilmId ? `data-film-id="${legacyFilmId}"` : '',
+  ].filter(Boolean).join('\n        ')
+}
+
+/** The placeholder Letterboxd actually ships in server-rendered HTML. */
+const EMPTY_POSTER_IMG =
+  '<img class="image" src="https://s.ltrbxd.com/static/img/empty-poster-150-DtnLDE3k.png" />'
+
 /** Build a LazyPoster grid item used by activity/favorites/list scrapers. */
 function makeFilmItem(overrides: {
   name?: string
+  slug?: string
   filmId?: string
-  posterUrl?: string
+  legacyPosterUrl?: string
+  legacyFilmId?: string
   rating?: string
 } = {}): string {
-  const {
-    name = 'Dune (2021)',
-    filmId = '371378',
-    posterUrl = '/film/dune-2021/image-150/',
-    rating = '★★★★',
-  } = overrides
+  const { name = 'Dune (2021)', rating = '★★★★', ...attrs } = overrides
   return `
     <li class="griditem">
       <div class="react-component"
         data-component-class="LazyPoster"
-        data-item-name="${name}"
-        data-film-id="${filmId}"
-        data-poster-url="${posterUrl}">
-        <img class="image" src="empty-poster.png" />
+        ${lazyPosterAttrs({ name, ...attrs })}>
+        ${EMPTY_POSTER_IMG}
       </div>
       <p class="poster-viewingdata">
         <span class="rating">${rating}</span>
@@ -54,8 +96,10 @@ function makeFilmItem(overrides: {
 
 function makeDiaryRow(overrides: {
   name?: string
+  slug?: string
   filmId?: string
-  posterUrl?: string
+  legacyPosterUrl?: string
+  legacyFilmId?: string
   rating?: string
   month?: string
   year?: string
@@ -63,22 +107,19 @@ function makeDiaryRow(overrides: {
 } = {}): string {
   const {
     name = 'Dune (2021)',
-    filmId = '371378',
-    posterUrl = '/film/dune-2021/image-150/',
     rating = '★★★★',
     month = '',
     year = '',
     day = '15',
+    ...attrs
   } = overrides
   return `
     <tr class="diary-entry-row">
       <td class="col-film">
         <div class="react-component"
           data-component-class="LazyPoster"
-          data-item-name="${name}"
-          data-film-id="${filmId}"
-          data-poster-url="${posterUrl}">
-          <img class="image" src="empty-poster.png" />
+          ${lazyPosterAttrs({ name, ...attrs })}>
+          ${EMPTY_POSTER_IMG}
         </div>
       </td>
       <td class="col-rating">
@@ -165,16 +206,33 @@ describe('scrapeRecentActivity', () => {
     expect(films[0].year).toBe('2023')
   })
 
-  it('builds posterUrl from data-poster-url with letterboxd.com prefix', () => {
+  it('reconstructs posterUrl from data-item-link when data-poster-url is absent', () => {
+    // The production shape as of 2026-09: no data-poster-url anywhere.
     const doc = makeDoc(`
       <html><body>
         <section id="recent-activity">
-          ${makeFilmItem({ posterUrl: '/film/dune-2021/image-150/' })}
+          ${makeFilmItem({ slug: 'dune-2021' })}
         </section>
       </body></html>
     `)
     const [film] = scrapeRecentActivity(doc)
     expect(film.posterUrl).toBe('https://letterboxd.com/film/dune-2021/image-150/')
+    expect(film.filmSlug).toBe('dune-2021')
+  })
+
+  it('prefers data-poster-url over the reconstructed path when it is present', () => {
+    // Backward compatibility: if Letterboxd restores the attribute, or some page
+    // type still ships it, the most specific signal must still win — it is the
+    // only one that can point at a per-entry alternative poster.
+    const doc = makeDoc(`
+      <html><body>
+        <section id="recent-activity">
+          ${makeFilmItem({ slug: 'dune-2021', legacyPosterUrl: '/film/dune-2021/image-999/' })}
+        </section>
+      </body></html>
+    `)
+    const [film] = scrapeRecentActivity(doc)
+    expect(film.posterUrl).toBe('https://letterboxd.com/film/dune-2021/image-999/')
   })
 
   it('returns empty rating when .rating element is absent', () => {
@@ -185,8 +243,8 @@ describe('scrapeRecentActivity', () => {
             <div class="react-component"
               data-component-class="LazyPoster"
               data-item-name="No Rating (2024)"
-              data-film-id="999"
-              data-poster-url="/film/no-rating/image-150/">
+              data-item-link="/film/no-rating/"
+              data-postered-identifier='{"uid":"film:999","type":"film"}'>
             </div>
           </li>
         </section>
@@ -196,15 +254,19 @@ describe('scrapeRecentActivity', () => {
     expect(film.rating).toBe('')
   })
 
-  it('returns empty posterUrl when data-poster-url is missing', () => {
+  // This test used to assert `posterUrl === ''` for a LazyPoster with no
+  // data-poster-url, and passed green for the entire ten days that every card on
+  // boxd-card.com failed with "All poster images failed to load (empty poster
+  // URL)". It described the outage. The '' contract survives only for a poster
+  // carrying NO usable attribute at all.
+  it('returns empty posterUrl only when every poster attribute is absent', () => {
     const doc = makeDoc(`
       <html><body>
         <section id="recent-activity">
           <li class="griditem">
             <div class="react-component"
               data-component-class="LazyPoster"
-              data-item-name="No Poster (2024)"
-              data-film-id="888">
+              data-item-name="No Poster (2024)">
             </div>
           </li>
         </section>
@@ -212,6 +274,7 @@ describe('scrapeRecentActivity', () => {
     `)
     const [film] = scrapeRecentActivity(doc)
     expect(film.posterUrl).toBe('')
+    expect(film.filmSlug).toBe('')
   })
 })
 
@@ -342,8 +405,8 @@ describe('scrapeDiary', () => {
               <div class="react-component"
                 data-component-class="LazyPoster"
                 data-item-name="Dune (2021)"
-                data-film-id="371378"
-                data-poster-url="/film/dune-2021/image-150/">
+                data-item-link="/film/dune-2021/"
+                data-postered-identifier='{"uid":"film:371378","type":"film"}'>
               </div>
             </td>
             <td class="col-rating">
@@ -372,25 +435,22 @@ describe('scrapeDiary', () => {
 describe('scrapeList', () => {
   function makeListItem(overrides: {
     name?: string
+    slug?: string
     filmId?: string
-    posterUrl?: string
+    legacyPosterUrl?: string
+    legacyFilmId?: string
     rating?: string
     ownerRating?: string
   } = {}): string {
-    const {
-      name = 'Dune (2021)',
-      filmId = '371378',
-      posterUrl = '/film/dune-2021/image-150/',
-      rating = '',
-      ownerRating = '',
-    } = overrides
+    const { name = 'Dune (2021)', rating = '', ownerRating = '', ...attrs } = overrides
+    // data-object-name="list" is the discriminator that separates real list
+    // entries from the profile's "recent lists" sidebar and a film page's
+    // related-films strip, both of which also use li.posteritem.
     return `
-      <li class="posteritem"${ownerRating ? ` data-owner-rating="${ownerRating}"` : ''}>
+      <li class="posteritem numbered-list-item" data-object-name="list"${ownerRating ? ` data-owner-rating="${ownerRating}"` : ''}>
         <div class="react-component"
           data-component-class="LazyPoster"
-          data-item-name="${name}"
-          data-film-id="${filmId}"
-          data-poster-url="${posterUrl}">
+          ${lazyPosterAttrs({ name, ...attrs })}>
         </div>
         ${rating ? `<span class="rating">${rating}</span>` : ''}
       </li>`
@@ -399,7 +459,7 @@ describe('scrapeList', () => {
   function makeListDoc(items: string[]): Document {
     return makeDoc(`
       <html><body>
-        <ul class="js-list-entries">${items.join('')}</ul>
+        <ul class="poster-list -p125 -grid">${items.join('')}</ul>
       </body></html>
     `)
   }
@@ -473,8 +533,8 @@ describe('scrapeList', () => {
             <div class="react-component"
               data-component-class="LazyPoster"
               data-item-name="Dune (2021)"
-              data-film-id="371378"
-              data-poster-url="/film/dune-2021/image-150/">
+              data-item-link="/film/dune-2021/"
+              data-postered-identifier='{"uid":"film:371378","type":"film"}'>
             </div>
           </li>
         </ul>
@@ -550,8 +610,10 @@ describe('scrapeReviewsList', () => {
 
   function makeReviewItem(overrides: {
     name?: string
+    slug?: string
     filmId?: string
-    posterUrl?: string
+    legacyPosterUrl?: string
+    legacyFilmId?: string
     rating?: string
     datetime?: string
     reviewText?: string
@@ -560,13 +622,14 @@ describe('scrapeReviewsList', () => {
   } = {}): string {
     const {
       name = 'Groundhog Day (1993)',
+      slug = 'groundhog-day',
       filmId = '12345',
-      posterUrl = '/film/groundhog-day/image-150/',
       rating = '★★★★★',
       datetime = '2026-03-22',
       reviewText = 'One of the greatest films ever made.',
       fullTextUrl = '',
       tags = [],
+      ...attrs
     } = overrides
     const tagHtml = tags.length
       ? `<ul class="tags">${tags.map(t => `<li><a>${t}</a></li>`).join('')}</ul>`
@@ -575,9 +638,7 @@ describe('scrapeReviewsList', () => {
       <div class="listitem js-listitem">
         <div class="react-component"
           data-component-class="LazyPoster"
-          data-item-name="${name}"
-          data-film-id="${filmId}"
-          data-poster-url="${posterUrl}">
+          ${lazyPosterAttrs({ name, slug, filmId, ...attrs })}>
         </div>
         <div class="content-reactions-strip">
           ${rating ? `<span class="inline-rating"><svg aria-label="${rating}"></svg></span>` : ''}
@@ -629,8 +690,8 @@ describe('scrapeReviewsList', () => {
             <div class="react-component"
               data-component-class="LazyPoster"
               data-item-name="Test (2020)"
-              data-film-id="1"
-              data-poster-url="/film/test/image-150/">
+              data-item-link="/film/test/"
+              data-postered-identifier='{"uid":"film:1","type":"film"}'>
             </div>
             <div class="content-reactions-strip">
               <span class="date"><time></time></span>
@@ -713,8 +774,8 @@ describe('scrapeReviewsList', () => {
             <div class="react-component"
               data-component-class="LazyPoster"
               data-item-name="Test (2020)"
-              data-film-id="1"
-              data-poster-url="/film/test/image-150/">
+              data-item-link="/film/test/"
+              data-postered-identifier='{"uid":"film:1","type":"film"}'>
             </div>
           </div>
         </div>
@@ -1067,7 +1128,7 @@ describe('parseLetterboxdUrl', () => {
 function makeSingleReviewDoc(overrides: {
   title?: string
   year?: string
-  posterUrl?: string
+  slug?: string
   rating?: string
   day?: string
   month?: string
@@ -1078,7 +1139,7 @@ function makeSingleReviewDoc(overrides: {
   const {
     title = 'Groundhog Day',
     year = '1993',
-    posterUrl = '/film/groundhog-day/image-150/',
+    slug = 'groundhog-day',
     rating = '★★★★★',
     day = '02',
     month = 'Feb',
@@ -1094,9 +1155,8 @@ function makeSingleReviewDoc(overrides: {
       <section class="viewing-poster-container">
         <div class="react-component"
           data-component-class="LazyPoster"
-          data-film-id="12345"
-          data-poster-url="${posterUrl}">
-          <img class="image" src="empty-poster.png" />
+          ${lazyPosterAttrs({ name: `${title} (${year})`, slug, filmId: '12345' })}>
+          ${EMPTY_POSTER_IMG}
         </div>
       </section>
       <header class="inline-production-masthead">
@@ -1142,7 +1202,7 @@ describe('scrapeSingleReview', () => {
     const html = `
       <html><body>
         <section class="viewing-poster-container">
-          <div class="react-component" data-component-class="LazyPoster" data-film-id="1" data-poster-url="/film/foo/image-150/"></div>
+          <div class="react-component" data-component-class="LazyPoster" data-item-link="/film/foo/" data-postered-identifier='{"uid":"film:1","type":"film"}'></div>
         </section>
         <header class="inline-production-masthead">
           <h2 class="primaryname"><a>Some Film</a></h2>
@@ -1227,6 +1287,25 @@ describe('fetchImageDataUrl', () => {
     expect((mockFetch.mock.calls[0][0] as string)).toContain('dune-2021')
     // Second call should be the proxied CDN URL from JSON-LD
     expect((mockFetch.mock.calls[1][0] as string)).toContain('a.ltrbxd.com')
+  })
+
+  // The reconstructed /film/<slug>/image-150/ path is a TOKEN, not a fetchable
+  // URL: requesting it through the proxy returns 403 (Cloudflare challenge),
+  // exactly like /film/<slug>/json/. It only works because fetchImageDataUrl
+  // intercepts that exact shape and goes to the film page instead. If any future
+  // change lets a posterUrl reach the network unresolved, every poster 403s.
+  it('never sends an /image-NNN/ path to the network', async () => {
+    const mockFetch = makeFetchSequence([
+      { ok: true, headers: { 'content-type': 'text/html' }, body: FILM_PAGE_HTML },
+      { ok: true, headers: { 'content-type': 'image/jpeg' }, body: IMAGE_BLOB },
+    ])
+    vi.stubGlobal('fetch', mockFetch)
+
+    await fetchImageDataUrl('https://letterboxd.com/film/dune-2021/image-150/')
+
+    for (const call of mockFetch.mock.calls) {
+      expect(decodeURIComponent(call[0] as string)).not.toContain('image-150')
+    }
   })
 
   it('fetches CDN URLs directly without a film page hop', async () => {

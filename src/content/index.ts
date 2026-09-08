@@ -1,6 +1,13 @@
 import type { CardType, ListCount, ReviewCount, StatsCategory, StatsSubCategory } from '../types'
 import { isStatsCategoryAvailable, isYearStatsUrl, statsCategoryUnavailableMessage } from '../types'
-import { slugFromPosterUrl } from '../shared/tmdb'
+import {
+  EMPTY_POSTER_MARKER,
+  filmIdFromLazyPoster,
+  filmSlugFromLazyPoster,
+  isCustomPoster,
+  LIST_ENTRY_SELECTOR,
+  resolveLazyPoster,
+} from '../shared/lazyPoster'
 
 // Letterboxd injects a `person` global on profile pages. It is reachable from
 // the MAIN world / JSDOM but not from the isolated content-script world, where
@@ -20,9 +27,11 @@ export interface FilmData {
   posterUrl: string
   filmId: string
   /**
-   * Letterboxd film slug (e.g. "dune-2021") extracted from the LazyPoster's
-   * data-poster-url at scrape time. Reliable for TMDB lookups even when
-   * posterUrl has been resolved to a CDN URL that no longer contains /film/.
+   * Letterboxd film slug (e.g. "dune-2021") read at scrape time from the
+   * LazyPoster attribute ladder (shared/lazyPoster.ts). Reliable for TMDB
+   * lookups even when posterUrl has been resolved to a CDN URL that no longer
+   * contains /film/ — and, unlike the old data-poster-url read, it does not
+   * share a single point of failure with posterUrl.
    */
   filmSlug?: string
   date?: string       // ISO-ish date string; populated by diary/review scrapers
@@ -115,55 +124,6 @@ export interface GetFilmDataRequest {
   statsSubCategory?: StatsSubCategory
 }
 
-const PLACEHOLDER = 'empty-poster'
-
-// ── Custom poster detection ──────────────────────────────────────────────────
-// Letterboxd renders a non-default poster (a Pro/Patron member's custom choice,
-// or a film-level "preferred" alternative) by stamping a preferredAlternativePosterId
-// into the LazyPoster's data-resolvable-poster-path JSON. Plain-default posters
-// omit the field. Verified against live Letterboxd DOM: e.g. a customised
-// Midsommar carries "preferredAlternativePosterId":"137315" (matching the
-// viewer's person.getCustomPoster("film:459564")), while a default-poster film
-// like Undefeated has no such field.
-//
-// When TMDB enrichment is on we KEEP these posters rather than overriding them
-// with TMDB's — the scraped posterUrl already resolves to the displayed
-// (alternative) image, so preserving it preserves exactly what the user sees.
-// This is a superset of strict per-user customs (it also spares film-preferred
-// alternatives), but it never misses a custom poster and never wrongly flags a
-// default one.
-function isCustomPoster(lazyPoster: Element | null): boolean {
-  const raw = lazyPoster?.getAttribute('data-resolvable-poster-path')
-  if (!raw) return false
-  try {
-    return !!JSON.parse(raw).preferredAlternativePosterId
-  } catch {
-    return false
-  }
-}
-
-// ── Film id ──────────────────────────────────────────────────────────────────
-// Current Letterboxd LazyPosters no longer carry a data-film-id attribute; the
-// numeric id now lives only inside the JSON of data-postered-identifier (top-level
-// `uid`) or data-resolvable-poster-path (`postered.uid`) as e.g. "film:459564".
-// Prefer the legacy attribute when present (older DOM / other page types), then
-// fall back to parsing the uid. Returns '' when no id can be found.
-function filmIdFromLazyPoster(lazyPoster: Element | null): string {
-  const legacy = lazyPoster?.getAttribute('data-film-id')
-  if (legacy) return legacy
-  for (const attr of ['data-postered-identifier', 'data-resolvable-poster-path']) {
-    const raw = lazyPoster?.getAttribute(attr)
-    if (!raw) continue
-    try {
-      const parsed = JSON.parse(raw)
-      const uid: string | undefined = parsed.uid ?? parsed.postered?.uid
-      const m = uid?.match(/^film:(\d+)$/)
-      if (m) return m[1]
-    } catch { /* malformed JSON — try next source */ }
-  }
-  return ''
-}
-
 // ── Recent Activity (Last Four Watched) ──────────────────────────────────────
 
 export function scrapeRecentActivity(): FilmData[] {
@@ -185,14 +145,12 @@ export function scrapeRecentActivity(): FilmData[] {
     const filmId = filmIdFromLazyPoster(lazyPoster)
     const rating = ratingEl?.textContent?.trim() ?? ''
 
-    // Use the resolved src if LazyPoster has updated it; otherwise fall back to
-    // data-poster-url so the background worker can fetch + follow the redirect.
-    const resolvedSrc = img?.src ?? ''
-    const dataPosterUrl = lazyPoster?.getAttribute('data-poster-url') ?? ''
-    const posterUrl = resolvedSrc && !resolvedSrc.includes(PLACEHOLDER)
-      ? resolvedSrc
-      : `https://letterboxd.com${dataPosterUrl}`
-    const filmSlug = slugFromPosterUrl(dataPosterUrl)
+    // Resolved img.src wins when React has run; otherwise the ladder rebuilds
+    // /film/<slug>/image-150/ and the background worker follows the redirect.
+    // This site used to concatenate the (now absent) data-poster-url
+    // unconditionally, yielding a bare "https://letterboxd.com" as a poster URL
+    // whenever hydration had not happened yet.
+    const { posterUrl, filmSlug } = resolveLazyPoster(lazyPoster, img?.src ?? '')
 
     return { title, year, rating, posterUrl, filmId, filmSlug, customPoster: isCustomPoster(lazyPoster) }
   })
@@ -217,14 +175,7 @@ export function scrapeFavorites(): FilmData[] {
     const year = titleMatch?.[2] ?? ''
     const filmId = filmIdFromLazyPoster(lazyPoster)
 
-    const resolvedSrc = img?.src ?? ''
-    const dataPosterUrl = lazyPoster?.getAttribute('data-poster-url') ?? ''
-    const posterUrl = resolvedSrc && !resolvedSrc.includes(PLACEHOLDER)
-      ? resolvedSrc
-      : dataPosterUrl
-        ? `https://letterboxd.com${dataPosterUrl}`
-        : ''
-    const filmSlug = slugFromPosterUrl(dataPosterUrl)
+    const { posterUrl, filmSlug } = resolveLazyPoster(lazyPoster, img?.src ?? '')
 
     return { title, year, rating: '', posterUrl, filmId, filmSlug, customPoster: isCustomPoster(lazyPoster) }
   })
@@ -257,14 +208,7 @@ export function scrapeDiary(count = 4): FilmData[] {
     const year = titleMatch?.[2] ?? ''
     const filmId = filmIdFromLazyPoster(lazyPoster)
 
-    const resolvedSrc = img?.src ?? ''
-    const dataPosterUrl = lazyPoster?.getAttribute('data-poster-url') ?? ''
-    const posterUrl = resolvedSrc && !resolvedSrc.includes(PLACEHOLDER)
-      ? resolvedSrc
-      : dataPosterUrl
-        ? `https://letterboxd.com${dataPosterUrl}`
-        : ''
-    const filmSlug = slugFromPosterUrl(dataPosterUrl)
+    const { posterUrl, filmSlug } = resolveLazyPoster(lazyPoster, img?.src ?? '')
 
     // ── Rating ───────────────────────────────────────────────────────────
     // .hide-for-owner contains the plain star-text span; .show-for-owner
@@ -320,7 +264,7 @@ export function scrapeListMeta(): { listTitle: string; listDescription: string; 
 export function scrapeList(count: number): FilmData[] {
   // li.posteritem = grid view  |  li.film-detail = detail view (/detail/)
   return Array.from(
-    document.querySelectorAll('ul.js-list-entries li.posteritem, ul.js-list-entries li.film-detail')
+    document.querySelectorAll(LIST_ENTRY_SELECTOR)
   ).slice(0, count).map(item => {
     const lazyPoster = item.querySelector(
       '.react-component[data-component-class="LazyPoster"]'
@@ -333,14 +277,7 @@ export function scrapeList(count: number): FilmData[] {
     const year = titleMatch?.[2] ?? ''
     const filmId = filmIdFromLazyPoster(lazyPoster)
 
-    const resolvedSrc = img?.src ?? ''
-    const dataPosterUrl = lazyPoster?.getAttribute('data-poster-url') ?? ''
-    const posterUrl = resolvedSrc && !resolvedSrc.includes(PLACEHOLDER)
-      ? resolvedSrc
-      : dataPosterUrl
-        ? `https://letterboxd.com${dataPosterUrl}`
-        : ''
-    const filmSlug = slugFromPosterUrl(dataPosterUrl)
+    const { posterUrl, filmSlug } = resolveLazyPoster(lazyPoster, img?.src ?? '')
 
     // Detail view: explicit .rating span. Grid view: data-owner-rating attribute.
     const ratingEl = item.querySelector('.rating')
@@ -394,12 +331,7 @@ export async function scrapeReview(): Promise<FilmData[]> {
     '.react-component[data-component-class="LazyPoster"]'
   )
   const img = container.querySelector('img.image') as HTMLImageElement | null
-  const resolvedSrc = img?.src ?? ''
-  const dataPosterUrl = lazyPoster?.getAttribute('data-poster-url') ?? ''
-  const posterUrl = resolvedSrc && !resolvedSrc.includes(PLACEHOLDER)
-    ? resolvedSrc
-    : dataPosterUrl ? `https://letterboxd.com${dataPosterUrl}` : ''
-  const filmSlug = slugFromPosterUrl(dataPosterUrl)
+  const { posterUrl, filmSlug } = resolveLazyPoster(lazyPoster, img?.src ?? '')
 
   const title = document.querySelector(
     '.inline-production-masthead h2.primaryname a'
@@ -443,12 +375,7 @@ export async function scrapeReviewsList(count: number): Promise<FilmData[]> {
       '.react-component[data-component-class="LazyPoster"]'
     )
     const img = item.querySelector('img.image') as HTMLImageElement | null
-    const resolvedSrc = img?.src ?? ''
-    const dataPosterUrl = lazyPoster?.getAttribute('data-poster-url') ?? ''
-    const posterUrl = resolvedSrc && !resolvedSrc.includes(PLACEHOLDER)
-      ? resolvedSrc
-      : dataPosterUrl ? `https://letterboxd.com${dataPosterUrl}` : ''
-    const filmSlug = slugFromPosterUrl(dataPosterUrl)
+    const { posterUrl, filmSlug } = resolveLazyPoster(lazyPoster, img?.src ?? '')
 
     const title = item.querySelector(
       '.inline-production-masthead h2.primaryname a'
@@ -529,14 +456,7 @@ export function scrapeFilmsPage(): FilmData[] {
     const year = titleMatch?.[2] ?? ''
     const filmId = filmIdFromLazyPoster(lazyPoster)
 
-    const resolvedSrc = img?.src ?? ''
-    const dataPosterUrl = lazyPoster?.getAttribute('data-poster-url') ?? ''
-    const posterUrl = resolvedSrc && !resolvedSrc.includes(PLACEHOLDER)
-      ? resolvedSrc
-      : dataPosterUrl
-        ? `https://letterboxd.com${dataPosterUrl}`
-        : ''
-    const filmSlug = slugFromPosterUrl(dataPosterUrl)
+    const { posterUrl, filmSlug } = resolveLazyPoster(lazyPoster, img?.src ?? '')
 
     const ratingEl = item.querySelector('.rating')
     const rating = ratingEl?.textContent?.trim() ?? ''
@@ -631,37 +551,17 @@ export function scrapeBackdropUrl(): string {
 
 // ── Stats page scrapers ──────────────────────────────────────────────────────
 
-// Stats sections are CSI-loaded. LazyPoster may or may not have data-poster-url.
-// Try multiple strategies to get a usable poster URL:
-//   1. img.src if not the empty-poster placeholder
-//   2. data-poster-url on LazyPoster
-//   3. Construct from data-item-link (e.g. "/film/midsommar/" → "/film/midsommar/image-150/")
-//   4. Construct from data-item-slug
+// Stats sections are CSI-loaded, so a LazyPoster here may or may not have been
+// hydrated yet. resolveLazyPoster handles both: img.src when React has run,
+// otherwise the reconstructed /film/<slug>/image-150/ path.
 function statsPosterUrl(img: HTMLImageElement | null, lazy: Element | null): string {
-  const resolvedSrc = img?.src ?? ''
-  if (resolvedSrc && !resolvedSrc.includes(PLACEHOLDER)) return resolvedSrc
-
-  const dataPosterUrl = lazy?.getAttribute('data-poster-url') ?? ''
-  if (dataPosterUrl) return `https://letterboxd.com${dataPosterUrl}`
-
-  const itemLink = lazy?.getAttribute('data-item-link') ?? ''
-  if (itemLink) return `https://letterboxd.com${itemLink}image-150/`
-
-  const itemSlug = lazy?.getAttribute('data-item-slug') ?? ''
-  if (itemSlug) return `https://letterboxd.com/film/${itemSlug}/image-150/`
-
-  return ''
+  return resolveLazyPoster(lazy, img?.src ?? '').posterUrl
 }
 
-// Parallel to statsPosterUrl — derive the Letterboxd slug for TMDB lookups.
-// Unlike statsPosterUrl, this never returns a CDN URL; it reads structured
-// attributes so the slug survives even after img.src has been resolved.
+// Parallel to statsPosterUrl — the slug for TMDB lookups. Never a CDN URL, so
+// it survives img.src having been resolved.
 function statsFilmSlug(lazy: Element | null): string {
-  const dataPosterUrl = lazy?.getAttribute('data-poster-url') ?? ''
-  if (dataPosterUrl) return slugFromPosterUrl(dataPosterUrl)
-  const itemLink = lazy?.getAttribute('data-item-link') ?? ''
-  if (itemLink) return slugFromPosterUrl(itemLink)
-  return lazy?.getAttribute('data-item-slug') ?? ''
+  return filmSlugFromLazyPoster(lazy)
 }
 
 // Scroll a stats section into view and wait for CSI to load and LazyPoster to
@@ -694,7 +594,7 @@ async function ensureStatsSectionLoaded(sectionSelector: string, childSelector: 
   for (let i = 0; i < 20; i++) {
     await new Promise(r => setTimeout(r, 100))
     const imgs = Array.from(section.querySelectorAll('img.image')) as HTMLImageElement[]
-    if (imgs.some(img => img.src && !img.src.includes(PLACEHOLDER))) break
+    if (imgs.some(img => img.src && !img.src.includes(EMPTY_POSTER_MARKER))) break
   }
 }
 
