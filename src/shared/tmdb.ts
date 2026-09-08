@@ -31,7 +31,8 @@ export interface TmdbFilmData {
  * Extract the Letterboxd film slug from any URL or path that contains
  * `/film/<slug>/…`. Handles:
  *   https://letterboxd.com/film/dune-2021/image-150/   (web scraper's posterUrl)
- *   /film/dune-2021/image-150/                         (raw data-poster-url)
+ *   /film/dune-2021/image-150/                         (reconstructed path)
+ *   /film/dune-2021/                                   (raw data-item-link)
  *   https://letterboxd.com/film/dune-2021/             (bare film URL)
  *
  * Resolved CDN URLs (a.ltrbxd.com/resized/film-poster/…) contain

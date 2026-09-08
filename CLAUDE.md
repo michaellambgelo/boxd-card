@@ -109,7 +109,7 @@ into a visible error instead of a blank card.
               ▼   Copy to clipboard / Download / Share
 ```
 
-**Shared between surfaces:** `canvas/renderCard.ts`, `altText.ts`, `types.ts`, `storage/settings.ts`, `shared/tmdb.ts`. The two scrapers (`content/index.ts` for the live DOM, `web/webScraper.ts` for fetched HTML) deliberately mirror each other's selectors but stay separate — the extension can read lazily-resolved `img.src`, the web app can only see `data-poster-url`.
+**Shared between surfaces:** `canvas/renderCard.ts`, `altText.ts`, `types.ts`, `storage/settings.ts`, `shared/tmdb.ts`, `shared/posters.ts`, `shared/lazyPoster.ts`. The two scrapers (`content/index.ts` for the live DOM, `web/webScraper.ts` for fetched HTML) deliberately mirror each other's selectors but stay separate. They now read LazyPoster attributes through one shared ladder: the extension's advantage is that it can also use the hydrated `img.src`, which the web app never sees.
 
 ## Project structure
 
@@ -247,18 +247,37 @@ Things that are load-bearing:
 
 Both scrapers rely on these. Letterboxd changes them without notice; when a card type breaks, check here first.
 
-**LazyPoster** — the shared pattern behind nearly every card type:
+**Every claim in this section is now backed by a fixture.** `test/fixtures/letterboxd/*.html` holds real pages captured through the production proxy; `src/web/letterboxdFixtures.test.ts` parses them. Prose in this file drifts silently — a test does not. Recapture with `node scripts/capture-letterboxd-fixtures.mjs` (owner's own profile only; these are real member pages).
+
+**LazyPoster** — the shared pattern behind nearly every card type. Verified live 2026-09-08:
 ```
 .react-component[data-component-class="LazyPoster"]
   @data-item-name              "Dune (2021)"   ← title + year
-  @data-poster-url             "/film/dune-2021/image-150/"
+  @data-item-slug              "dune-2021"
+  @data-item-link              "/film/dune-2021/"
   @data-postered-identifier    '{"lid":"fA7G","uid":"film:371378","type":"film",…}'
   @data-resolvable-poster-path '{"postered":{"uid":"film:371378"},"posteredBaseLink":"/film/dune-2021/",…}'
+  @data-empty-poster-src       "https://s.ltrbxd.com/static/img/empty-poster-150-….png"
 img.image                            ← resolved poster, or an empty-poster placeholder
 ```
-`img.src` starts as `empty-poster-*.png` and is swapped in by Letterboxd's React after load. The extension checks for `empty-poster` and falls back to `data-poster-url`; the web app always uses `data-poster-url`, since fetched HTML is never lazily resolved.
 
-**Film id — `data-film-id` is gone.** Letterboxd removed it; verified against live markup, where it appears zero times while the two JSON attributes above appear on every poster. The numeric id now lives only inside `data-postered-identifier` (top-level `uid`) or `data-resolvable-poster-path` (`postered.uid`), as `"film:371378"`. `filmIdFromLazyPoster()` — duplicated in `content/index.ts` and `web/webScraper.ts` — prefers the legacy attribute if it ever returns, then parses the uid out.
+**`data-poster-url` is gone (2026-09).** Server-rendered HTML no longer contains a film poster URL *at all*: `img.src` is the empty-poster placeholder and the real URL is resolved client-side after hydration. Verified through the proxy on profile, `/films/`, diary, list and review pages — zero occurrences on every one, while `data-item-slug` / `data-item-link` appear on every poster.
+
+`shared/lazyPoster.ts` owns the fallback ladder both scrapers now use:
+
+| rung | source | note |
+|---|---|---|
+| 0 | `img.src` | extension only — the ONLY rung that reflects a per-entry custom poster |
+| 1 | `data-poster-url` | kept in case it returns; the only rung that can name an alternative poster image |
+| 2 | `data-item-link` | `/film/<slug>/` → `/film/<slug>/image-150/` |
+| 3 | `data-item-slug` | bare slug, same reconstruction |
+| 4 | `data-resolvable-poster-path` → `posteredBaseLink` | JSON, so last |
+
+**`/film/<slug>/image-150/` is a token, not a fetchable URL.** Requesting it through the proxy returns **403** (Cloudflare challenge), exactly like the tempting new `data-details-endpoint` value `/film/<slug>/json/`. It works only because `fetchImageDataUrl()` intercepts that exact shape and reads the film page's JSON-LD instead — and that regex is anchored on the trailing slash. Anything that fetches a `posterUrl` without going through `fetchImageDataUrl` will 403.
+
+**A fallback derived from the primary attribute is not a fallback.** This is the lesson of the September 2026 outage. `App.tsx` picks `f.tmdbPosterUrl || f.posterUrl`, which looks like two independent sources — but the TMDB slug was itself parsed out of `data-poster-url`, so when that attribute vanished both died at once and every card on boxd-card.com failed for ten days. `filmSlug` now comes from its own attribute ladder, so the next removal degrades one source rather than two.
+
+**Film id — `data-film-id` is gone too** (2026-08, the first of the two removals). Verified against live markup, where it appears zero times while the two JSON attributes above appear on every poster. The numeric id now lives only inside `data-postered-identifier` (top-level `uid`) or `data-resolvable-poster-path` (`postered.uid`), as `"film:371378"`. `filmIdFromLazyPoster()` — now in `shared/lazyPoster.ts`, not duplicated per surface — prefers the legacy attribute if it ever returns, then parses the uid out.
 
 Note the attributes are single-quoted with `&quot;`-escaped JSON in the raw HTML; `getAttribute()` hands back the decoded string, so `JSON.parse` works in both the live DOM and under `DOMParser`.
 
@@ -279,11 +298,11 @@ Do **not** use the sibling `hasDefaultPoster` field for this — it stays `true`
 | What | Selector |
 |------|----------|
 | Recent activity (last four) | `section#recent-activity li.griditem` (first 4) |
-| Films page fallback | `ul.poster-list li.poster-container` / `ul.grid li.griditem` |
+| Films page fallback | `ul.grid li.griditem` (`li.poster-container` is gone — 0 live) |
 | Favorites | `section#favourites li.griditem` (first 4; never has ratings) |
 | Diary rows | `table#diary-table tbody tr.diary-entry-row` |
 | Diary rating / date | `td.col-rating .hide-for-owner .rating`, `.col-monthdate .monthdate a.month\|a.year`, `.col-daydate a.daydate` |
-| List entries | `ul.js-list-entries li.posteritem, li.film-detail` |
+| List entries | `ul.poster-list li.posteritem[data-object-name="list"]` (was `ul.js-list-entries`, renamed 2026-09). `LIST_ENTRY_SELECTOR` in `shared/lazyPoster.ts` keeps both. The `data-object-name` discriminator is required: bare `li.posteritem` also matches the profile's recent-lists sidebar (20 hits, `ul.posterlist` — *no* hyphen) and a film page's related-films strip (6 hits). `li.film-detail` is unverified — the `/detail/` view is 403-challenged through the proxy |
 | List meta | `.list-title-intro h1.title-1`, `.list-title-intro .body-text p` (skip paragraphs starting "Updated") |
 | Tags | `ul.tags li a` |
 | Review list items | `div.viewing-list div.listitem.js-listitem` |
@@ -351,3 +370,4 @@ When fixing a bug, add the test that fails against the old code first — the wo
 - Sparse layouts (1–3 films) centre correctly but look thin. Accepted.
 - Stats cards are extension-only; Letterboxd blocks external requests to stats pages.
 - `elementText()` falls back to `textContent` under `DOMParser`, so `<br>` in a review doesn't become a newline. Letterboxd reviews rarely use it.
+- **On the web, a custom poster is lost whenever TMDB misses.** The JSON-LD fallback returns the film's *default* poster, and `mergeTmdbKeepCustomPoster()` will then preserve it believing it is the member's choice. Pre-existing rather than new — the old `data-poster-url` path also resolved through JSON-LD — and unfixable without a hydrated DOM, which is exactly what the extension has and the web app doesn't.

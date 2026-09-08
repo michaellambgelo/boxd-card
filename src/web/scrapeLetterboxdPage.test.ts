@@ -23,8 +23,8 @@ const PROFILE_HTML = `<!DOCTYPE html>
       <ul>
         <li class="griditem">
           <div class="react-component" data-component-class="LazyPoster"
-               data-item-name="Dune (2021)" data-film-id="371378"
-               data-poster-url="/film/dune-2021/image-150/"></div>
+               data-item-name="Dune (2021)" data-item-link="/film/dune-2021/"
+               data-postered-identifier='{"uid":"film:371378","type":"film"}'></div>
           <img class="image" />
           <p class="poster-viewingdata"><span class="rating">★★★★</span></p>
         </li>

@@ -33,7 +33,7 @@ function makeFilmItem(overrides: FilmOverrides = {}): string {
     name = 'Dune (2021)',
     slug = 'dune-2021',
     filmId = '371378',
-    posterUrl = `/film/${slug}/image-150/`,
+    posterUrl = '',
     imgSrc = REAL_POSTER,
     rating = '★★★★',
   } = overrides
@@ -44,8 +44,8 @@ function makeFilmItem(overrides: FilmOverrides = {}): string {
           data-component-class="LazyPoster"
           data-item-name="${name}"
           data-item-slug="${slug}"
-          data-film-id="${filmId}"
-          data-poster-url="${posterUrl}">
+          data-postered-identifier='{"uid":"film:${filmId}","type":"film"}'
+          ${posterUrl ? `data-poster-url="${posterUrl}"` : ''}>
           <div class="poster film-poster">
             <img class="image" src="${imgSrc}" />
           </div>
@@ -99,7 +99,7 @@ describe('scrapeRecentActivity', () => {
     expect(film.posterUrl).toBe(REAL_POSTER)
   })
 
-  it('falls back to data-poster-url when img.src contains the placeholder', () => {
+  it('falls back to data-poster-url when img.src is a placeholder', () => {
     setRecentActivityDOM([
       makeFilmItem({
         imgSrc: `https://s.ltrbxd.com/static/img/${PLACEHOLDER}`,
@@ -110,12 +110,25 @@ describe('scrapeRecentActivity', () => {
     expect(film.posterUrl).toBe('https://letterboxd.com/film/dune-2021/image-150/')
   })
 
+  // The production shape since Sept 2026: no data-poster-url anywhere. The
+  // extension normally rides img.src, but the content script can run before
+  // React has resolved it — which is exactly when the extension would have
+  // produced a bare "https://letterboxd.com" as a poster URL.
+  it('reconstructs the poster path from data-item-link when data-poster-url is gone', () => {
+    setRecentActivityDOM([
+      makeFilmItem({ imgSrc: `https://s.ltrbxd.com/static/img/${PLACEHOLDER}` }),
+    ])
+    const [film] = scrapeRecentActivity()
+    expect(film.posterUrl).toBe('https://letterboxd.com/film/dune-2021/image-150/')
+    expect(film.filmSlug).toBe('dune-2021')
+  })
+
   // Regression: LazyPoster resolves img.src to an a.ltrbxd.com URL before
   // document_idle, so posterUrl no longer contains /film/<slug>/. Regex
   // extraction from posterUrl would return '' and TMDB lookups would silently
-  // no-op. filmSlug is read from data-poster-url at scrape time precisely to
+  // no-op. filmSlug is read from the LazyPoster attribute ladder at scrape time precisely to
   // survive this case.
-  it('populates filmSlug from data-poster-url even when posterUrl is a resolved CDN URL', () => {
+  it('populates filmSlug from LazyPoster attributes even when posterUrl is a resolved CDN URL', () => {
     setRecentActivityDOM([
       makeFilmItem({
         imgSrc: REAL_POSTER,                    // CDN URL — no /film/ segment
@@ -216,6 +229,7 @@ describe('scrapeDiary', () => {
   const EMPTY_POSTER = 'https://s.ltrbxd.com/static/img/empty-poster-35-abc.png'
 
   interface DiaryRowOpts {
+    slug?: string
     title?: string
     filmId?: string
     posterUrl?: string
@@ -230,8 +244,9 @@ describe('scrapeDiary', () => {
   function makeDiaryRow(opts: DiaryRowOpts = {}): string {
     const {
       title    = 'Dune (2021)',
+      slug     = 'dune-2021',
       filmId   = '371378',
-      posterUrl = '/film/dune-2021/image-150/',
+      posterUrl = '',
       imgSrc   = REAL_POSTER,
       rating   = '★★★★',
       month    = 'Mar',
@@ -248,8 +263,10 @@ describe('scrapeDiary', () => {
         <td class="col-film">
           <div class="react-component" data-component-class="LazyPoster"
                data-item-name="${title}"
-               data-film-id="${filmId}"
-               data-poster-url="${posterUrl}">
+               data-item-slug="${slug}"
+               data-item-link="/film/${slug}/"
+               data-postered-identifier='{"uid":"film:${filmId}","type":"film"}'
+               ${posterUrl ? `data-poster-url="${posterUrl}"` : ''}>
             <img class="image" src="${imgSrc}" />
           </div>
         </td>
@@ -291,7 +308,7 @@ describe('scrapeDiary', () => {
     expect(film.posterUrl).toBe(REAL_POSTER)
   })
 
-  it('falls back to data-poster-url when img.src is empty-poster', () => {
+  it('falls back to data-poster-url when img.src is a placeholder', () => {
     setDiaryDOM([makeDiaryRow({ imgSrc: EMPTY_POSTER })])
     const [film] = scrapeDiary()
     expect(film.posterUrl).toBe('https://letterboxd.com/film/dune-2021/image-150/')
@@ -317,6 +334,7 @@ describe('scrapeDiary', () => {
 
 describe('scrapeList', () => {
   interface ListItemOverrides {
+    slug?: string
     name?: string
     filmId?: string
     posterUrl?: string
@@ -327,18 +345,21 @@ describe('scrapeList', () => {
   function makeListItem(overrides: ListItemOverrides = {}): string {
     const {
       name = 'Dune (2021)',
+      slug = 'dune-2021',
       filmId = '371378',
-      posterUrl = '/film/dune-2021/image-150/',
+      posterUrl = '',
       imgSrc = REAL_POSTER,
       ownerRating = '8',
     } = overrides
     const ratingAttr = ownerRating != null ? ` data-owner-rating="${ownerRating}"` : ''
     return `
-      <li class="posteritem"${ratingAttr}>
+      <li class="posteritem numbered-list-item" data-object-name="list"${ratingAttr}>
         <div class="react-component" data-component-class="LazyPoster"
           data-item-name="${name}"
-          data-film-id="${filmId}"
-          data-poster-url="${posterUrl}">
+          data-item-slug="${slug}"
+          data-item-link="/film/${slug}/"
+          data-postered-identifier='{"uid":"film:${filmId}","type":"film"}'
+          ${posterUrl ? `data-poster-url="${posterUrl}"` : ''}>
           <img class="image" src="${imgSrc}" />
         </div>
       </li>`
@@ -347,8 +368,9 @@ describe('scrapeList', () => {
   function makeDetailListItem(overrides: ListItemOverrides & { rating?: string } = {}): string {
     const {
       name = 'Dune (2021)',
+      slug = 'dune-2021',
       filmId = '371378',
-      posterUrl = '/film/dune-2021/image-150/',
+      posterUrl = '',
       imgSrc = REAL_POSTER,
       rating = '★★★★',
     } = overrides
@@ -356,8 +378,10 @@ describe('scrapeList', () => {
       <li class="film-detail">
         <div class="react-component" data-component-class="LazyPoster"
           data-item-name="${name}"
-          data-film-id="${filmId}"
-          data-poster-url="${posterUrl}">
+          data-item-slug="${slug}"
+          data-item-link="/film/${slug}/"
+          data-postered-identifier='{"uid":"film:${filmId}","type":"film"}'
+          ${posterUrl ? `data-poster-url="${posterUrl}"` : ''}>
           <img class="image" src="${imgSrc}" />
         </div>
         <div class="film-detail-content">
@@ -368,7 +392,7 @@ describe('scrapeList', () => {
 
   function setListDOM(items: string[]) {
     document.body.innerHTML = `
-      <ul class="js-list-entries">
+      <ul class="poster-list -p125 -grid">
         ${items.join('')}
       </ul>`
   }
@@ -394,7 +418,7 @@ describe('scrapeList', () => {
   })
 
   it('reads rating from .rating span in detail view (li.film-detail)', () => {
-    document.body.innerHTML = `<ul class="js-list-entries">${makeDetailListItem()}</ul>`
+    document.body.innerHTML = `<ul class="poster-list -p125 -grid">${makeDetailListItem()}</ul>`
     const [film] = scrapeList(1)
     expect(film.title).toBe('Dune')
     expect(film.rating).toBe('★★★★')
@@ -402,10 +426,10 @@ describe('scrapeList', () => {
 
   it('prefers .rating span over data-owner-rating when both present', () => {
     document.body.innerHTML = `
-      <ul class="js-list-entries">
-        <li class="posteritem" data-owner-rating="2">
+      <ul class="poster-list -p125 -grid">
+        <li class="posteritem" data-object-name="list" data-owner-rating="2">
           <div class="react-component" data-component-class="LazyPoster"
-            data-item-name="Dune (2021)" data-film-id="1" data-poster-url="/film/dune/image-150/">
+            data-item-name="Dune (2021)" data-item-link="/film/dune/">
             <img class="image" src="${REAL_POSTER}" />
           </div>
           <span class="rating">★★★★★</span>
@@ -417,7 +441,7 @@ describe('scrapeList', () => {
 
   it('returns mixed grid and detail items from the same list', () => {
     document.body.innerHTML = `
-      <ul class="js-list-entries">
+      <ul class="poster-list -p125 -grid">
         ${makeListItem({ name: 'Film A (2021)', filmId: '1' })}
         ${makeDetailListItem({ name: 'Film B (2022)', filmId: '2', rating: '★★★' })}
       </ul>`
@@ -474,8 +498,9 @@ describe('scrapeFilmsPage', () => {
   function makeFilmsPageItem(overrides: FilmOverrides = {}): string {
     const {
       name = 'Dune (2021)',
+      slug = 'dune-2021',
       filmId = '371378',
-      posterUrl = '/film/dune-2021/image-150/',
+      posterUrl = '',
       imgSrc = REAL_POSTER,
       rating = '★★★★',
     } = overrides
@@ -484,8 +509,10 @@ describe('scrapeFilmsPage', () => {
         <div class="react-component"
           data-component-class="LazyPoster"
           data-item-name="${name}"
-          data-film-id="${filmId}"
-          data-poster-url="${posterUrl}">
+          data-item-slug="${slug}"
+          data-item-link="/film/${slug}/"
+          data-postered-identifier='{"uid":"film:${filmId}","type":"film"}'
+          ${posterUrl ? `data-poster-url="${posterUrl}"` : ''}>
           <img class="image" src="${imgSrc}" />
         </div>
         <p class="poster-viewingdata">
@@ -521,7 +548,7 @@ describe('scrapeFilmsPage', () => {
     expect(film.posterUrl).toBe(REAL_POSTER)
   })
 
-  it('falls back to data-poster-url when img.src contains the placeholder', () => {
+  it('falls back to data-poster-url when img.src is a placeholder', () => {
     setFilmsPageDOM([
       makeFilmsPageItem({
         imgSrc: `https://s.ltrbxd.com/static/img/${PLACEHOLDER}`,
@@ -664,7 +691,7 @@ describe('scrapeReview', () => {
     reviewText?: string
   } = {}) {
     const {
-      posterUrl = '/film/groundhog-day/image-150/',
+      posterUrl = '',
       imgSrc = REAL_POSTER,
       title = 'Groundhog Day',
       year = '1993',
@@ -677,7 +704,7 @@ describe('scrapeReview', () => {
     document.body.innerHTML = `
       <section class="viewing-poster-container">
         <div class="react-component" data-component-class="LazyPoster"
-          data-film-id="7418" data-poster-url="${posterUrl}">
+          data-film-id="7418" ${posterUrl ? `data-poster-url="${posterUrl}"` : ''}>
           <img class="image" src="${imgSrc}" />
         </div>
       </section>
@@ -812,7 +839,7 @@ describe('scrapeReviewsList', () => {
     const {
       title = 'Groundhog Day',
       year = '1993',
-      posterUrl = '/film/groundhog-day/image-150/',
+      posterUrl = '',
       imgSrc = REAL_POSTER,
       rating = '★★★★★',
       datetime = '2026-03-22',
@@ -824,7 +851,7 @@ describe('scrapeReviewsList', () => {
       <div class="listitem js-listitem">
         <article class="production-viewing viewing-poster-container js-production-viewing">
           <div class="react-component" data-component-class="LazyPoster"
-            data-film-id="7418" data-poster-url="${posterUrl}">
+            data-film-id="7418" ${posterUrl ? `data-poster-url="${posterUrl}"` : ''}>
             <img class="image" src="${imgSrc}" />
           </div>
           <div class="inline-production-masthead">
