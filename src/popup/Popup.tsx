@@ -248,9 +248,12 @@ export default function Popup() {
       // Optional TMDB enrichment — gated on the extensionUseTmdb setting.
       // Stats render modes other than poster-grid don't benefit from TMDB
       // enrichment (no per-film posters to upgrade), so skip in that case.
-      // Prefer scrape-time filmSlug (derived from data-poster-url) over
-      // parsing posterUrl — by document_idle the CDN URL no longer contains
-      // /film/<slug>/ so regex extraction would return ''.
+      // Prefer scrape-time filmSlug (from the LazyPoster attribute ladder in
+      // shared/lazyPoster.ts) over parsing posterUrl — by document_idle the CDN
+      // URL no longer contains /film/<slug>/ so regex extraction returns ''.
+      // Both halves of this expression used to depend on data-poster-url, so
+      // when Letterboxd removed it in Sept 2026 TMDB enrichment went silently
+      // dead. filmSlug now has its own sources.
       if (useTmdb && needsFilms && filmData.films.length > 0) {
         const slugs = filmData.films.map(f => f.filmSlug || slugFromPosterUrl(f.posterUrl))
         const results = await Promise.allSettled(slugs.map(fetchTmdbData))

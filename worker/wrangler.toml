@@ -29,9 +29,13 @@ compatibility_date = "2024-09-23"
 # binding — different scopes (per isolate vs per zone/IP).
 #
 # Sizing note: the limit is on SUBREQUESTS, not "cards per minute". One 20-film
-# list card with TMDB costs ~63 proxy requests — 1 page + 20 /tmdb + 20 posters
-# + 20 CDN-URL resolutions (/film/<slug>/image-NNN/ is HTML, so each poster
-# needs a second fetch to read the real URL from JSON-LD) + backdrop + avatar.
+# list card costs at most ~63 proxy requests — 1 page + 20 /tmdb + 20 posters
+# + 20 CDN-URL resolutions + backdrop + avatar. That last group only happens
+# when TMDB misses: the web app reconstructs /film/<slug>/image-150/ from the
+# LazyPoster attributes, which is HTML rather than an image, so each poster it
+# still needs from Letterboxd costs a second fetch to read the real URL out of
+# the film page's JSON-LD. Measured 2026-09-08 in the real app: 42 subrequests
+# with TMDB hitting or disabled, 62 with every lookup missing.
 # 600/min per isolate leaves a person iterating on layouts far clear of it.
 #
 # isRateLimited() in index.ts fails open if the binding is ever removed.

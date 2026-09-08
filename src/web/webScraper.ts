@@ -7,8 +7,10 @@
  *
  * Key differences from the extension content script:
  * - No chrome.* APIs — this is plain web code
- * - Images are never lazy-loaded in fetched HTML, so we always use
- *   data-poster-url rather than checking img.src
+ * - Images are never lazy-loaded in fetched HTML, so img.src is always the
+ *   empty-poster placeholder. Poster URLs come from the LazyPoster attribute
+ *   ladder in shared/lazyPoster.ts, which reconstructs /film/<slug>/image-150/
+ *   from data-item-link / data-item-slug now that data-poster-url is gone.
  * - Full-review text fetches also go through the proxy
  */
 
@@ -17,6 +19,7 @@ import type { FilmData, FilmDataResponse, StatEntry, ChartDataSet, BreakdownData
 import { fetchTmdbData } from './tmdbClient'
 import { mergeTmdb, slugFromPosterUrl } from '../shared/tmdb'
 import { upscaleLetterboxdPoster } from '../shared/posters'
+import { filmIdFromLazyPoster, LIST_ENTRY_SELECTOR, resolveLazyPoster, type PosterRung } from '../shared/lazyPoster'
 import { track } from './faro'
 import { sanitizeErrorMessage } from './telemetryPrivacy'
 
@@ -117,29 +120,26 @@ interface PosterAttrs {
   year: string
   filmId: string
   posterUrl: string
+  filmSlug: string
 }
 
-// Current Letterboxd LazyPosters no longer carry a data-film-id attribute; the
-// numeric id now lives only inside the JSON of data-postered-identifier (top-level
-// `uid`) or data-resolvable-poster-path (`postered.uid`) as e.g. "film:459564".
-// Prefer the legacy attribute when present, then fall back to parsing the uid.
-function filmIdFromLazyPoster(lazyPoster: Element | null): string {
-  const legacy = lazyPoster?.getAttribute('data-film-id')
-  if (legacy) return legacy
-  for (const attr of ['data-postered-identifier', 'data-resolvable-poster-path']) {
-    const raw = lazyPoster?.getAttribute(attr)
-    if (!raw) continue
-    try {
-      const parsed = JSON.parse(raw)
-      const uid: string | undefined = parsed.uid ?? parsed.postered?.uid
-      const m = uid?.match(/^film:(\d+)$/)
-      if (m) return m[1]
-    } catch { /* malformed JSON — try next source */ }
-  }
-  return ''
+// Which rung of the LazyPoster ladder fed this scrape. Counted per rung and
+// flushed once per card by flushPosterRungs(), so that the next time Letterboxd
+// drops an attribute we see the rung go quiet instead of only seeing
+// card_generate_failed. Rung names are structural, never card content.
+let posterRungCounts: Partial<Record<PosterRung, number>> = {}
+
+function recordPosterRung(rung: PosterRung): void {
+  posterRungCounts[rung] = (posterRungCounts[rung] ?? 0) + 1
 }
 
-/** Extract title/year/filmId/posterUrl from a LazyPoster item element. */
+function flushPosterRungs(): void {
+  const counts = posterRungCounts
+  posterRungCounts = {}
+  if (Object.keys(counts).length) track('poster_source', counts)
+}
+
+/** Extract title/year/filmId/posterUrl/filmSlug from a LazyPoster item element. */
 function extractPosterAttrs(item: Element): PosterAttrs {
   const lazyPoster = item.querySelector(
     '.react-component[data-component-class="LazyPoster"]',
@@ -149,10 +149,10 @@ function extractPosterAttrs(item: Element): PosterAttrs {
   const title = titleMatch?.[1]?.trim() ?? rawTitle
   const year = titleMatch?.[2] ?? ''
   const filmId = filmIdFromLazyPoster(lazyPoster)
-  // In fetched HTML, img.src is never lazy-resolved — always use data-poster-url.
-  const dataPosterUrl = lazyPoster?.getAttribute('data-poster-url') ?? ''
-  const posterUrl = dataPosterUrl ? `https://letterboxd.com${dataPosterUrl}` : ''
-  return { title, year, filmId, posterUrl }
+  // Fetched HTML is never hydrated, so there is no resolved img.src to prefer.
+  const { posterUrl, filmSlug, rung } = resolveLazyPoster(lazyPoster)
+  recordPosterRung(rung)
+  return { title, year, filmId, posterUrl, filmSlug }
 }
 
 // ── Scrapers ──────────────────────────────────────────────────────────────────
@@ -168,9 +168,9 @@ export function scrapeRecentActivity(doc: Document): FilmData[] {
     : Array.from(doc.querySelectorAll('ul.grid li.griditem')).slice(0, 4)
 
   return source.map(item => {
-    const { title, year, filmId, posterUrl } = extractPosterAttrs(item)
+    const { title, year, filmId, posterUrl, filmSlug } = extractPosterAttrs(item)
     const rating = item.querySelector('.rating')?.textContent?.trim() ?? ''
-    return { title, year, rating, posterUrl, filmId }
+    return { title, year, rating, posterUrl, filmId, filmSlug }
   })
 }
 
@@ -178,8 +178,8 @@ export function scrapeFavorites(doc: Document): FilmData[] {
   return Array.from(
     doc.querySelectorAll('section#favourites li.griditem'),
   ).slice(0, 4).map(item => {
-    const { title, year, filmId, posterUrl } = extractPosterAttrs(item)
-    return { title, year, rating: '', posterUrl, filmId }
+    const { title, year, filmId, posterUrl, filmSlug } = extractPosterAttrs(item)
+    return { title, year, rating: '', posterUrl, filmId, filmSlug }
   })
 }
 
@@ -192,7 +192,7 @@ export function scrapeDiary(doc: Document, count = 4): FilmData[] {
   let currentYear = ''
 
   return rows.map(row => {
-    const { title, year, filmId, posterUrl } = extractPosterAttrs(row)
+    const { title, year, filmId, posterUrl, filmSlug } = extractPosterAttrs(row)
 
     const ratingEl =
       row.querySelector('.col-rating .hide-for-owner .rating') ??
@@ -209,7 +209,7 @@ export function scrapeDiary(doc: Document, count = 4): FilmData[] {
       ? `${currentMonth} ${day}, ${currentYear}`
       : ''
 
-    return { title, year, rating, posterUrl, filmId, date }
+    return { title, year, rating, posterUrl, filmId, filmSlug, date }
   })
 }
 
@@ -239,16 +239,14 @@ export function scrapeListMeta(
 
 export function scrapeList(doc: Document, count: number): FilmData[] {
   return Array.from(
-    doc.querySelectorAll(
-      'ul.js-list-entries li.posteritem, ul.js-list-entries li.film-detail',
-    ),
+    doc.querySelectorAll(LIST_ENTRY_SELECTOR),
   ).slice(0, count).map(item => {
-    const { title, year, filmId, posterUrl } = extractPosterAttrs(item)
+    const { title, year, filmId, posterUrl, filmSlug } = extractPosterAttrs(item)
     const ratingEl = item.querySelector('.rating')
     const rating =
       ratingEl?.textContent?.trim() ||
       ownerRatingToStars(item.getAttribute('data-owner-rating'))
-    return { title, year, rating, posterUrl, filmId }
+    return { title, year, rating, posterUrl, filmId, filmSlug }
   })
 }
 
@@ -282,7 +280,7 @@ export async function scrapeReviewsList(
 
   return Promise.all(
     items.map(async item => {
-      const { title, year, filmId, posterUrl } = extractPosterAttrs(item)
+      const { title, year, filmId, posterUrl, filmSlug } = extractPosterAttrs(item)
 
       const rating =
         item
@@ -318,7 +316,7 @@ export async function scrapeReviewsList(
         .map(a => a.textContent?.trim() ?? '')
         .filter(Boolean)
 
-      return { title, year, rating, posterUrl, filmId, date, reviewText, tags }
+      return { title, year, rating, posterUrl, filmId, filmSlug, date, reviewText, tags }
     }),
   )
 }
@@ -502,9 +500,12 @@ export async function scrapeSingleReview(doc: Document): Promise<FilmData[]> {
   const lazyPoster = doc.querySelector(
     'section.viewing-poster-container .react-component[data-component-class="LazyPoster"]',
   )
-  const dataPosterUrl = lazyPoster?.getAttribute('data-poster-url') ?? ''
-  const posterUrl = dataPosterUrl ? `https://letterboxd.com${dataPosterUrl}` : ''
-  const filmId = lazyPoster?.getAttribute('data-film-id') ?? ''
+  // Was reading data-poster-url and data-film-id directly. Both attributes are
+  // gone from live markup; the data-film-id read in particular had been dead
+  // since 2026-08 because the fix then only reached extractPosterAttrs.
+  const { posterUrl, filmSlug, rung } = resolveLazyPoster(lazyPoster)
+  recordPosterRung(rung)
+  const filmId = filmIdFromLazyPoster(lazyPoster)
 
   const title =
     doc.querySelector('.inline-production-masthead h2.primaryname a')?.textContent?.trim() ?? ''
@@ -542,7 +543,7 @@ export async function scrapeSingleReview(doc: Document): Promise<FilmData[]> {
     .filter(Boolean)
 
   if (!title) return []
-  return [{ title, year, rating, posterUrl, filmId, date, reviewText, tags }]
+  return [{ title, year, rating, posterUrl, filmId, filmSlug, date, reviewText, tags }]
 }
 
 // ── Stats scrapers (web app versions) ────────────────────────────────────────
@@ -732,6 +733,10 @@ export async function scrapeLetterboxdPage(
       films = []
   }
 
+  // One event per card rather than one per film: which rungs of the LazyPoster
+  // ladder are actually load-bearing right now.
+  flushPosterRungs()
+
   // TMDB enrichment: look up each film's TMDB metadata in parallel. Failures
   // are swallowed per-film so one miss doesn't break the whole card — but we
   // surface them via console so a poster-URL format change or a worker outage
@@ -742,10 +747,15 @@ export async function scrapeLetterboxdPage(
     // These diagnostics are deliberately content-free: Faro captures
     // console.warn by default, and film titles / poster URLs are card content
     // the privacy policy says we don't collect. The count is the signal.
+    // Prefer the scrape-time filmSlug over re-parsing posterUrl. Until now the
+    // "independent" TMDB fallback was derived from data-poster-url, so when that
+    // attribute vanished BOTH poster sources died at once and the card had
+    // nothing left to draw. Reading the slug from its own attribute ladder means
+    // the next removal degrades one source, not two.
     const slugs = films.map(f => {
-      const slug = slugFromPosterUrl(f.posterUrl)
-      if (!slug && f.posterUrl) {
-        console.warn('[tmdb] could not derive a slug from a posterUrl — Letterboxd URL format may have changed')
+      const slug = f.filmSlug || slugFromPosterUrl(f.posterUrl)
+      if (!slug) {
+        console.warn('[tmdb] no film slug from the LazyPoster attributes — Letterboxd markup may have changed')
       }
       return slug
     })
