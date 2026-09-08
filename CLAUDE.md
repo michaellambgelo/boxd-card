@@ -243,6 +243,43 @@ Things that are load-bearing:
 - **Never log response bodies.** `[observability.logs] persist = true`, and those bodies are Letterboxd page content. Status + `cf-ray` only.
 - **Rate limiting** is wired but not enabled — the worker reads an optional `RATE_LIMITER` binding and fails open without it. See `wrangler.toml` for how to switch it on. Worth doing: abuse of this open proxy means Letterboxd sees the traffic as ours.
 
+## URL routing and page filters
+
+`src/shared/letterboxdUrl.ts` is the **single** answer to "what card type is this URL, and does it carry a filter". Both surfaces use it. It replaced `CARD_TYPE_CONFIGS.urlPattern` — six anchored regexes that were a second, independent answer to the same question. Two sources of truth is how `last-four-watched` ends up matching every page the moment someone loosens a pattern by hand.
+
+It lives in `shared/` for a second reason: `web/webScraper.ts` imports `./faro`, and the extension must never pull that in.
+
+**Letterboxd puts filters in the path, on both sides of the section:**
+
+```
+PREFIX   /<user>/tag/<tag>/diary/            diary entries tagged in-theaters
+SUFFIX   /<user>/diary/films/decade/1990s/   diary entries from the 1990s
+```
+
+Suffixes chain freely (`by/rating`, `genre/horror`, `rated/5`, `on/favorite-services/type/buy`, `page/2`, `size/large`) and Letterboxd extends the vocabulary without notice, so `shared/urlFilter.ts` keeps **no allowlist** — whatever follows the section is carried verbatim and handed back to Letterboxd, the only thing that can say whether a filter is real. `describeFilter()` is correspondingly forgiving and degrades to reading the segments out.
+
+**Filtered pages are structurally identical to their unfiltered versions** — a tag-filtered diary is still `table#diary-table` + `tr.diary-entry-row`; a tag-filtered `/films/` is still `ul.grid li.griditem`. No scraper needed changing. Only the routing did.
+
+**`buildPageUrl` must put the filter back.** It used to rebuild from username + card type alone, so a filtered URL parsed fine and then fetched the *unfiltered* page — a card that looked correct while showing the wrong entries. `withFilter()` reassembles both halves; the round-trip is tested.
+
+**`films` stays inside the suffix.** `/<user>/` and `/<user>/films/` are different pages that both produce a last-four-watched card, and suffix filters hang off `/films/`. Consuming the segment rebuilt `/tag/x/films/by/rating/` as `/tag/x/by/rating/`, which is not a page.
+
+**Stats takes no filters, deliberately.** Letterboxd offers none there, and `/stats/YYYY/` 404s — it was accepted once and produced a hint that dead-ended. Permissive suffix handling would quietly resurrect it, so the stats branch stays exact.
+
+### The one asymmetry between surfaces
+
+Letterboxd's bot rules challenge the `/tag/` prefix specifically. Measured through the production proxy with interleaved controls, twice, four minutes apart:
+
+| URL | via proxy |
+|---|---|
+| `/<user>/diary/` | 200 |
+| `/<user>/tag/in-theaters/diary/` | **403** "Just a moment…" |
+| `/<user>/diary/films/decade/1990s/` | 200, correctly filtered |
+
+So suffix filters work on both surfaces; **tag filters work only in the extension**, which reads the page you are already looking at instead of fetching it. This is the same situation as stats pages and gets the same treatment — `isProxyBlockedFilter()` makes the web app say so, rather than fetch the unfiltered page and hand back a card that quietly ignores the filter.
+
+The card's type label carries the filter (`Recent Diary · tagged in-theaters`) so a shared card says which entries it was drawn from.
+
 ## DOM selectors (verified against live Letterboxd HTML)
 
 Both scrapers rely on these. Letterboxd changes them without notice; when a card type breaks, check here first.
