@@ -1,0 +1,46 @@
+{
+  "findings": [
+    {
+      "category": "security",
+      "severity": "error",
+      "title": "wrangler depends on sharp <0.35.4 (high severity, GHSA-rgj7-g3m4-5g8c)",
+      "detail": "wrangler@^4.123.0 → miniflare → sharp <0.35.4 contains heap-buffer-overflow vulnerabilities in libheif (GHSA-g89c-p67h-r497, GHSA-2jg2-4ch7-h545). Affects node_modules/sharp, node_modules/miniflare, node_modules/wrangler. Fix is available via npm audit fix (bumps wrangler to 4.131.0+ which pulls in sharp >=0.35.4).",
+      "actionable": true,
+      "suggested_fix": "Run npm audit fix to update wrangler to >=4.131.0, pulling in sharp >=0.35.4"
+    },
+    {
+      "category": "outdated_dep",
+      "severity": "warn",
+      "title": "react and react-dom are one major version behind (18.x vs 19.x latest)",
+      "detail": "react@18.3.1 and react-dom@18.3.1 are pinned; react@19.3.0 is the current latest major. React 19 includes breaking changes (Actions API, new hooks) that would require a migration review.",
+      "actionable": false,
+      "suggested_fix": "Evaluate React 19 migration guide; update package.json to use react@^19.0.0 and react-dom@^19.0.0 after reviewing breaking changes"
+    },
+    {
+      "category": "missing_tests",
+      "severity": "warn",
+      "title": "src/shared/urlFilter.ts modified recently with no test file",
+      "detail": "src/shared/urlFilter.ts was modified within the last 14 days but has no sibling test file (urlFilter.test.ts). The other shared modules (lazyPoster, letterboxdUrl, posters, tmdb) all have test coverage.",
+      "actionable": true,
+      "suggested_fix": "Add src/shared/urlFilter.test.ts covering buildPageUrl round-trips, describeFilter output, and isProxyBlockedFilter detection"
+    },
+    {
+      "category": "missing_tests",
+      "severity": "info",
+      "title": "src/popup/Popup.tsx has no test file",
+      "detail": "src/popup/Popup.tsx was modified recently and is the extension's primary UI component, but there is no Popup.test.tsx. Testing React components in jsdom is feasible with @testing-library/react.",
+      "actionable": false,
+      "suggested_fix": "Add src/popup/Popup.test.tsx with smoke tests for card type selection and generate button state"
+    },
+    {
+      "category": "failing_ci",
+      "severity": "info",
+      "title": "CI is healthy — no failures on main in last 5 runs",
+      "detail": "All recent runs on main are success or skipped (skipped = workflow triggered on non-matching events). No action required.",
+      "actionable": false,
+      "suggested_fix": "No action required"
+    }
+  ],
+  "action": "audit_only",
+  "pr_url": null
+}
