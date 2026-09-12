@@ -1,0 +1,46 @@
+{
+  "findings": [
+    {
+      "category": "security",
+      "severity": "error",
+      "title": "wrangler 4.125.0 contains high-severity vulnerability via sharp/libheif",
+      "detail": "wrangler@4.125.0 (locked in package-lock.json, declared as ^4.123.0) pulls in miniflare which depends on sharp <0.35.4. sharp <0.35.4 has libheif vulnerabilities (GHSA-g89c-p67h-r497, GHSA-2jg2-4ch7-h545, CVE heap-buffer-overflow). Advisory: GHSA-rgj7-g3m4-5g8c. npm audit reports 3 high-severity issues (wrangler -> miniflare -> sharp). Latest wrangler is 4.131.1, which is outside the vulnerable range (4.16.0 - 4.130.0).",
+      "actionable": true,
+      "suggested_fix": "Bump wrangler from ^4.123.0 to ^4.131.1 in package.json and run npm install to update package-lock.json"
+    },
+    {
+      "category": "outdated_dep",
+      "severity": "info",
+      "title": "react and react-dom are one major version behind (18 vs 19)",
+      "detail": "package.json pins react@^18.3.1 and react-dom@^18.3.1; latest is 19.3.0. React 19 is a major release with breaking changes. No security advisory.",
+      "actionable": false,
+      "suggested_fix": "Evaluate React 19 migration guide and upgrade react/react-dom to ^19.3.0 after testing"
+    },
+    {
+      "category": "missing_tests",
+      "severity": "warn",
+      "title": "Recently changed src/popup/Popup.tsx has no test file",
+      "detail": "src/popup/Popup.tsx was modified within the last 14 days (commit range includes release 0.10.0 changes) but has no sibling test file (src/popup/Popup.test.tsx or similar). It is the main UI component for the extension popup.",
+      "actionable": false,
+      "suggested_fix": "Add src/popup/Popup.test.tsx covering key rendering paths and user interactions"
+    },
+    {
+      "category": "missing_tests",
+      "severity": "warn",
+      "title": "Recently changed src/shared/urlFilter.ts has no test file",
+      "detail": "src/shared/urlFilter.ts was modified within the last 14 days but has no sibling test file (e.g. src/shared/urlFilter.test.ts). This module handles Letterboxd URL filter parsing and reconstruction, which is a non-trivial code path.",
+      "actionable": false,
+      "suggested_fix": "Add src/shared/urlFilter.test.ts covering describeFilter(), withFilter(), and isProxyBlockedFilter() with representative Letterboxd URL shapes"
+    },
+    {
+      "category": "missing_tests",
+      "severity": "warn",
+      "title": "Recently changed src/web/App.tsx has no test file",
+      "detail": "src/web/App.tsx was modified within the last 14 days but has no sibling test file (src/web/App.test.tsx or similar). App.tsx is the main web app UI and generation pipeline.",
+      "actionable": false,
+      "suggested_fix": "Add src/web/App.test.tsx covering the generation pipeline happy path and error states"
+    }
+  ],
+  "action": "audit_only",
+  "pr_url": null
+}
