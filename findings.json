@@ -1,0 +1,46 @@
+{
+  "findings": [
+    {
+      "category": "security",
+      "severity": "error",
+      "title": "wrangler depends on sharp < 0.35.4 (high-severity libheif vulns)",
+      "detail": "wrangler@4.16.0–4.130.0 → miniflare → sharp < 0.35.4. Advisory GHSA-rgj7-g3m4-5g8c covers two libheif heap-buffer-overflow CVEs (GHSA-g89c-p67h-r497, GHSA-2jg2-4ch7-h545). Current lock resolves to the vulnerable range. wrangler@4.131.0+ carries sharp@0.35.4 and is within the package.json ^4.123.0 constraint.",
+      "actionable": true,
+      "suggested_fix": "Run `npm install wrangler@4.131.1` to update the lock file to the patched release"
+    },
+    {
+      "category": "outdated_dep",
+      "severity": "warn",
+      "title": "react and react-dom are one major version behind (18 → 19)",
+      "detail": "package.json pins react@^18.3.1 and react-dom@^18.3.1; npm latest is 19.3.0. React 19 is a major release with breaking changes (new JSX transform requirements, concurrent features). @types/react and @types/react-dom also need parallel bumps.",
+      "actionable": true,
+      "suggested_fix": "Run `npm install react@^19 react-dom@^19 @types/react@^19 @types/react-dom@^19` and resolve any breaking-change migration items"
+    },
+    {
+      "category": "missing_tests",
+      "severity": "info",
+      "title": "src/shared/urlFilter.ts has no sibling test file",
+      "detail": "urlFilter.ts was changed in the last 14 days (added as part of filtered-URL routing work) but no src/shared/urlFilter.test.ts exists. The module is exercised indirectly by letterboxdUrl.test.ts, but dedicated unit tests for describeFilter() and buildFilteredUrl() are absent.",
+      "actionable": false,
+      "suggested_fix": "Add src/shared/urlFilter.test.ts covering describeFilter() and the round-trip through withFilter()"
+    },
+    {
+      "category": "missing_tests",
+      "severity": "info",
+      "title": "src/web/App.tsx has no sibling test file",
+      "detail": "App.tsx changed in the last 14 days. No src/web/App.test.tsx exists. The generation pipeline logic in App is only exercised through end-to-end runs or the visual/generate test suites.",
+      "actionable": false,
+      "suggested_fix": "Add unit tests for the URL-validation and error-display branches in App.tsx"
+    },
+    {
+      "category": "missing_tests",
+      "severity": "info",
+      "title": "src/popup/Popup.tsx has no sibling test file",
+      "detail": "Popup.tsx changed in the last 14 days. No src/popup/Popup.test.tsx exists. The popup's card-type selection and settings-persistence paths are untested at the unit level.",
+      "actionable": false,
+      "suggested_fix": "Add src/popup/Popup.test.tsx covering card-type gating and settings round-trips"
+    }
+  ],
+  "action": "audit_only",
+  "pr_url": null
+}
