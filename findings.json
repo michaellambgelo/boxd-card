@@ -42,5 +42,7 @@
     }
   ],
   "action": "audit_only",
-  "pr_url": null
+  "pr_url": null,
+  "fix_branch": "claude-maintenance/2026-09-14-wrangler-security",
+  "fix_note": "Security fix committed and pushed to fix_branch. PR creation failed: GH_TOKEN lacks pull_requests:write permission (HTTP 403 on both GraphQL and REST). Branch is ready; open a draft PR manually from that branch to main."
 }
