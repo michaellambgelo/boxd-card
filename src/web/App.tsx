@@ -874,32 +874,36 @@ export default function App() {
           </section>
         )}
 
-        {useTmdb && (
-          <div className={styles.tmdbAttribution}>
-            <a
-              href="https://www.themoviedb.org/"
-              target="_blank"
-              rel="noreferrer"
-              aria-label="The Movie Database (TMDB)"
-            >
-              <img src={tmdbLogoUrl} alt="TMDB" className={styles.tmdbLogo} />
-            </a>
-            <span className={styles.tmdbDisclaimer}>
-              This product uses the TMDB API but is not endorsed or certified by TMDB.
-            </span>
-          </div>
-        )}
+        {/* The footer band. Wrapped so the attribution and the links drop to
+            the bottom of the viewport together — see .pageFooter. */}
+        <div className={styles.pageFooter}>
+          {useTmdb && (
+            <div className={styles.tmdbAttribution}>
+              <a
+                href="https://www.themoviedb.org/"
+                target="_blank"
+                rel="noreferrer"
+                aria-label="The Movie Database (TMDB)"
+              >
+                <img src={tmdbLogoUrl} alt="TMDB" className={styles.tmdbLogo} />
+              </a>
+              <span className={styles.tmdbDisclaimer}>
+                This product uses the TMDB API but is not endorsed or certified by TMDB.
+              </span>
+            </div>
+          )}
 
-        <footer className={styles.footer}>
-          <span>
-            <a href="/about">About</a>
-            {' · '}
-            <a href="/privacy">Privacy</a>
-          </span>
-          <span>
-            <a href="https://github.com/michaellambgelo/boxd-card">GitHub</a>
-          </span>
-        </footer>
+          <footer className={styles.footer}>
+            <span>
+              <a href="/about">About</a>
+              {' · '}
+              <a href="/privacy">Privacy</a>
+            </span>
+            <span>
+              <a href="https://github.com/michaellambgelo/boxd-card">GitHub</a>
+            </span>
+          </footer>
+        </div>
       </div>
     </div>
   )
