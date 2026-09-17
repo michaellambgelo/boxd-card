@@ -144,10 +144,11 @@ boxd-card/
 │   │                              #   Hand-written: about/, privacy/, landing/assets/, _redirects, *.md
 │   │                              #   → vite.web.config.ts MUST keep emptyOutDir:false or the build
 │   │                              #     would delete the privacy policy and the redirects file.
-│   ├── index.html                 # Landing page (hand-written)
+│   ├── index.html                 # BUILD OUTPUT of src/web — the apex; committed, do not hand-edit
+│   ├── assets/                    # BUILD OUTPUT of src/web — hashed bundles, do not hand-edit
+│   ├── about/index.html           # About page (hand-written) — boxd-card.com/about
 │   ├── privacy/index.html         # Privacy policy — a promise backed by code, keep in sync
-│   ├── app/                       # BUILD OUTPUT of src/web — committed, do not hand-edit
-│   └── _redirects                 # Cloudflare Pages redirects
+│   └── _redirects                 # Cloudflare Pages redirects (incl. the /app → / 301s)
 ├── eslint.config.mjs
 ├── tsconfig.json                  # App + tests (DOM types)
 ├── tsconfig.node.json             # Build configs (Node types)
