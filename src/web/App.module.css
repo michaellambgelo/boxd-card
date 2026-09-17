@@ -53,10 +53,22 @@
 }
 
 /* ── Page wrapper ────────────────────────────────────────────── */
+/* The sticky-footer container. It is `.page` and not `.app` on purpose: `.page`
+   centres itself with `margin: 0 auto`, and auto cross-axis margins cancel
+   `align-self: stretch` — as a flex *item* it would collapse to fit-content and
+   drag the full-width input and Generate button in with it.
+
+   The 48px of bottom breathing room moved to `.pageFooter`. Left here it would
+   add to the content-box min-height and every page would scroll by 48px. */
 .page {
   max-width: 640px;
   margin: 0 auto;
-  padding: 0 20px 48px;
+  padding: 0 20px;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  /* dvh excludes the mobile browser chrome that makes 100vh overshoot. */
+  min-height: 100dvh;
 }
 
 /* ── Header ──────────────────────────────────────────────────── */
@@ -475,7 +487,17 @@
   line-height: 1.4;
 }
 
-/* ── Footer ──────────────────────────────────────────────────── */
+/* ── Footer band ─────────────────────────────────────────────── */
+/* Wraps the TMDB attribution and the link row so they travel together. The
+   auto margin eats the free space in `.page`'s flex column, which drops the
+   band to the bottom of the viewport on a short page and lets it scroll
+   normally below the content on a tall one. Pushing only `.footer` would
+   strand the attribution mid-page. */
+.pageFooter {
+  margin-top: auto;
+  padding-bottom: 48px;
+}
+
 .footer {
   margin-top: 20px;
   padding-top: 20px;
