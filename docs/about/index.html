@@ -436,8 +436,8 @@
         <div class="type-card"><span class="idx">02</span><span class="name">Favorites</span><span class="desc">The four pinned to the top of your profile.</span></div>
         <div class="type-card"><span class="idx">03</span><span class="name">Recent Diary</span><span class="desc">Latest logged entries, dates and stars.</span></div>
         <div class="type-card"><span class="idx">04</span><span class="name">Lists</span><span class="desc">Any public list, rendered as a poster wall.</span></div>
-        <div class="type-card"><span class="idx">05</span><span class="name">Reviews</span><span class="desc">A single review over a blurred backdrop.</span></div>
-        <div class="type-card"><span class="idx">06</span><span class="name">Year in Review</span><span class="desc">Counts, top genres, and your standout films.</span></div>
+        <div class="type-card"><span class="idx">05</span><span class="name">Reviews</span><span class="desc">Up to four reviews over a blurred backdrop.</span></div>
+        <div class="type-card"><span class="idx">06</span><span class="name">Stats</span><span class="desc">Counts, top genres, and your standout films. Letterboxd Pro, extension only.</span></div>
       </div>
     </div>
   </section>
@@ -462,13 +462,13 @@
           <span class="chip"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg></span>
           <span class="tkicker">Web app</span>
           <h3>No install — paste a link</h3>
-          <div class="tstep"><span class="num">01</span><div><p class="t">Paste a URL</p><p class="d">Drop in any Letterboxd profile, diary, list, or reviews link at <a href="/" style="color:var(--brand-blue);text-decoration:none;">boxd-card.com/app</a> — it detects the type automatically.</p></div></div>
+          <div class="tstep"><span class="num">01</span><div><p class="t">Paste a URL</p><p class="d">Drop in any Letterboxd profile, diary, list, or reviews link at <a href="/" style="color:var(--brand-blue);text-decoration:none;">boxd-card.com</a> — it detects the type automatically.</p></div></div>
           <div class="tstep"><span class="num">02</span><div><p class="t">Pick your options</p><p class="d">The same card types, layouts, and display details as the extension.</p></div></div>
           <div class="tstep"><span class="num">03</span><div><p class="t">Download &amp; share</p><p class="d">Save or copy the PNG right from the browser — nothing to install.</p></div></div>
         </div>
       </div>
       <p class="note">
-        Both produce the same PNG, but a few things are <b>extension-only</b>: <b>Stats cards</b> (Letterboxd blocks stats pages from outside services, so the web app can't fetch them), <b>Remember my username</b> (the extension caches it locally for quicker navigation), and <b>custom posters with TMDB</b> (the extension keeps a film's custom Letterboxd poster when enriching from TMDB; the web app uses the TMDB poster if enrichment is enabled). For those, use the <a href="https://chromewebstore.google.com/detail/boxd-card/kcholfdhfcojahebmneeeikelffkokdj">Chrome extension</a>. Everything else works in both.
+        Both produce the same PNG, but a few things are <b>extension-only</b>: <b>Stats cards</b> (Letterboxd blocks stats pages from outside services, so the web app can't fetch them), <b>tag-filtered pages</b> (Letterboxd challenges /tag/ requests from outside services, so the web app says so rather than quietly handing back an unfiltered card), <b>Remember my username</b> (the extension caches it locally for quicker navigation), and <b>custom posters with TMDB</b> (the extension keeps a film's custom Letterboxd poster when enriching from TMDB; the web app uses the TMDB poster if enrichment is enabled). For those, use the <a href="https://chromewebstore.google.com/detail/boxd-card/kcholfdhfcojahebmneeeikelffkokdj">Chrome extension</a>. Everything else works in both.
       </p>
     </div>
   </section>
@@ -528,7 +528,7 @@
             </defs>
             <circle cx="250" cy="250" r="250" fill="url(#bcg2)" mask="url(#bcm2)"/>
           </svg>
-          <h2>Turn your watchlist into a card</h2>
+          <h2>Turn your film taste into a card</h2>
           <p class="sub">Free, no account, no watermark. Just paste and generate.</p>
           <div class="actions">
             <a class="btn btn--primary btn--md" href="/">Generate your card</a>
