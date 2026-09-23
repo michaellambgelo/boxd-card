@@ -143,3 +143,6 @@ Privacy policy: [boxd-card.com/privacy](https://boxd-card.com/privacy)
 ## Attribution
 
 This product uses the [TMDB](https://www.themoviedb.org/) API but is not endorsed or certified by TMDB.
+
+![Alt](https://repobeats.axiom.co/api/embed/a083e2fb1cf2392af08b0800e09b3427b0e2e4f8.svg "Repobeats analytics image")
+
