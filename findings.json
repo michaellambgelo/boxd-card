@@ -1,0 +1,30 @@
+{
+  "findings": [
+    {
+      "category": "security",
+      "severity": "error",
+      "title": "sharp < 0.35.4 heap-buffer-overflow via wrangler → miniflare",
+      "detail": "Installed sharp 0.35.2 (transitive: wrangler → miniflare → sharp) is affected by GHSA-rgj7-g3m4-5g8c (heap buffer overflow in libheif, CVE-tagged CWE-122). npm audit reports 3 high-severity findings: sharp, miniflare, wrangler. A fix is available via npm audit fix.",
+      "actionable": true,
+      "suggested_fix": "Run npm audit fix to upgrade the wrangler → miniflare → sharp chain to sharp >= 0.35.4"
+    },
+    {
+      "category": "outdated_dep",
+      "severity": "warn",
+      "title": "react and react-dom are 1 major version behind (18.x → 19.x)",
+      "detail": "package.json pins react and react-dom to ^18.3.1; latest stable is 19.3.0. React 19 is a major release with breaking changes (Actions API, use() hook, stricter StrictMode). Manual migration and testing required.",
+      "actionable": true,
+      "suggested_fix": "Update react and react-dom to ^19.3.0 in package.json and resolve any breaking changes"
+    },
+    {
+      "category": "missing_tests",
+      "severity": "info",
+      "title": "src/web/App.tsx recently modified but has no unit test",
+      "detail": "src/web/App.tsx was changed in the last 14 days (About page copy + footer layout fixes) but no App.test.tsx or App.test.ts exists alongside it. Other web modules in the same directory do have sibling test files.",
+      "actionable": true,
+      "suggested_fix": "Add src/web/App.test.tsx with at minimum a smoke-render test using @testing-library/react"
+    }
+  ],
+  "action": "pr_opened",
+  "pr_url": "https://github.com/michaellambgelo/boxd-card/pull/81"
+}
