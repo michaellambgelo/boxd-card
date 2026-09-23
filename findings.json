@@ -4,7 +4,7 @@
       "category": "outdated_dep",
       "severity": "warn",
       "title": "react and react-dom are one major version behind (18 → 19)",
-      "detail": "package.json pins react and react-dom to ^18.3.1 (latest stable: 19.3.0). React 19 is the current major release and includes performance improvements and new features. Both packages must be upgraded together.",
+      "detail": "package.json pinned react and react-dom to ^18.3.1 (latest stable: 19.3.0). React 19 is the current major release. @types/react and @types/react-dom were also bumped from ^18.x to ^19.x to match. All 573 tests pass, lint is clean, vite build succeeds, and wrangler deploy --dry-run exits cleanly.",
       "actionable": true,
       "suggested_fix": "Update react and react-dom in package.json to ^19.3.0 and run npm install"
     },
@@ -12,11 +12,11 @@
       "category": "missing_tests",
       "severity": "info",
       "title": "App.tsx recently changed but no App.test.tsx exists",
-      "detail": "src/web/App.tsx was modified within the last 14 days (commit on main). Sibling test files exist for most modules in src/web/ but App.tsx has no corresponding App.test.ts or App.test.tsx.",
+      "detail": "src/web/App.tsx was modified within the last 14 days. Sibling test files exist for most modules in src/web/ but App.tsx has no corresponding App.test.ts or App.test.tsx.",
       "actionable": false,
       "suggested_fix": "Add src/web/App.test.tsx covering the main rendering and layout of the App component"
     }
   ],
-  "action": "audit_only",
-  "pr_url": null
+  "action": "pr_opened",
+  "pr_url": "https://github.com/michaellambgelo/boxd-card/pull/82"
 }
