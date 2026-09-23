@@ -25,6 +25,6 @@
       "suggested_fix": "Add src/web/App.test.tsx with at minimum a smoke-render test using @testing-library/react"
     }
   ],
-  "action": "audit_only",
-  "pr_url": null
+  "action": "pr_opened",
+  "pr_url": "https://github.com/michaellambgelo/boxd-card/pull/81"
 }
