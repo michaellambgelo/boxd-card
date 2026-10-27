@@ -152,6 +152,7 @@ boxd-card/
 ├── eslint.config.mjs
 ├── tsconfig.json                  # App + tests (DOM types)
 ├── tsconfig.node.json             # Build configs (Node types)
+├── tsconfig.visual.json           # Golden-image suite (DOM + Node types)
 └── vite.config.ts / vite.web.config.ts
 ```
 
@@ -162,7 +163,7 @@ npm run dev        # extension: build in watch mode → dist/
 npm run build      # extension: typecheck + one-shot production build
 npm run dev:web    # web app dev server (localhost:5174) — start the worker first
 npm run build:web  # web app: typecheck + build → docs/ (apex)
-npm run typecheck  # tsc --noEmit across all three tsconfigs (app / node / worker)
+npm run typecheck  # tsc --noEmit across all four tsconfigs (app / node / worker / visual)
 npm run lint       # ESLint, zero-warning policy
 npm run test       # Vitest watch
 npm run test:run   # single run (CI)

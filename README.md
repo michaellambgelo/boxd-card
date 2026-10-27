@@ -82,7 +82,7 @@ Sideloaded installs don't auto-update, but the extension popup shows an *update 
 
 ## Development
 
-**Prerequisites:** Node.js 18+
+**Prerequisites:** Node.js 22.19+ (see `engines` in `package.json`)
 
 ```bash
 npm install
