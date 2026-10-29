@@ -374,20 +374,26 @@ describe('scrapeList', () => {
       imgSrc = REAL_POSTER,
       rating = '★★★★',
     } = overrides
+    // Shape of the real /detail/ view (verified live 2026-10-29): each entry
+    // is an <article> inside div.listitem, not an <li>. The li.film-detail this
+    // fixture used to build never existed, which is why the suite stayed green
+    // while every /detail/ list failed with "No films found".
     return `
-      <li class="film-detail">
-        <div class="react-component" data-component-class="LazyPoster"
-          data-item-name="${name}"
-          data-item-slug="${slug}"
-          data-item-link="/film/${slug}/"
-          data-postered-identifier='{"uid":"film:${filmId}","type":"film"}'
-          ${posterUrl ? `data-poster-url="${posterUrl}"` : ''}>
-          <img class="image" src="${imgSrc}" />
-        </div>
-        <div class="film-detail-content">
-          <span class="rating">${rating}</span>
-        </div>
-      </li>`
+      <div class="listitem js-listitem">
+        <article class="list-detailed-entry -production -numbered js-list-detailed-entry" data-object-name="list">
+          <div class="react-component figure" data-component-class="LazyPoster"
+            data-item-name="${name}"
+            data-item-slug="${slug}"
+            data-item-link="/film/${slug}/"
+            data-postered-identifier='{"uid":"film:${filmId}","type":"film"}'
+            ${posterUrl ? `data-poster-url="${posterUrl}"` : ''}>
+            <img class="image" src="${imgSrc}" />
+          </div>
+          <div class="film-detail-content">
+            <span class="inline-symbol inline-rating"><svg class="glyph -rating" aria-label="${rating}"></svg></span>
+          </div>
+        </article>
+      </div>`
   }
 
   function setListDOM(items: string[]) {
@@ -417,8 +423,8 @@ describe('scrapeList', () => {
     expect(film.rating).toBe('')
   })
 
-  it('reads rating from .rating span in detail view (li.film-detail)', () => {
-    document.body.innerHTML = `<ul class="poster-list -p125 -grid">${makeDetailListItem()}</ul>`
+  it('reads the owner rating from .inline-rating in detail view (article.list-detailed-entry)', () => {
+    document.body.innerHTML = `<div class="list-detailed-entries-list">${makeDetailListItem()}</div>`
     const [film] = scrapeList(1)
     expect(film.title).toBe('Dune')
     expect(film.rating).toBe('★★★★')
@@ -439,15 +445,14 @@ describe('scrapeList', () => {
     expect(film.rating).toBe('★★★★★')
   })
 
-  it('returns mixed grid and detail items from the same list', () => {
+  it('returns detail-view entries in list order', () => {
     document.body.innerHTML = `
-      <ul class="poster-list -p125 -grid">
-        ${makeListItem({ name: 'Film A (2021)', filmId: '1' })}
+      <div class="list-detailed-entries-list">
+        ${makeDetailListItem({ name: 'Film A (2021)', filmId: '1', rating: '★★★★' })}
         ${makeDetailListItem({ name: 'Film B (2022)', filmId: '2', rating: '★★★' })}
-      </ul>`
+      </div>`
     const films = scrapeList(4)
-    expect(films).toHaveLength(2)
-    expect(films[0].rating).toBe('★★★★')
+    expect(films.map(f => f.title)).toEqual(['Film A', 'Film B'])
     expect(films[1].rating).toBe('★★★')
   })
 

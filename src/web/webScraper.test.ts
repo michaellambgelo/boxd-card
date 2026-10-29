@@ -525,24 +525,32 @@ describe('scrapeList', () => {
     expect(film.rating).toBe('')
   })
 
-  it('also scrapes film-detail items (detail view)', () => {
+  it('also scrapes detail-view entries (article.list-detailed-entry)', () => {
+    // Real /detail/ markup, verified live 2026-10-29. The web app no longer
+    // fetches this view (parseLetterboxdUrl drops /detail/), but the selector
+    // is shared with the extension, which reads whatever page is open.
     const doc = makeDoc(`
       <html><body>
-        <ul class="js-list-entries">
-          <li class="film-detail">
-            <div class="react-component"
-              data-component-class="LazyPoster"
-              data-item-name="Dune (2021)"
-              data-item-link="/film/dune-2021/"
-              data-postered-identifier='{"uid":"film:371378","type":"film"}'>
-            </div>
-          </li>
-        </ul>
+        <div class="list-detailed-entries-list">
+          <div class="listitem js-listitem">
+            <article class="list-detailed-entry -production -numbered js-list-detailed-entry" data-object-name="list">
+              <div class="react-component figure"
+                data-component-class="LazyPoster"
+                data-item-name="Dune (2021)"
+                data-item-link="/film/dune-2021/"
+                data-postered-identifier='{"uid":"film:371378","type":"film"}'>
+              </div>
+              <span class="inline-symbol inline-rating"><svg class="glyph -rating" aria-label="★★★★½"></svg></span>
+            </article>
+          </div>
+        </div>
       </body></html>
     `)
     const films = scrapeList(doc, 4)
     expect(films).toHaveLength(1)
     expect(films[0].title).toBe('Dune')
+    expect(films[0].filmSlug).toBe('dune-2021')
+    expect(films[0].rating).toBe('★★★★½')
   })
 })
 
