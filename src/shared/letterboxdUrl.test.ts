@@ -62,13 +62,39 @@ describe('buildPageUrl round-trip', () => {
     '/michaellamb/tag/in-theaters/diary/',
     '/michaellamb/diary/films/decade/1990s/',
     '/michaellamb/tag/in-theaters/films/by/rating/',
-    '/michaellamb/list/my-list/detail/',
+    '/michaellamb/list/my-list/by/rating/',
     '/michaellamb/diary/',
   ])('rebuilds %s unchanged', async (path) => {
     const { buildPageUrl } = await import('../web/webScraper')
     const r = parseLetterboxdUrl(u(path))!
     const rebuilt = buildPageUrl(r.username, r.cardType ?? 'last-four-watched', r.listSlug, r.filmSlug, r.filter)
     expect(rebuilt).toBe(u(path))
+  })
+})
+
+describe('a list\'s /detail/ view is presentation, not a filter', () => {
+  // boxd.it share links for lists can point at the /detail/ view. Carried
+  // through verbatim, it sent the web app to a page whose entries no selector
+  // matched (2026-10-25: "No films found" x3), and the view is now
+  // 403-challenged through the proxy anyway. The grid view has the same
+  // entries in the same order.
+  it.each([
+    ['/michaellamb/list/my-list/detail/', ''],
+    ['/michaellamb/list/my-list/detail/by/rating/', 'by/rating'],
+    ['/michaellamb/list/my-list/by/rating/detail/', 'by/rating'],
+  ])('drops detail from %s', (path, suffix) => {
+    const r = parseLetterboxdUrl(u(path))!
+    expect(r.cardType).toBe('list')
+    expect(r.listSlug).toBe('my-list')
+    expect(r.filter.suffix).toBe(suffix)
+  })
+
+  it('fetches the grid view and does not label the card "Detail"', async () => {
+    const { buildPageUrl } = await import('../web/webScraper')
+    const r = parseLetterboxdUrl(u('/michaellamb/list/my-list/detail/'))!
+    expect(buildPageUrl(r.username, 'list', r.listSlug, r.filmSlug, r.filter))
+      .toBe(u('/michaellamb/list/my-list/'))
+    expect(labelWithFilter('List', r.filter)).toBe('List')
   })
 })
 

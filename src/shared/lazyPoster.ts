@@ -205,13 +205,16 @@ export function posterUrlFromLazyPoster(lazyPoster: Element | null, resolvedSrc 
  * ul.poster-list — with hyphen). data-object-name="list" separates them
  * cleanly: 33/33 on a list page, 0 on both of the others.
  *
- * li.film-detail is UNVERIFIED — the /detail/ view is 403-challenged through the
- * proxy, so it could not be checked against live markup. It is kept, scoped, on
- * the assumption it moved with its sibling.
+ * The /detail/ view is a different shape entirely (verified live in a real
+ * browser 2026-10-29 — it is 403-challenged through the proxy): each entry is
+ * article.list-detailed-entry inside div.list-detailed-entries-list, carrying the
+ * same LazyPoster and the same data-object-name="list". The li.film-detail this
+ * selector used to guess at matched nothing, so every /detail/ list failed with
+ * "No films found". The legacy js-list-entries form of it is kept.
  */
 export const LIST_ENTRY_SELECTOR = [
   'ul.poster-list li.posteritem[data-object-name="list"]',
-  'ul.poster-list li.film-detail',
+  'div.list-detailed-entries-list article.list-detailed-entry[data-object-name="list"]',
   'ul.js-list-entries li.posteritem',
   'ul.js-list-entries li.film-detail',
 ].join(', ')

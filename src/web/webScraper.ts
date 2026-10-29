@@ -246,9 +246,11 @@ export function scrapeList(doc: Document, count: number): FilmData[] {
     doc.querySelectorAll(LIST_ENTRY_SELECTOR),
   ).slice(0, count).map(item => {
     const { title, year, filmId, posterUrl, filmSlug } = extractPosterAttrs(item)
+    // Grid view: data-owner-rating. Detail view: .inline-rating svg @aria-label.
     const ratingEl = item.querySelector('.rating')
     const rating =
       ratingEl?.textContent?.trim() ||
+      item.querySelector('.inline-rating svg')?.getAttribute('aria-label')?.trim() ||
       ownerRatingToStars(item.getAttribute('data-owner-rating'))
     return { title, year, rating, posterUrl, filmId, filmSlug }
   })

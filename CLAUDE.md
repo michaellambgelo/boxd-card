@@ -144,13 +144,15 @@ boxd-card/
 │   │                              #   Hand-written: about/, privacy/, landing/assets/, _redirects, *.md
 │   │                              #   → vite.web.config.ts MUST keep emptyOutDir:false or the build
 │   │                              #     would delete the privacy policy and the redirects file.
-│   ├── index.html                 # Landing page (hand-written)
+│   ├── index.html                 # BUILD OUTPUT of src/web — the apex; committed, do not hand-edit
+│   ├── assets/                    # BUILD OUTPUT of src/web — hashed bundles, do not hand-edit
+│   ├── about/index.html           # About page (hand-written) — boxd-card.com/about
 │   ├── privacy/index.html         # Privacy policy — a promise backed by code, keep in sync
-│   ├── app/                       # BUILD OUTPUT of src/web — committed, do not hand-edit
-│   └── _redirects                 # Cloudflare Pages redirects
+│   └── _redirects                 # Cloudflare Pages redirects (incl. the /app → / 301s)
 ├── eslint.config.mjs
 ├── tsconfig.json                  # App + tests (DOM types)
 ├── tsconfig.node.json             # Build configs (Node types)
+├── tsconfig.visual.json           # Golden-image suite (DOM + Node types)
 └── vite.config.ts / vite.web.config.ts
 ```
 
@@ -161,7 +163,7 @@ npm run dev        # extension: build in watch mode → dist/
 npm run build      # extension: typecheck + one-shot production build
 npm run dev:web    # web app dev server (localhost:5174) — start the worker first
 npm run build:web  # web app: typecheck + build → docs/ (apex)
-npm run typecheck  # tsc --noEmit across all three tsconfigs (app / node / worker)
+npm run typecheck  # tsc --noEmit across all four tsconfigs (app / node / worker / visual)
 npm run lint       # ESLint, zero-warning policy
 npm run test       # Vitest watch
 npm run test:run   # single run (CI)
@@ -339,7 +341,7 @@ Do **not** use the sibling `hasDefaultPoster` field for this — it stays `true`
 | Favorites | `section#favourites li.griditem` (first 4; never has ratings) |
 | Diary rows | `table#diary-table tbody tr.diary-entry-row` |
 | Diary rating / date | `td.col-rating .hide-for-owner .rating`, `.col-monthdate .monthdate a.month\|a.year`, `.col-daydate a.daydate` |
-| List entries | `ul.poster-list li.posteritem[data-object-name="list"]` (was `ul.js-list-entries`, renamed 2026-09). `LIST_ENTRY_SELECTOR` in `shared/lazyPoster.ts` keeps both. The `data-object-name` discriminator is required: bare `li.posteritem` also matches the profile's recent-lists sidebar (20 hits, `ul.posterlist` — *no* hyphen) and a film page's related-films strip (6 hits). `li.film-detail` is unverified — the `/detail/` view is 403-challenged through the proxy |
+| List entries | `ul.poster-list li.posteritem[data-object-name="list"]` (was `ul.js-list-entries`, renamed 2026-09). `LIST_ENTRY_SELECTOR` in `shared/lazyPoster.ts` keeps both. The `data-object-name` discriminator is required: bare `li.posteritem` also matches the profile's recent-lists sidebar (20 hits, `ul.posterlist` — *no* hyphen) and a film page's related-films strip (6 hits). The `/detail/` view is `div.list-detailed-entries-list article.list-detailed-entry[data-object-name="list"]` (verified in a real browser 2026-10-29; 403-challenged through the proxy). The web app never fetches it: `parseLetterboxdUrl` drops a list's `detail` segment and fetches the grid view |
 | List meta | `.list-title-intro h1.title-1`, `.list-title-intro .body-text p` (skip paragraphs starting "Updated") |
 | Tags | `ul.tags li a` |
 | Review list items | `div.viewing-list div.listitem.js-listitem` |

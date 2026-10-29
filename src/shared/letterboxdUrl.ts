@@ -91,7 +91,14 @@ export function parseLetterboxdUrl(input: string): ParsedLetterboxdUrl | null {
     return { username, cardType: 'recent-diary', listSlug: '', isReviewListPage: false, filmSlug: '', filter: from(consumed) }
   }
   if (section === 'list' && subpart) {
-    return { username, cardType: 'list', listSlug: subpart, isReviewListPage: false, filmSlug: '', filter: from(2) }
+    // /detail/ is a view of the list, not a filter on it: same entries, same
+    // order. Carried through, it sent the web app to a page that is
+    // 403-challenged through the proxy and labelled the card "List · Detail".
+    // It can sit before or after a sort (/detail/by/rating/, /by/rating/detail/).
+    const segs = rest.slice(2)
+    if (segs[0] === 'detail') segs.shift()
+    else if (segs[segs.length - 1] === 'detail') segs.pop()
+    return { username, cardType: 'list', listSlug: subpart, isReviewListPage: false, filmSlug: '', filter: { tag, suffix: segs.join('/') } }
   }
   if (section === 'reviews') {
     return { username, cardType: 'review', listSlug: '', isReviewListPage: true, filmSlug: '', filter: from(1) }

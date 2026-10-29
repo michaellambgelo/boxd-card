@@ -124,9 +124,9 @@ jobs:
         run: npm run build
 
       # Verifies the web app still compiles. Deliberately not compared against
-      # the committed docs/app/: the Faro rollup plugin injects a fresh bundle
+      # the committed docs/ output: the Faro rollup plugin injects a fresh bundle
       # id on every build, so the output hash never matches byte-for-byte and
-      # such a check would be permanently red. Keeping docs/app/ in sync is the
+      # such a check would be permanently red. Keeping docs/ in sync is the
       # .githooks/pre-commit hook's job.
       - name: Build web app
         run: npm run build:web
