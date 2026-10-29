@@ -262,7 +262,7 @@ export function scrapeListMeta(): { listTitle: string; listDescription: string; 
 }
 
 export function scrapeList(count: number): FilmData[] {
-  // li.posteritem = grid view  |  li.film-detail = detail view (/detail/)
+  // li.posteritem = grid view  |  article.list-detailed-entry = detail view (/detail/)
   return Array.from(
     document.querySelectorAll(LIST_ENTRY_SELECTOR)
   ).slice(0, count).map(item => {
@@ -279,9 +279,12 @@ export function scrapeList(count: number): FilmData[] {
 
     const { posterUrl, filmSlug } = resolveLazyPoster(lazyPoster, img?.src ?? '')
 
-    // Detail view: explicit .rating span. Grid view: data-owner-rating attribute.
+    // Grid view: data-owner-rating attribute. Detail view: the owner's rating is
+    // an .inline-rating svg whose aria-label is the stars (verified live
+    // 2026-10-29). .rating is the legacy form of either.
     const ratingEl = item.querySelector('.rating')
     const rating = ratingEl?.textContent?.trim()
+      || item.querySelector('.inline-rating svg')?.getAttribute('aria-label')?.trim()
       || ownerRatingToStars(item.getAttribute('data-owner-rating'))
 
     return { title, year, rating, posterUrl, filmId, filmSlug, customPoster: isCustomPoster(lazyPoster) }
