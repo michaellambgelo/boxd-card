@@ -207,7 +207,7 @@ the real product; do not reintroduce a second renderer.**
 
 **PostToolUse hook:** any Edit/Write triggers `.claude/hooks/run-tests.sh` → `npm run test:run`.
 
-**Pre-commit hook** (`.githooks/pre-commit`, wired up by `npm install`): rebuilds the apex app (`docs/index.html`, `docs/assets/`, `docs/favicon.svg`) when `src/web/`, `vite.web.config.ts`, `package.json`, or `.env.production` are staged, and reconciles `package-lock.json` when `package.json` is staged.
+**Pre-commit hook** (`.githooks/pre-commit`, wired up by `npm install`): rebuilds the apex app (`docs/index.html`, `docs/assets/`, `docs/favicon.svg`) when anything it bundles is staged — `src/web/`, `src/canvas/`, `src/shared/`, `src/storage/`, `src/assets/`, `src/types.ts`, `src/altText.ts`, `vite.web.config.ts`, `package.json`, or `.env.production` (test files excluded, since every build stamps a new Faro bundle id). It rebuilds the About hero on the same principle, and reconciles `package-lock.json` when `package.json` is staged.
 
 ## Environment
 
