@@ -12,5 +12,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["vite.config.ts", "vite.web.config.ts", "vitest.config.ts"]
+  "include": ["vite.config.ts", "vite.web.config.ts", "vite.hero.config.ts", "vitest.config.ts"]
 }

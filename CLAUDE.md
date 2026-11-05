@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 |---------|----------|-------------|------------------|
 | **Chrome MV3 extension** | `src/popup/`, `src/content/`, `src/background/` | Chrome Web Store (`kcholfdhfcojahebmneeeikelffkokdj`) | Content script scrapes the page DOM you're already on |
 | **Web app** | `src/web/` → built to `docs/` (the apex) | Cloudflare Pages, `boxd-card.com` | Fetches + parses Letterboxd HTML through the proxy worker |
-| **About page** | `docs/about/index.html` (hand-written) | Cloudflare Pages, `boxd-card.com/about` | Static marketing page; its Generate CTA hands off to `/?url=…` |
+| **About page** | `docs/about/index.html` (hand-written) + `docs/about/hero.js` (built from `src/hero/`) | Cloudflare Pages, `boxd-card.com/about` | Static marketing page; its Generate CTA hands off to `/?url=…`. The hero cards are drawn live by the real renderer |
 
 Plus a **Cloudflare Worker** (`worker/`) at `api.boxd-card.com` that the web app and the extension both call.
 
@@ -147,6 +147,7 @@ boxd-card/
 │   ├── index.html                 # BUILD OUTPUT of src/web — the apex; committed, do not hand-edit
 │   ├── assets/                    # BUILD OUTPUT of src/web — hashed bundles, do not hand-edit
 │   ├── about/index.html           # About page (hand-written) — boxd-card.com/about
+│   ├── about/hero.js, hero.css, hero-assets/  # BUILD OUTPUT of src/hero (npm run build:hero) — do not hand-edit
 │   ├── privacy/index.html         # Privacy policy — a promise backed by code, keep in sync
 │   └── _redirects                 # Cloudflare Pages redirects (incl. the /app → / 301s)
 ├── eslint.config.mjs
@@ -163,6 +164,7 @@ npm run dev        # extension: build in watch mode → dist/
 npm run build      # extension: typecheck + one-shot production build
 npm run dev:web    # web app dev server (localhost:5174) — start the worker first
 npm run build:web  # web app: typecheck + build → docs/ (apex)
+npm run build:hero # About-page hero: real renderer + sample films → docs/about/hero.js
 npm run typecheck  # tsc --noEmit across all four tsconfigs (app / node / worker / visual)
 npm run lint       # ESLint, zero-warning policy
 npm run test       # Vitest watch
@@ -185,6 +187,16 @@ npx wrangler secret put TMDB_API_KEY   # v4 "API Read Access Token", NOT the v3 
 `og:image` for both `docs/index.html` and `docs/about/index.html`) is an actual Favorites card
 generated from the extension and committed by hand. To refresh it: generate a Favorites card in the
 extension, download it, and replace the file.
+
+**The About hero is the real renderer too.** `src/hero/` bundles `renderCard` with a fixed,
+hand-picked film set under the placeholder username `boxdcard` (not anyone's real diary) and draws
+both hero cards in the visitor's browser; "Shuffle the gradient" re-renders them, so the random
+backdrop is the product's own `drawBrandGradient`. It replaced an HTML/CSS imitation of a card that
+had drifted from the product. Posters are fetched from TMDB into data URLs first — `renderCard`
+returns `canvas.toBlob()`, and a canvas that drew a plain cross-origin `<img>` is tainted and
+refuses to export. Build with `npm run build:hero` (fixed `hero.js`/`hero.css` names, because
+`about/index.html` links them directly); the pre-commit hook rebuilds it whenever `src/canvas/`,
+`src/hero/`, `src/assets/`, `src/types.ts` or `src/altText.ts` is staged.
 
 There used to be a `scripts/generate-social-preview.mjs` behind `npm run generate:preview` that
 re-implemented the card layout in a second renderer — its own copy of the constants, gradient

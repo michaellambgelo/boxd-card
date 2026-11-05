@@ -35,6 +35,22 @@ if [ -n "$WEB_SOURCES" ]; then
   echo "✓ apex app rebuilt and staged."
 fi
 
+# ── 1b. Rebuild the /about hero if the renderer or its inputs changed ───────
+# The hero (docs/about/hero.js) bundles the real card renderer. If a renderer
+# change could land without this rebuild, the About page would quietly keep
+# drawing the old cards — the drift the hero was rebuilt to remove.
+HERO_SOURCES=$(git diff --cached --name-only | grep -E '^(src/hero/|src/canvas/|src/assets/|src/types\.ts$|src/altText\.ts$|vite\.hero\.config\.ts$|package\.json$)' || true)
+
+if [ -n "$HERO_SOURCES" ]; then
+  echo "▶ Renderer or hero source changed — rebuilding the /about hero..."
+  if ! npm run build:hero; then
+    echo "✗ build:hero failed — commit aborted." >&2
+    exit 1
+  fi
+  git add --all docs/about/hero.js docs/about/hero.css docs/about/hero-assets
+  echo "✓ /about hero rebuilt and staged."
+fi
+
 # ── 2. Reconcile package-lock.json when package.json is staged ──────────────
 PKG_JSON=$(git diff --cached --name-only | grep -E '^package\.json$' || true)
 
