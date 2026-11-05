@@ -69,51 +69,28 @@ export function generateAltText(input: AltTextInput): string {
   // Build film entries
   const isReview = cardType === 'review'
   const entries = films.map(f => {
-    const parts: string[] = []
+    // Each film is one line of " | "-separated fields.
+    const fields: string[] = []
 
     if (input.showTitle) {
       let titlePart = f.title
       if (input.showYear && f.year) titlePart += ` (${f.year})`
-      parts.push(titlePart)
+      fields.push(titlePart)
     }
 
-    if (input.showRating && f.rating) {
-      parts.push(f.rating)
-    }
+    if (input.showRating && f.rating) fields.push(f.rating)
+    if (isReview && input.showRuntime && f.runtime) fields.push(`${f.runtime} min`)
+    if (isReview && input.showDirector && f.director) fields.push(`directed by ${f.director}`)
+    if (input.showDate && f.date) fields.push(f.date)
+    if (isReview && input.showTags && f.tags?.length) fields.push(`tags: ${f.tags.join(', ')}`)
+    if (isReview && input.showGenres && f.genres?.length) fields.push(`genres: ${f.genres.join(', ')}`)
+    if (isReview && input.showOverview && f.overview) fields.push(`synopsis: ${f.overview}`)
+    if (isReview && f.reviewText) fields.push('includes a review')
 
-    let entry = parts.join(' ')
-
-    if (isReview && input.showRuntime && f.runtime) {
-      entry += `, ${f.runtime} min`
-    }
-
-    if (isReview && input.showDirector && f.director) {
-      entry += `, directed by ${f.director}`
-    }
-
-    if (input.showDate && f.date) {
-      entry += `, watched ${f.date}`
-    }
-
-    if (isReview && input.showTags && f.tags?.length) {
-      entry += ` [tags: ${f.tags.join(', ')}]`
-    }
-
-    if (isReview && input.showGenres && f.genres?.length) {
-      entry += ` [genres: ${f.genres.join(', ')}]`
-    }
-
-    if (isReview && input.showOverview && f.overview) {
-      entry += `. Synopsis: ${f.overview}`
-    }
-
-    if (isReview && f.reviewText) {
-      entry += ', includes a review'
-    }
-
-    return entry
+    return fields.join(' | ')
   })
 
-  const separator = isReview ? '. ' : ', '
-  return `${opening} — ${entries.join(separator)}`
+  // Heading on the first line, then one film per line. Films also end in " |"
+  // so they stay separated on sites that strip newlines from alt text.
+  return `${opening}\n${entries.join(' |\n')}`
 }

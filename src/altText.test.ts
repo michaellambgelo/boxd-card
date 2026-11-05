@@ -71,7 +71,7 @@ describe('generateAltText', () => {
 
   it('omits year when showYear is false', () => {
     const result = generateAltText(base({ showYear: false }))
-    expect(result).toContain('Dune ★★★★')
+    expect(result).toContain('Dune | ★★★★')
     expect(result).not.toContain('(2021)')
   })
 
@@ -95,7 +95,7 @@ describe('generateAltText', () => {
       cardTypeLabel: 'Recent Diary',
       films: [{ title: 'Dune', year: '2021', rating: '★★★★', date: 'Mar 20, 2026' }],
     }))
-    expect(result).toContain('watched Mar 20, 2026')
+    expect(result).toContain('| Mar 20, 2026')
   })
 
   it('omits date when showDate is false', () => {
@@ -105,7 +105,7 @@ describe('generateAltText', () => {
       showDate: false,
       films: [{ title: 'Dune', year: '2021', rating: '★★★★', date: 'Mar 20, 2026' }],
     }))
-    expect(result).not.toContain('watched')
+    expect(result).not.toContain('Mar 20, 2026')
   })
 
   // Review-specific
@@ -132,7 +132,7 @@ describe('generateAltText', () => {
       showTags: true,
       films: [{ title: 'Dune', year: '2021', rating: '★★★★', tags: ['sci-fi', 'epic'] }],
     }))
-    expect(result).toContain('[tags: sci-fi, epic]')
+    expect(result).toContain('tags: sci-fi, epic')
   })
 
   it('omits tags when showTags is false', () => {
@@ -141,7 +141,7 @@ describe('generateAltText', () => {
       showTags: false,
       films: [{ title: 'Dune', year: '2021', rating: '★★★★', tags: ['sci-fi'] }],
     }))
-    expect(result).not.toContain('[tags:')
+    expect(result).not.toContain('tags:')
   })
 
   // List metadata
@@ -167,14 +167,16 @@ describe('generateAltText', () => {
     expect(result).toContain('Tags: ranked, 2025')
   })
 
-  // Separator
-  it('joins grid films with comma', () => {
+  // Layout: heading line, then one film per line
+  it('puts each grid film on its own line under the heading', () => {
     const result = generateAltText(base())
-    // Films joined by ", " not ". "
-    expect(result).toContain('Dune (2021) ★★★★, The Matrix (1999) ★★★★★')
+    const lines = result.split('\n')
+    expect(lines[1]).toBe('Dune (2021) | ★★★★ |')
+    expect(lines[2]).toBe('The Matrix (1999) | ★★★★★')
+    expect(lines).toHaveLength(3)
   })
 
-  it('joins review films with period', () => {
+  it('puts each review film on its own line', () => {
     const result = generateAltText(base({
       cardType: 'review',
       films: [
@@ -182,7 +184,16 @@ describe('generateAltText', () => {
         { title: 'Film B', year: '2021', rating: '★★★★' },
       ],
     }))
-    expect(result).toContain('Film A (2020) ★★★. Film B (2021) ★★★★')
+    expect(result).toBe('Boxd Card: review by testuser\nFilm A (2020) | ★★★ |\nFilm B (2021) | ★★★★')
+  })
+
+  it('keeps list description and tags on the heading line', () => {
+    const result = generateAltText(base({
+      cardType: 'list', showListTitle: true, listTitle: 'Best',
+      showListDescription: true, listDescription: 'Picks',
+      showTags: true, listTags: ['a'],
+    }))
+    expect(result.split('\n')[0]).toBe('Boxd Card: Best by testuser — Picks. Tags: a')
   })
 
   // TMDB-sourced fields on Review cards
@@ -208,20 +219,20 @@ describe('generateAltText', () => {
 
     it('includes genres when showGenres is on', () => {
       expect(generateAltText(reviewInput({ showGenres: true })))
-        .toContain('[genres: Science Fiction, Adventure]')
+        .toContain('genres: Science Fiction, Adventure')
     })
 
     it('includes overview when showOverview is on', () => {
       expect(generateAltText(reviewInput({ showOverview: true })))
-        .toContain('Synopsis: Paul Atreides leads a rebellion.')
+        .toContain('synopsis: Paul Atreides leads a rebellion.')
     })
 
     it('omits all TMDB fields when their toggles are off', () => {
       const result = generateAltText(reviewInput())
       expect(result).not.toContain('155 min')
       expect(result).not.toContain('directed by')
-      expect(result).not.toContain('[genres:')
-      expect(result).not.toContain('Synopsis:')
+      expect(result).not.toContain('genres:')
+      expect(result).not.toContain('synopsis:')
     })
 
     it('does NOT include runtime on non-review cards even if the toggle is set', () => {
