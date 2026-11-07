@@ -124,7 +124,7 @@ Certifications (all required to be true, and are true):
 
 ## Change log
 
-- **2026-11 (next release)**: Adds a feedback button next to the settings gear,
+- **2026-11 (v0.11.0)**: Adds a feedback button next to the settings gear,
   plus a "Report this error" link when a card fails. Reports go to
   `api.boxd-card.com` only when the user presses Send, show exactly what will be
   sent first, never include the page URL or username, and are deleted after 180
