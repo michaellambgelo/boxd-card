@@ -242,11 +242,27 @@ The defences, all in `src/web/`:
 
 If you add a `track()` call, a `console.warn`, or a new fetch, check it against the policy. `telemetryPrivacy.test.ts` covers the scrubbing itself.
 
-**The extension sends no telemetry at all** — Faro is imported only from `src/web/`, and the policy says so. Don't import it anywhere else.
+**The extension sends no telemetry at all** — Faro is imported only from `src/web/`, and the policy says so. Don't import it anywhere else. The only user-initiated exception is the feedback form (below), which sends nothing until the user presses Send.
+
+## Extension feedback (`POST /feedback`)
+
+The extension has no telemetry, so an error a user hits reaches us only if they report it. `src/popup/FeedbackView.tsx` is that channel. It opens from **Settings → Send feedback**, and from a **Report this error** link under `error`/`actionError`. It shows the exact JSON before sending, and the privacy policy promises it does.
+
+- **One schema, both sides:** `src/shared/feedback.ts` (pure; the worker imports it directly). `validateFeedback` rebuilds the object field by field, so unknown fields are dropped and never stored. `scrubErrorMessage` strips URLs, `letterboxd.com/<user>/…` paths, and quoted identifiers. It runs in the popup and again in the worker. **There is no page URL in the payload, deliberately.** The navigation hint embeds the username, which is why the scrub exists.
+- **Storage:** KV namespace `boxd-card-feedback` (`329dda0dceb84c9ab8a0f038e85fcc3b`, binding `FEEDBACK`). Keys are `fb:<ISO>:<uuid>` with a 180-day TTL (`FEEDBACK_RETENTION_DAYS`, and the privacy policy states it). Key metadata holds `kind/status/receivedAt/preview`. No IP is stored. Message, email, and diagnostics are never logged.
+- **Email:** `send_email` binding `EMAIL`, from `boxdcard@michaellamb.dev` to `boxdcardfeedback@michaellamb.dev`. It is plain text only, with Reply-To set when the user gave an address, and sent in `waitUntil` after the KV write, so a failed send loses nothing. `FEEDBACK_DAILY_EMAIL_CAP` (50) limits emails per day, but storage is never capped. The recipient lives in **Proton** (michaellamb.dev MX), not Cloudflare Email Routing.
+- **Abuse filter, not auth:** requires an `Origin: chrome-extension://…` prefix (unpacked builds have a different id), plus the per-isolate limiter.
+- **Triage is wrangler-only. There is no read route, by choice.** From the repo root:
+  ```bash
+  npm run feedback -- list [--status new] [--kind error] [--json]
+  npm run feedback -- show <8-char ref | uuid | full key>
+  npm run feedback -- status <ref> <new|triaged|issue|wontfix|done> [--note "text"]
+  ```
+  `status` re-puts with `--expiration <expiresAt>`. A bare `kv key put` on an existing key **drops its TTL**, which would break the 180-day promise. Don't hand-edit records with raw wrangler.
 
 ## Worker notes (`worker/index.ts`)
 
-Two routes:
+Three routes (`POST /feedback` is covered in the section above):
 - `GET /?url=<target>[&accept=image]` — proxies an allowlisted host (`letterboxd.com`, `a.ltrbxd.com`, `s.ltrbxd.com`, `boxd.it`, `image.tmdb.org` and subdomains). 60s cache.
 - `GET /tmdb?slug=<letterboxd-slug>` — scrapes `data-tmdb-id` off the film page, then queries TMDB. 7-day cache. Needs `TMDB_API_KEY` or returns 503.
 

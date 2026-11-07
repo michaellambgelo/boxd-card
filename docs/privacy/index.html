@@ -39,7 +39,7 @@
       <h1>Boxd Card</h1>
     </a>
   </div>
-  <p class="subtle">Privacy Policy &mdash; Last updated: August 2026</p>
+  <p class="subtle">Privacy Policy &mdash; Last updated: November 2026</p>
 
   <h2>What this extension does</h2>
   <p>
@@ -60,16 +60,22 @@
     generate cards without installing a browser extension.
   </p>
   <p>
-    Neither version of Boxd Card collects any personal data. Both are subject to this privacy policy.
+    Neither version of Boxd Card collects personal data on its own. The one exception is feedback
+    you choose to send from the extension, described below under <em>Feedback you send us</em>.
+    Both versions are subject to this privacy policy.
   </p>
 
   <h2>Data we collect</h2>
-  <p>Boxd Card does not collect, store, or share any personal data.</p>
+  <p>
+    Boxd Card does not collect, store, or share any personal data, except what you choose to put in a
+    feedback report (see <em>Feedback you send us</em>).
+  </p>
   <ul>
     <li>No account is required.</li>
     <li>
       <strong>The Chrome extension</strong> sends no analytics or telemetry. All processing
-      happens locally in your browser.
+      happens locally in your browser. It only contacts our server about errors or feedback when
+      you fill in the feedback form and press <em>Send</em>.
     </li>
     <li>
       <strong>The web app (<code>boxd-card.com</code>) and the About page
@@ -79,7 +85,8 @@
     </li>
     <li>
       When TMDB enrichment is off (the default for the extension), no data leaves your browser
-      except the poster and page fetches Letterboxd already serves publicly.
+      except the poster and page fetches Letterboxd already serves publicly, and any feedback you
+      choose to send.
     </li>
     <li>
       When TMDB enrichment is on, each card generation sends one HTTPS request per film to our
@@ -123,6 +130,44 @@
     before reaching Grafana Cloud, which acts as the storage backend.
   </p>
 
+  <h2>Feedback you send us (extension only)</h2>
+  <p>
+    The extension has a <em>Send feedback</em> form in its settings, and a <em>Report this error</em>
+    link appears when card generation fails. Nothing is sent unless you fill in the form and press
+    <em>Send</em>. The form shows you exactly what will be sent before you send it.
+  </p>
+  <p>A feedback report contains:</p>
+  <ul>
+    <li>Whether it is a problem report or general feedback, and the message you type.</li>
+    <li>Your email address, only if you enter one. It is used only to reply to you.</li>
+    <li>
+      <em>Diagnostics, only if the "Include diagnostics" box is ticked</em> (it is ticked by default
+      for problem reports and unticked for general feedback): the extension version, your browser's
+      user-agent string (browser and operating-system versions), the card type, layout and count
+      you had selected, whether TMDB enrichment was on, and the error message shown in the popup.
+    </li>
+  </ul>
+  <p>A feedback report does <strong>not</strong> contain:</p>
+  <ul>
+    <li>
+      The Letterboxd page URL or your username. The extension removes web addresses and
+      <code>letterboxd.com/…</code> paths from error messages before you see the preview, and our
+      server removes them again when the report arrives. A username or URL is only included if you
+      type it into the message yourself.
+    </li>
+    <li>Your IP address. Our server does not store it with the report.</li>
+    <li>Any generated card image, film list, or review text.</li>
+  </ul>
+  <p>
+    Reports are sent to our Cloudflare Worker (<code>api.boxd-card.com</code>). The Worker saves
+    each one in Cloudflare Workers KV, which deletes it automatically after <strong>180 days</strong>.
+    It also emails a copy to the developer's inbox at <code>michaellamb.dev</code>, sent through
+    Cloudflare Email. Reports are read only to fix problems and improve Boxd Card, and they are
+    never sold or shared. To have a report deleted sooner, email
+    <a href="mailto:boxdcardfeedback@michaellamb.dev">boxdcardfeedback@michaellamb.dev</a> with
+    the reference code the extension shows after sending.
+  </p>
+
   <h2>How the extension works</h2>
   <p>
     When you click <em>Generate Card</em> on a Letterboxd profile page, the extension:
@@ -157,9 +202,9 @@
     <li><strong>scripting</strong> — to read the logged-in Letterboxd username from the active tab so the navigation hint can include it.</li>
     <li><strong>Host access to letterboxd.com, a.ltrbxd.com, s.ltrbxd.com</strong> — to fetch poster images and static assets that are already publicly visible on the page.</li>
     <li>
-      <strong>Host access to api.boxd-card.com</strong> — used only when TMDB
-      enrichment is enabled, to fetch film metadata via our Cloudflare Worker proxy to TMDB.
-      No requests are made to this host otherwise.
+      <strong>Host access to api.boxd-card.com</strong> — used when TMDB enrichment is
+      enabled, to fetch film metadata via our Cloudflare Worker proxy to TMDB, and when you send
+      a feedback report. No requests are made to this host otherwise.
     </li>
     <li>
       <strong>Host access to image.tmdb.org</strong> — used only when TMDB enrichment is
@@ -191,7 +236,8 @@
   <h2>Contact</h2>
   <p>
     Questions? Open an issue at
-    <a href="https://github.com/michaellambgelo/boxd-card">github.com/michaellambgelo/boxd-card</a>.
+    <a href="https://github.com/michaellambgelo/boxd-card">github.com/michaellambgelo/boxd-card</a>,
+    or email <a href="mailto:boxdcardfeedback@michaellamb.dev">boxdcardfeedback@michaellamb.dev</a>.
   </p>
 
   <p class="subtle"><a href="/">← Back to Boxd Card</a></p>

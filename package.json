@@ -17,6 +17,7 @@
     "lint": "eslint . --max-warnings 0",
     "test": "vitest --project unit --project visual",
     "test:run": "vitest run --project unit --project visual",
+    "feedback": "node scripts/feedback.mjs",
     "coverage": "vitest run --project unit --project visual --coverage",
     "prepare": "git config core.hooksPath .githooks || true"
   },

@@ -12,12 +12,20 @@
  *     for metadata (title, director, runtime, genres, poster, backdrop).
  *     Requires TMDB_API_KEY secret. Response is cached for 7 days.
  *
+ *   POST /feedback
+ *     Extension-only feedback and error reports. Validated against the shared
+ *     schema in src/shared/feedback.ts, stored in the FEEDBACK KV namespace for
+ *     180 days, and emailed to FEEDBACK_TO. Triage is wrangler-only — there is
+ *     deliberately no read route. See scripts/feedback.mjs.
+ *
  * Deploy:
  *   npx wrangler deploy
  *
  * Local dev (pairs with `npm run dev:web`):
  *   npx wrangler dev --port 8787
  */
+
+import { FEEDBACK_LIMITS, FEEDBACK_RETENTION_DAYS, validateFeedback, type FeedbackPayload } from '../src/shared/feedback'
 
 const ALLOWED_HOSTS = ['letterboxd.com', 'a.ltrbxd.com', 's.ltrbxd.com', 'boxd.it', 'image.tmdb.org']
 
@@ -30,9 +38,36 @@ interface RateLimiter {
   limit(options: { key: string }): Promise<{ success: boolean }>
 }
 
+/** The slice of KVNamespace the feedback route uses — keeps tests honest. */
+interface FeedbackStore {
+  get(key: string): Promise<string | null>
+  put(key: string, value: string, options?: { expirationTtl?: number; metadata?: unknown }): Promise<void>
+}
+
+/** The slice of Cloudflare Email Sending's `send_email` binding we use. */
+interface EmailSender {
+  send(message: {
+    to: string
+    from: { email: string; name?: string }
+    replyTo?: string
+    subject: string
+    text: string
+  }): Promise<unknown>
+}
+
 interface Env {
   TMDB_API_KEY: string
   RATE_LIMITER?: RateLimiter
+  FEEDBACK?: FeedbackStore
+  EMAIL?: EmailSender
+  FEEDBACK_TO?: string
+  FEEDBACK_FROM?: string
+  /** Emails per UTC day before the route stops emailing (it keeps storing). */
+  FEEDBACK_DAILY_EMAIL_CAP?: string
+}
+
+interface Ctx {
+  waitUntil(promise: Promise<unknown>): void
 }
 
 /**
@@ -84,7 +119,7 @@ function isAllowedFinalUrl(finalUrl: string): boolean {
 function corsHeaders(): Record<string, string> {
   return {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Max-Age': '86400',
   }
@@ -340,11 +375,198 @@ async function handleTmdb(request: Request, env: Env): Promise<Response> {
   })
 }
 
+// ── Feedback endpoint ───────────────────────────────────────────────────────
+
+const FEEDBACK_TTL_SECONDS = FEEDBACK_RETENTION_DAYS * 24 * 60 * 60
+const DEFAULT_DAILY_EMAIL_CAP = 50
+
+/** What lands in KV. `expiresAt` lets the triage script re-put without resetting the TTL. */
+export interface FeedbackRecord extends FeedbackPayload {
+  id: string
+  receivedAt: string
+  expiresAt: number
+  status: 'new'
+  notes: string
+}
+
+/** KV key metadata — what `wrangler kv key list` shows without a get per key. */
+export interface FeedbackMetadata {
+  kind: FeedbackPayload['kind']
+  status: string
+  receivedAt: string
+  preview: string
+}
+
+function jsonResponse(body: unknown, status: number): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders(), 'Content-Type': 'application/json; charset=utf-8' },
+  })
+}
+
+function oneLine(text: string, max: number): string {
+  const flat = text.replace(/[\r\n\t]+/g, ' ').trim()
+  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat
+}
+
+function feedbackEmailText(record: FeedbackRecord, key: string): string {
+  const lines = [
+    `Kind:      ${record.kind}`,
+    `Received:  ${record.receivedAt}`,
+    `KV key:    ${key}`,
+    `Reply to:  ${record.email ?? '(none given)'}`,
+    '',
+    'Message',
+    '-------',
+    record.message || '(no message)',
+  ]
+  const d = record.diagnostics
+  if (d) {
+    lines.push('', 'Diagnostics', '-----------')
+    for (const [name, value] of Object.entries(d)) {
+      lines.push(`${name}: ${String(value)}`)
+    }
+  }
+  lines.push(
+    '',
+    `Stored in KV namespace FEEDBACK for ${FEEDBACK_RETENTION_DAYS} days.`,
+    `Triage (repo root): npm run feedback -- show ${record.id.slice(0, 8)}`,
+  )
+  return lines.join('\n')
+}
+
+/**
+ * Soft global cap on notification emails. KV is eventually consistent and this
+ * is read-modify-write, so a burst can overshoot by a few — fine for a spam
+ * brake. Storage is never capped: a submission past the cap is still in KV.
+ */
+async function underDailyEmailCap(env: Env, store: FeedbackStore): Promise<boolean> {
+  const cap = Number(env.FEEDBACK_DAILY_EMAIL_CAP) || DEFAULT_DAILY_EMAIL_CAP
+  const key = `meta:emails:${new Date().toISOString().slice(0, 10)}`
+  const sent = Number(await store.get(key)) || 0
+  if (sent >= cap) return false
+  // Two days so the key outlives its UTC day regardless of when it was written.
+  await store.put(key, String(sent + 1), { expirationTtl: 2 * 24 * 60 * 60 })
+  return true
+}
+
+async function sendFeedbackEmail(env: Env, store: FeedbackStore, record: FeedbackRecord, key: string): Promise<void> {
+  if (!env.EMAIL || !env.FEEDBACK_TO || !env.FEEDBACK_FROM) {
+    console.log(`[feedback] email not configured; stored only | id: ${record.id}`)
+    return
+  }
+  try {
+    if (!(await underDailyEmailCap(env, store))) {
+      console.log(`[feedback] daily email cap reached; stored only | id: ${record.id}`)
+      return
+    }
+    const summary = oneLine(record.message || record.diagnostics?.errorMessage || '', 60)
+    await env.EMAIL.send({
+      to: env.FEEDBACK_TO,
+      from: { email: env.FEEDBACK_FROM, name: 'Boxd Card Feedback' },
+      ...(record.email && { replyTo: record.email }),
+      subject: `[Boxd Card ${record.kind}] ${summary || record.id}`,
+      // Plain text only: the body is user-supplied, and HTML would make it markup.
+      text: feedbackEmailText(record, key),
+    })
+  } catch (err) {
+    // The submission is already in KV — a failed email loses nothing.
+    console.log(`[feedback] email failed | id: ${record.id} | ${String(err).slice(0, 200)}`)
+  }
+}
+
+/**
+ * Accept a feedback/error report from the extension.
+ *
+ * Never log the message, email or diagnostics: [observability.logs] persist
+ * is on, and these are user-written. Id and kind only. The client IP is not
+ * stored either.
+ */
+async function handleFeedback(request: Request, env: Env, ctx: Ctx): Promise<Response> {
+  const store = env.FEEDBACK
+  if (!store) {
+    console.log('[feedback] FEEDBACK KV binding not configured')
+    return errorResponse('Feedback is not configured', 503)
+  }
+
+  // A filter against drive-by POSTs from ordinary web pages, NOT
+  // authentication: anything outside a browser can send any Origin it likes.
+  // A prefix rather than the Web Store id, because unpacked dev builds get a
+  // different id.
+  const origin = request.headers.get('Origin') ?? ''
+  if (!origin.startsWith('chrome-extension://')) {
+    return errorResponse('Feedback is accepted from the Boxd Card extension only', 403)
+  }
+
+  const declared = Number(request.headers.get('Content-Length'))
+  if (declared > FEEDBACK_LIMITS.body) {
+    return errorResponse('Feedback is too large', 413)
+  }
+  const raw = await request.text()
+  if (new TextEncoder().encode(raw).length > FEEDBACK_LIMITS.body) {
+    return errorResponse('Feedback is too large', 413)
+  }
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return errorResponse('Body must be JSON', 400)
+  }
+  const result = validateFeedback(parsed)
+  if (!result.ok) {
+    return errorResponse(result.error, 400)
+  }
+
+  const now = new Date()
+  const id = crypto.randomUUID()
+  const record: FeedbackRecord = {
+    ...result.value,
+    id,
+    receivedAt: now.toISOString(),
+    expiresAt: Math.floor(now.getTime() / 1000) + FEEDBACK_TTL_SECONDS,
+    status: 'new',
+    notes: '',
+  }
+  // ISO timestamp first so `kv key list --prefix fb:` comes back oldest-first.
+  const key = `fb:${record.receivedAt}:${id}`
+  const metadata: FeedbackMetadata = {
+    kind: record.kind,
+    status: record.status,
+    receivedAt: record.receivedAt,
+    preview: oneLine(record.message || record.diagnostics?.errorMessage || '', 80),
+  }
+
+  try {
+    await store.put(key, JSON.stringify(record), { expirationTtl: FEEDBACK_TTL_SECONDS, metadata })
+  } catch (err) {
+    console.log(`[feedback] KV put failed | id: ${id} | ${String(err).slice(0, 200)}`)
+    return errorResponse('Could not save feedback, please try again', 503)
+  }
+  console.log(`[feedback] stored | id: ${id} | kind: ${record.kind}`)
+
+  ctx.waitUntil(sendFeedbackEmail(env, store, record, key))
+  return jsonResponse({ id }, 201)
+}
+
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: Ctx = { waitUntil: () => {} }): Promise<Response> {
     // Handle CORS preflight
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: corsHeaders() })
+    }
+
+    const { pathname } = new URL(request.url)
+
+    // The only non-GET route, so it is routed before the GET-only gate below.
+    // The per-isolate limiter is a weak brake (see wrangler.toml); the real
+    // spam control is the daily email cap inside handleFeedback.
+    if (pathname === '/feedback') {
+      if (request.method !== 'POST') return errorResponse('Method not allowed', 405)
+      if (await isRateLimited(request, env)) {
+        return errorResponse('Too many requests', 429)
+      }
+      return handleFeedback(request, env, ctx)
     }
 
     if (request.method !== 'GET') {
@@ -358,7 +580,6 @@ export default {
       })
     }
 
-    const { pathname } = new URL(request.url)
     if (pathname === '/tmdb') {
       return handleTmdb(request, env)
     }

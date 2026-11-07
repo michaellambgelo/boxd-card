@@ -45,6 +45,30 @@ name = "RATE_LIMITER"
 namespace_id = "1001"
 simple = { limit = 600, period = 60 }
 
+# ── Feedback (POST /feedback) ───────────────────────────────────────────────
+# Extension-only feedback + error reports. Each submission is one key,
+# `fb:<ISO time>:<uuid>`, kept 180 days (FEEDBACK_RETENTION_DAYS in
+# src/shared/feedback.ts — the privacy policy states the same number), with
+# summary metadata so `kv key list` shows kind/status/preview without a get.
+# Triage is wrangler-only by design; there is no read route on this worker.
+# See scripts/feedback.mjs.
+[[kv_namespaces]]
+binding = "FEEDBACK"
+id = "329dda0dceb84c9ab8a0f038e85fcc3b"
+
+# Cloudflare Email Sending. michaellamb.dev is already onboarded (it is the
+# grafana-daily-report sender domain), so no `email sending enable` is needed.
+# The recipient must exist on the Proton side — michaellamb.dev MX is Proton,
+# not Cloudflare Email Routing.
+[[send_email]]
+name = "EMAIL"
+
+[vars]
+FEEDBACK_TO = "boxdcardfeedback@michaellamb.dev"
+FEEDBACK_FROM = "boxdcard@michaellamb.dev"
+# Notification emails per UTC day. Past it, submissions are still stored.
+FEEDBACK_DAILY_EMAIL_CAP = "50"
+
 [observability]
 enabled = false
 head_sampling_rate = 1
