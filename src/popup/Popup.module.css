@@ -77,6 +77,12 @@
 }
 
 /* ── Gear / back buttons ─────────────────────────────────────── */
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
 .gearBtn {
   display: flex;
   align-items: center;

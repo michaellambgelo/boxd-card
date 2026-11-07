@@ -246,7 +246,7 @@ If you add a `track()` call, a `console.warn`, or a new fetch, check it against 
 
 ## Extension feedback (`POST /feedback`)
 
-The extension has no telemetry, so an error a user hits reaches us only if they report it. `src/popup/FeedbackView.tsx` is that channel. It opens from **Settings → Send feedback**, and from a **Report this error** link under `error`/`actionError`. It shows the exact JSON before sending, and the privacy policy promises it does.
+The extension has no telemetry, so an error a user hits reaches us only if they report it. `src/popup/FeedbackView.tsx` is that channel. It opens from the **speech-bubble button left of the settings gear** in the main header, and from a **Report this error** link under `error`/`actionError`. It shows the exact JSON before sending, and the privacy policy promises it does.
 
 - **One schema, both sides:** `src/shared/feedback.ts` (pure; the worker imports it directly). `validateFeedback` rebuilds the object field by field, so unknown fields are dropped and never stored. `scrubErrorMessage` strips URLs, `letterboxd.com/<user>/…` paths, and quoted identifiers. It runs in the popup and again in the worker. **There is no page URL in the payload, deliberately.** The navigation hint embeds the username, which is why the scrub exists.
 - **Storage:** KV namespace `boxd-card-feedback` (`329dda0dceb84c9ab8a0f038e85fcc3b`, binding `FEEDBACK`). Keys are `fb:<ISO>:<uuid>` with a 180-day TTL (`FEEDBACK_RETENTION_DAYS`, and the privacy policy states it). Key metadata holds `kind/status/receivedAt/preview`. No IP is stored. Message, email, and diagnostics are never logged.
