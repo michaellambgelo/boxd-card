@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 |---------|----------|-------------|------------------|
 | **Chrome MV3 extension** | `src/popup/`, `src/content/`, `src/background/` | Chrome Web Store (`kcholfdhfcojahebmneeeikelffkokdj`) | Content script scrapes the page DOM you're already on |
 | **Web app** | `src/web/` → built to `docs/` (the apex) | Cloudflare Pages, `boxd-card.com` | Fetches + parses Letterboxd HTML through the proxy worker |
-| **About page** | `docs/about/index.html` (hand-written) | Cloudflare Pages, `boxd-card.com/about` | Static marketing page; its Generate CTA hands off to `/?url=…` |
+| **About page** | `docs/about/index.html` (hand-written) + `docs/about/hero.js` (built from `src/hero/`) | Cloudflare Pages, `boxd-card.com/about` | Static marketing page; its Generate CTA hands off to `/?url=…`. The hero cards are drawn live by the real renderer |
 
 Plus a **Cloudflare Worker** (`worker/`) at `api.boxd-card.com` that the web app and the extension both call.
 
@@ -147,6 +147,7 @@ boxd-card/
 │   ├── index.html                 # BUILD OUTPUT of src/web — the apex; committed, do not hand-edit
 │   ├── assets/                    # BUILD OUTPUT of src/web — hashed bundles, do not hand-edit
 │   ├── about/index.html           # About page (hand-written) — boxd-card.com/about
+│   ├── about/hero.js, hero.css, hero-assets/  # BUILD OUTPUT of src/hero (npm run build:hero) — do not hand-edit
 │   ├── privacy/index.html         # Privacy policy — a promise backed by code, keep in sync
 │   └── _redirects                 # Cloudflare Pages redirects (incl. the /app → / 301s)
 ├── eslint.config.mjs
@@ -163,6 +164,7 @@ npm run dev        # extension: build in watch mode → dist/
 npm run build      # extension: typecheck + one-shot production build
 npm run dev:web    # web app dev server (localhost:5174) — start the worker first
 npm run build:web  # web app: typecheck + build → docs/ (apex)
+npm run build:hero # About-page hero: real renderer + sample films → docs/about/hero.js
 npm run typecheck  # tsc --noEmit across all four tsconfigs (app / node / worker / visual)
 npm run lint       # ESLint, zero-warning policy
 npm run test       # Vitest watch
@@ -186,6 +188,16 @@ npx wrangler secret put TMDB_API_KEY   # v4 "API Read Access Token", NOT the v3 
 generated from the extension and committed by hand. To refresh it: generate a Favorites card in the
 extension, download it, and replace the file.
 
+**The About hero is the real renderer too.** `src/hero/` bundles `renderCard` with a fixed,
+hand-picked film set under the placeholder username `boxdcard` (not anyone's real diary) and draws
+both hero cards in the visitor's browser; "Shuffle the gradient" re-renders them, so the random
+backdrop is the product's own `drawBrandGradient`. It replaced an HTML/CSS imitation of a card that
+had drifted from the product. Posters are fetched from TMDB into data URLs first — `renderCard`
+returns `canvas.toBlob()`, and a canvas that drew a plain cross-origin `<img>` is tainted and
+refuses to export. Build with `npm run build:hero` (fixed `hero.js`/`hero.css` names, because
+`about/index.html` links them directly); the pre-commit hook rebuilds it whenever `src/canvas/`,
+`src/hero/`, `src/assets/`, `src/types.ts` or `src/altText.ts` is staged.
+
 There used to be a `scripts/generate-social-preview.mjs` behind `npm run generate:preview` that
 re-implemented the card layout in a second renderer — its own copy of the constants, gradient
 rectangles instead of posters, and a hand-drawn imitation of the Letterboxd logo. It was superseded
@@ -195,7 +207,7 @@ the real product; do not reintroduce a second renderer.**
 
 **PostToolUse hook:** any Edit/Write triggers `.claude/hooks/run-tests.sh` → `npm run test:run`.
 
-**Pre-commit hook** (`.githooks/pre-commit`, wired up by `npm install`): rebuilds the apex app (`docs/index.html`, `docs/assets/`, `docs/favicon.svg`) when `src/web/`, `vite.web.config.ts`, `package.json`, or `.env.production` are staged, and reconciles `package-lock.json` when `package.json` is staged.
+**Pre-commit hook** (`.githooks/pre-commit`, wired up by `npm install`): rebuilds the apex app (`docs/index.html`, `docs/assets/`, `docs/favicon.svg`) when anything it bundles is staged — `src/web/`, `src/canvas/`, `src/shared/`, `src/storage/`, `src/assets/`, `src/types.ts`, `src/altText.ts`, `vite.web.config.ts`, `package.json`, or `.env.production` (test files excluded, since every build stamps a new Faro bundle id). It rebuilds the About hero on the same principle, and reconciles `package-lock.json` when `package.json` is staged.
 
 ## Environment
 
@@ -230,11 +242,27 @@ The defences, all in `src/web/`:
 
 If you add a `track()` call, a `console.warn`, or a new fetch, check it against the policy. `telemetryPrivacy.test.ts` covers the scrubbing itself.
 
-**The extension sends no telemetry at all** — Faro is imported only from `src/web/`, and the policy says so. Don't import it anywhere else.
+**The extension sends no telemetry at all** — Faro is imported only from `src/web/`, and the policy says so. Don't import it anywhere else. The only user-initiated exception is the feedback form (below), which sends nothing until the user presses Send.
+
+## Extension feedback (`POST /feedback`)
+
+The extension has no telemetry, so an error a user hits reaches us only if they report it. `src/popup/FeedbackView.tsx` is that channel. It opens from the **speech-bubble button left of the settings gear** in the main header, and from a **Report this error** link under `error`/`actionError`. It shows the exact JSON before sending, and the privacy policy promises it does.
+
+- **One schema, both sides:** `src/shared/feedback.ts` (pure; the worker imports it directly). `validateFeedback` rebuilds the object field by field, so unknown fields are dropped and never stored. `scrubErrorMessage` strips URLs, `letterboxd.com/<user>/…` paths, and quoted identifiers. It runs in the popup and again in the worker. **There is no page URL in the payload, deliberately.** The navigation hint embeds the username, which is why the scrub exists.
+- **Storage:** KV namespace `boxd-card-feedback` (`329dda0dceb84c9ab8a0f038e85fcc3b`, binding `FEEDBACK`). Keys are `fb:<ISO>:<uuid>` with a 180-day TTL (`FEEDBACK_RETENTION_DAYS`, and the privacy policy states it). Key metadata holds `kind/status/receivedAt/preview`. No IP is stored. Message, email, and diagnostics are never logged.
+- **Email:** `send_email` binding `EMAIL`, from `boxdcard@michaellamb.dev` to `boxdcardfeedback@michaellamb.dev`. It is plain text only, with Reply-To set when the user gave an address, and sent in `waitUntil` after the KV write, so a failed send loses nothing. `FEEDBACK_DAILY_EMAIL_CAP` (50) limits emails per day, but storage is never capped. The recipient lives in **Proton** (michaellamb.dev MX), not Cloudflare Email Routing.
+- **Abuse filter, not auth:** requires an `Origin: chrome-extension://…` prefix (unpacked builds have a different id), plus the per-isolate limiter.
+- **Triage is wrangler-only. There is no read route, by choice.** From the repo root:
+  ```bash
+  npm run feedback -- list [--status new] [--kind error] [--json]
+  npm run feedback -- show <8-char ref | uuid | full key>
+  npm run feedback -- status <ref> <new|triaged|issue|wontfix|done> [--note "text"]
+  ```
+  `status` re-puts with `--expiration <expiresAt>`. A bare `kv key put` on an existing key **drops its TTL**, which would break the 180-day promise. Don't hand-edit records with raw wrangler.
 
 ## Worker notes (`worker/index.ts`)
 
-Two routes:
+Three routes (`POST /feedback` is covered in the section above):
 - `GET /?url=<target>[&accept=image]` — proxies an allowlisted host (`letterboxd.com`, `a.ltrbxd.com`, `s.ltrbxd.com`, `boxd.it`, `image.tmdb.org` and subdomains). 60s cache.
 - `GET /tmdb?slug=<letterboxd-slug>` — scrapes `data-tmdb-id` off the film page, then queries TMDB. 7-day cache. Needs `TMDB_API_KEY` or returns 503.
 

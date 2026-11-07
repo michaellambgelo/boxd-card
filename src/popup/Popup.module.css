@@ -77,6 +77,12 @@
 }
 
 /* ── Gear / back buttons ─────────────────────────────────────── */
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
 .gearBtn {
   display: flex;
   align-items: center;
@@ -395,4 +401,50 @@
   border-color: transparent;
   color: #ffffff;
   font-weight: 600;
+}
+
+/* ── Feedback view ──────────────────────────────────────────── */
+.textInput {
+  width: 100%;
+  background: var(--input-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+  font-size: 12px;
+  font-family: system-ui, sans-serif;
+  box-sizing: border-box;
+}
+
+.feedbackPreview {
+  font-size: 11px;
+  color: var(--subtext);
+}
+
+.feedbackPreview summary {
+  cursor: pointer;
+}
+
+.feedbackPreview pre {
+  margin: 6px 0 0;
+  max-height: 160px;
+  overflow: auto;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.feedbackThanks {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.feedbackLink {
+  align-self: flex-start;
 }

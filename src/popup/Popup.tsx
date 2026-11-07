@@ -12,9 +12,11 @@ import { detectCardType, supportsCardType, parseLetterboxdUrl } from '../shared/
 import { labelWithFilter, NO_FILTER } from '../shared/urlFilter'
 import tmdbLogoUrl from '../assets/TMDB-blue-short.svg?url'
 import styles from './Popup.module.css'
+import FeedbackView from './FeedbackView'
+import type { FeedbackKind } from '../shared/feedback'
 
 type Status = 'idle' | 'loading' | 'ready' | 'error'
-type View = 'main' | 'settings'
+type View = 'main' | 'settings' | 'feedback'
 
 // Chrome Web Store extension ID for the published listing. When the runtime
 // id matches, the extension was installed from the store and Chrome will
@@ -87,6 +89,9 @@ export default function Popup() {
   // so a clipboard refusal doesn't tear down the rendered card.
   const [actionError,   setActionError]   = useState<string | null>(null)
   const [settingsLoaded, setSettingsLoaded] = useState(false)
+  // What the feedback view opens with: a general note, or a report of the
+  // error currently on screen.
+  const [feedbackOpen, setFeedbackOpen] = useState<{ kind: FeedbackKind; errorMessage?: string }>({ kind: 'feedback' })
   const autoSelectedRef = useRef(false)
 
   // On mount: check for newer release on GitHub.
@@ -492,6 +497,11 @@ export default function Popup() {
 
   const statsCategoryUnavailable = statsCategoryOffPage(statsCategory)
 
+  function openFeedback(kind: FeedbackKind, errorMessage?: string) {
+    setFeedbackOpen({ kind, errorMessage })
+    setView('feedback')
+  }
+
   const buttonDisabled = status === 'loading' || isValidPage !== true || statsCategoryUnavailable
 
   return (
@@ -499,13 +509,13 @@ export default function Popup() {
       {status === 'loading' && <div className={styles.loadingBar} />}
 
       <header className={styles.header}>
-        {view === 'settings' ? (
+        {view !== 'main' ? (
           <>
             <button className={styles.backBtn} onClick={() => setView('main')} aria-label="Back to main">
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
               Back
             </button>
-            <span className={styles.settingsTitle}>Settings</span>
+            <span className={styles.settingsTitle}>{view === 'settings' ? 'Settings' : 'Send feedback'}</span>
           </>
         ) : (
           <>
@@ -533,12 +543,19 @@ export default function Popup() {
               </svg>
               <h1>Boxd Card</h1>
             </a>
-            <button className={styles.gearBtn} onClick={() => setView('settings')} aria-label="Settings">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <circle cx="12" cy="12" r="3"/>
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-              </svg>
-            </button>
+            <div className={styles.headerActions}>
+              <button className={styles.gearBtn} onClick={() => openFeedback('feedback')} aria-label="Send feedback" title="Send feedback">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+              </button>
+              <button className={styles.gearBtn} onClick={() => setView('settings')} aria-label="Settings" title="Settings">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+              </button>
+            </div>
           </>
         )}
       </header>
@@ -663,7 +680,25 @@ export default function Popup() {
               )}
             </p>
           </div>
+
         </div>
+      )}
+
+      {view === 'feedback' && (
+        <FeedbackView
+          key={`${feedbackOpen.kind}:${feedbackOpen.errorMessage ?? ''}`}
+          initialKind={feedbackOpen.kind}
+          errorMessage={feedbackOpen.errorMessage}
+          context={{
+            cardType,
+            layout,
+            ...((cardType === 'list' || cardType === 'recent-diary' || cardType === 'stats') && { listCount }),
+            ...(cardType === 'review' && { reviewCount }),
+            ...(cardType === 'stats' && { statsCategory }),
+            tmdbEnabled: useTmdb,
+          }}
+          onDone={() => setView('main')}
+        />
       )}
 
       {view === 'main' && (
@@ -940,7 +975,14 @@ export default function Popup() {
           {status === 'loading' ? 'Generating…' : 'Generate Card'}
         </button>
 
-        {error && <p className={styles.error}>{error}</p>}
+        {error && (
+          <>
+            <p className={styles.error}>{error}</p>
+            <button type="button" className={`${styles.linkButton} ${styles.feedbackLink}`} onClick={() => openFeedback('error', error)}>
+              Report this error
+            </button>
+          </>
+        )}
 
         {status === 'ready' && cardUrl && (
           <>
@@ -962,7 +1004,14 @@ export default function Popup() {
                 </button>
               )}
             </div>
-            {actionError && <p className={styles.error}>{actionError}</p>}
+            {actionError && (
+              <>
+                <p className={styles.error}>{actionError}</p>
+                <button type="button" className={`${styles.linkButton} ${styles.feedbackLink}`} onClick={() => openFeedback('error', actionError)}>
+                  Report this error
+                </button>
+              </>
+            )}
             {altText && previewAltTextEnabled && (
               <textarea className={styles.altTextArea} readOnly rows={3} value={altText} />
             )}

@@ -3,7 +3,7 @@
 # which the package.json `prepare` script runs automatically on `npm install`.
 #
 # Responsibilities:
-#   1. Rebuild the web app when its sources are staged, and stage the output so
+#   1. Rebuild the web app when its sources (or the shared code it bundles) are staged, and stage the output so
 #      the build artifact lands in the same commit as the source change. The app
 #      is the apex, so its output is docs/index.html + docs/assets/ +
 #      docs/favicon.svg — not a subdirectory.
@@ -20,7 +20,17 @@ cd "$(git rev-parse --show-toplevel)"
 # into the Faro app config. Without it here, a release commit that bumps the
 # version stages no src/web file, fires no rebuild, and ships a bundle still
 # reporting the old version — which is exactly what happened at 0.8.1.
-WEB_SOURCES=$(git diff --cached --name-only | grep -E '^(src/web/|vite\.web\.config\.ts|\.env\.production|package\.json$)' || true)
+#
+# The app also bundles code from outside src/web/ — the renderer, the shared
+# scraper helpers, settings storage, assets, types and alt text. Those were
+# missing here, so a renderer-only commit shipped with docs/assets/ still on
+# the old renderer. src/content/ is deliberately absent: src/web imports only
+# types from it, which the bundle never contains. Test files are skipped
+# because every build stamps a fresh Faro bundle id, so a needless rebuild
+# still produces a bundle diff.
+WEB_SOURCES=$(git diff --cached --name-only \
+  | grep -E '^(src/web/|src/canvas/|src/shared/|src/storage/|src/assets/|src/types\.ts$|src/altText\.ts$|vite\.web\.config\.ts$|\.env\.production$|package\.json$)' \
+  | grep -vE '\.test\.tsx?$' || true)
 
 if [ -n "$WEB_SOURCES" ]; then
   echo "▶ Web source changed — rebuilding the apex app..."
@@ -33,6 +43,24 @@ if [ -n "$WEB_SOURCES" ]; then
   # `--all` picks up deletions too, so a renamed bundle doesn't leave a ghost.
   git add --all docs/index.html docs/assets docs/favicon.svg
   echo "✓ apex app rebuilt and staged."
+fi
+
+# ── 1b. Rebuild the /about hero if the renderer or its inputs changed ───────
+# The hero (docs/about/hero.js) bundles the real card renderer. If a renderer
+# change could land without this rebuild, the About page would quietly keep
+# drawing the old cards — the drift the hero was rebuilt to remove.
+HERO_SOURCES=$(git diff --cached --name-only \
+  | grep -E '^(src/hero/|src/canvas/|src/assets/|src/types\.ts$|src/altText\.ts$|vite\.hero\.config\.ts$|package\.json$)' \
+  | grep -vE '\.test\.tsx?$' || true)
+
+if [ -n "$HERO_SOURCES" ]; then
+  echo "▶ Renderer or hero source changed — rebuilding the /about hero..."
+  if ! npm run build:hero; then
+    echo "✗ build:hero failed — commit aborted." >&2
+    exit 1
+  fi
+  git add --all docs/about/hero.js docs/about/hero.css docs/about/hero-assets
+  echo "✓ /about hero rebuilt and staged."
 fi
 
 # ── 2. Reconcile package-lock.json when package.json is staged ──────────────
