@@ -719,3 +719,167 @@ describe('upstream error logging', () => {
     vi.unstubAllGlobals()
   })
 })
+
+// ── Feedback ──────────────────────────────────────────────────────────────────
+
+describe('POST /feedback', () => {
+  const EXT_ORIGIN = 'chrome-extension://kcholfdhfcojahebmneeeikelffkokdj'
+
+  function makeStore() {
+    const data = new Map<string, string>()
+    return {
+      data,
+      get: vi.fn(async (key: string) => data.get(key) ?? null),
+      put: vi.fn(async (key: string, value: string) => { data.set(key, value) }),
+    }
+  }
+
+  function setup(overrides: Record<string, unknown> = {}) {
+    const store = makeStore()
+    const email = { send: vi.fn().mockResolvedValue({}) }
+    const waits: Promise<unknown>[] = []
+    const env = {
+      TMDB_API_KEY: '',
+      FEEDBACK: store,
+      EMAIL: email,
+      FEEDBACK_TO: 'boxdcardfeedback@michaellamb.dev',
+      FEEDBACK_FROM: 'boxdcard@michaellamb.dev',
+      ...overrides,
+    }
+    const ctx = { waitUntil: (p: Promise<unknown>) => { waits.push(p) } }
+    const send = async (body: unknown, init: { origin?: string | null; method?: string } = {}) => {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      const origin = init.origin === undefined ? EXT_ORIGIN : init.origin
+      if (origin) headers.Origin = origin
+      const res = await worker.fetch(new Request('https://api.boxd-card.com/feedback', {
+        method: init.method ?? 'POST',
+        headers,
+        body: typeof body === 'string' ? body : JSON.stringify(body),
+      }), env as never, ctx)
+      await Promise.all(waits)
+      return res
+    }
+    return { store, email, send }
+  }
+
+  const feedbackKeys = (store: ReturnType<typeof makeStore>) => [...store.data.keys()].filter(k => k.startsWith('fb:'))
+
+  it('stores the submission for 180 days with summary metadata and returns its id', async () => {
+    const { store, send } = setup()
+    const res = await send({ kind: 'feedback', message: 'Love the stats cards' })
+    expect(res.status).toBe(201)
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*')
+    const { id } = await res.json() as { id: string }
+
+    const put = store.put.mock.calls.find(([key]) => String(key).startsWith('fb:'))!
+    const [key, value, options] = put as unknown as [string, string, { expirationTtl: number; metadata: Record<string, string> }]
+    expect(key).toMatch(new RegExp(`^fb:\\d{4}-\\d{2}-\\d{2}T[^:]+:[^:]+:[^:]+:${id}$`))
+    expect(options.expirationTtl).toBe(180 * 24 * 60 * 60)
+    expect(options.metadata).toMatchObject({ kind: 'feedback', status: 'new', preview: 'Love the stats cards' })
+
+    const record = JSON.parse(value)
+    expect(record).toMatchObject({ id, kind: 'feedback', message: 'Love the stats cards', status: 'new', notes: '' })
+    expect(record.expiresAt).toBeGreaterThan(Date.now() / 1000)
+  })
+
+  it('never stores the client IP', async () => {
+    const { store } = setup()
+    const env = {
+      TMDB_API_KEY: '', FEEDBACK: store, EMAIL: { send: vi.fn() },
+      FEEDBACK_TO: 'a@b.co', FEEDBACK_FROM: 'c@d.co',
+    }
+    await worker.fetch(new Request('https://api.boxd-card.com/feedback', {
+      method: 'POST',
+      headers: { Origin: EXT_ORIGIN, 'CF-Connecting-IP': '203.0.113.9' },
+      body: JSON.stringify({ kind: 'feedback', message: 'hi' }),
+    }), env as never)
+    expect([...store.data.values()].join('')).not.toContain('203.0.113.9')
+  })
+
+  it('emails a plain-text notification with Reply-To and a single-line subject', async () => {
+    const { email, send } = setup()
+    await send({
+      kind: 'error',
+      message: 'It broke\r\nBcc: victim@example.com',
+      email: 'fan@example.com',
+      diagnostics: { extVersion: '0.10.2', userAgent: 'Chrome', cardType: 'list', errorMessage: 'Timed out' },
+    })
+    expect(email.send).toHaveBeenCalledOnce()
+    const msg = email.send.mock.calls[0][0]
+    expect(msg.to).toBe('boxdcardfeedback@michaellamb.dev')
+    expect(msg.from.email).toBe('boxdcard@michaellamb.dev')
+    expect(msg.replyTo).toBe('fan@example.com')
+    expect(msg.subject).not.toMatch(/[\r\n]/)
+    expect(msg.subject).toContain('[Boxd Card error]')
+    expect(msg).not.toHaveProperty('html')
+    expect(msg.text).toContain('cardType: list')
+    expect(msg.text).toContain('Timed out')
+  })
+
+  it('omits Reply-To when no email was given', async () => {
+    const { email, send } = setup()
+    await send({ kind: 'feedback', message: 'hi' })
+    expect(email.send.mock.calls[0][0]).not.toHaveProperty('replyTo')
+  })
+
+  it('still returns 201 when the email fails — the record is already stored', async () => {
+    const { store, send } = setup({ EMAIL: { send: vi.fn().mockRejectedValue(new Error('sending_disabled')) } })
+    const res = await send({ kind: 'feedback', message: 'hi' })
+    expect(res.status).toBe(201)
+    expect(feedbackKeys(store)).toHaveLength(1)
+  })
+
+  it('stops emailing past the daily cap but keeps storing', async () => {
+    const { store, email, send } = setup({ FEEDBACK_DAILY_EMAIL_CAP: '2' })
+    for (let i = 0; i < 4; i++) {
+      expect((await send({ kind: 'feedback', message: `n${i}` })).status).toBe(201)
+    }
+    expect(email.send).toHaveBeenCalledTimes(2)
+    expect(feedbackKeys(store)).toHaveLength(4)
+  })
+
+  it('does not log user-written content', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const { send } = setup()
+    await send({ kind: 'feedback', message: 'SECRET-MESSAGE', email: 'secret@example.com' })
+    const logged = log.mock.calls.flat().join(' ')
+    expect(logged).not.toContain('SECRET-MESSAGE')
+    expect(logged).not.toContain('secret@example.com')
+  })
+
+  it('rejects requests that do not come from an extension', async () => {
+    const { store, send } = setup()
+    expect((await send({ kind: 'feedback', message: 'hi' }, { origin: 'https://evil.example' })).status).toBe(403)
+    expect((await send({ kind: 'feedback', message: 'hi' }, { origin: null })).status).toBe(403)
+    expect(feedbackKeys(store)).toHaveLength(0)
+  })
+
+  it('rejects invalid payloads with a readable 400', async () => {
+    const { send } = setup()
+    const bad = await send({ kind: 'feedback', message: 'x', email: 'nope' })
+    expect(bad.status).toBe(400)
+    expect(await bad.text()).toBe('email is not a valid address')
+    expect((await send('{not json')).status).toBe(400)
+  })
+
+  it('rejects oversized bodies with 413', async () => {
+    const { send } = setup()
+    const res = await send({ kind: 'feedback', message: 'x'.repeat(20 * 1024) })
+    expect(res.status).toBe(413)
+  })
+
+  it('returns 405 for GET — there is no read route', async () => {
+    const res = await worker.fetch(new Request('https://api.boxd-card.com/feedback'), { TMDB_API_KEY: '' })
+    expect(res.status).toBe(405)
+  })
+
+  it('returns 503 when the KV binding is missing', async () => {
+    const { send } = setup({ FEEDBACK: undefined })
+    expect((await send({ kind: 'feedback', message: 'hi' })).status).toBe(503)
+  })
+
+  it('advertises POST in the CORS preflight', async () => {
+    const res = await worker.fetch(new Request('https://api.boxd-card.com/feedback', { method: 'OPTIONS' }), { TMDB_API_KEY: '' })
+    expect(res.headers.get('Access-Control-Allow-Methods')).toContain('POST')
+  })
+})
