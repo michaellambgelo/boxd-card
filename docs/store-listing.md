@@ -48,8 +48,16 @@ Listing URL: <https://chromewebstore.google.com/detail/boxd-card/kcholfdhfcojahe
 > metadata from The Movie Database. When enabled, the extension sends the
 > Letterboxd film slug (for example `dune-2021`) to our Cloudflare Worker,
 > which queries TMDB and returns public film data. Nothing else is transmitted;
-> no username, account, or personal data is sent. When TMDB enrichment is off
-> the extension never contacts our server.
+> no username, account, or personal data is sent.
+>
+> **Feedback (optional).** The feedback button in the popup, and the "Report
+> this error" link that appears when a card fails, send a report to our
+> Cloudflare Worker only when you press Send. A report holds your message, an
+> email address if you choose to give one (used only to reply), and, if the
+> "Include diagnostics" box is ticked, the extension version, browser version,
+> card settings and the error text. It never includes the Letterboxd page URL or
+> your username. Reports are deleted after 180 days. Apart from TMDB enrichment
+> and feedback you choose to send, the extension never contacts our server.
 >
 > Full privacy policy: <https://boxd-card.com/privacy>
 >
@@ -70,7 +78,7 @@ Listing URL: <https://chromewebstore.google.com/detail/boxd-card/kcholfdhfcojahe
 | Host `letterboxd.com` | Resolve Letterboxd poster redirect URLs. |
 | Host `a.ltrbxd.com` | Fetch poster images from Letterboxd's primary image CDN. |
 | Host `s.ltrbxd.com` | Fetch Letterboxd static assets (logo). |
-| Host `api.boxd-card.com` | Only used when the user enables TMDB enrichment in settings. The extension requests film metadata from this Cloudflare Worker, which proxies to TMDB. The extension makes no requests to this host unless the feature is on. |
+| Host `api.boxd-card.com` | Our own Cloudflare Worker, used for two user-initiated features only: (1) when the user enables TMDB enrichment in settings, the extension requests film metadata from it, and it proxies the request to TMDB; (2) when the user fills in the feedback form and presses Send, the report is posted to it. No other requests are made to this host. |
 | Host `image.tmdb.org` | Only used when TMDB enrichment is enabled. Fetches the posters and backdrops returned by the worker. |
 
 ## Single-purpose description
@@ -79,13 +87,20 @@ Listing URL: <https://chromewebstore.google.com/detail/boxd-card/kcholfdhfcojahe
 
 ## Data usage disclosures (Privacy practices tab)
 
+We collect one category, and only when the user sends feedback:
+
+- [x] **Personally identifiable information**: the email address a user may
+  optionally type into the feedback form, so we can reply. It is stored with the
+  report for 180 days and emailed to the developer. Nothing is collected unless
+  the user presses Send.
+
 We do **not** collect any of the following:
 
-- [ ] Personally identifiable information
 - [ ] Health information
 - [ ] Financial and payment information
 - [ ] Authentication information
-- [ ] Personal communications
+- [ ] Personal communications (a feedback message is written *to* us; the
+  extension never reads the user's emails, texts or chats)
 - [ ] Location
 - [ ] Web history
 - [ ] User activity
@@ -108,6 +123,14 @@ Certifications (all required to be true, and are true):
   lending purposes.
 
 ## Change log
+
+- **2026-11 (next release)**: Adds a feedback button next to the settings gear,
+  plus a "Report this error" link when a card fails. Reports go to
+  `api.boxd-card.com` only when the user presses Send, show exactly what will be
+  sent first, never include the page URL or username, and are deleted after 180
+  days. Dashboard: tick *Personally identifiable information* (optional reply
+  email), and update the `api.boxd-card.com` host justification. No new
+  permissions or hosts.
 
 - **2026-08 (v0.8.2)** — Fixes cards built from your stats. Letterboxd changed how
   it labels posters, which made every film on a Milestones card show the same
