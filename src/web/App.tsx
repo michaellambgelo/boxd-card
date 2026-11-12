@@ -18,6 +18,8 @@ import tmdbLogoUrl from '../assets/TMDB-blue-short.svg?url'
 import { track, startAction } from './faro'
 import { getHandoffUrl } from './handoff'
 import { sanitizeErrorMessage } from './telemetryPrivacy'
+import { failureReason, emptyFilmsError, emptyStatsError, allPostersFailedError } from './generateError'
+import type { GenerateStage } from './generateError'
 import { canInstallChromeExtension, CHROME_WEB_STORE_URL } from './chromium'
 import styles from './App.module.css'
 
@@ -239,6 +241,9 @@ export default function App() {
     setCardBlob(null)
     setAltText(null)
 
+    // Classifies errors that don't carry their own reason (see generateError.ts).
+    let stage: GenerateStage = 'fetch'
+
     try {
       const statsRenderMode = resolvedCardType === 'stats'
         ? STATS_CATEGORY_CONFIGS[statsCategory].renderMode
@@ -260,10 +265,10 @@ export default function App() {
       )
 
       if (needsFilms && !filmData.films.length) {
-        throw new Error('No films found on this page. Check the URL and try again.')
+        throw emptyFilmsError(resolvedCardType)
       }
       if (!needsFilms && !filmData.statsSummary?.length && !filmData.chartData && !filmData.breakdownData && !filmData.barChartData && !filmData.milestonesData) {
-        throw new Error('No stats data found on this page. Check the URL and try again.')
+        throw emptyStatsError()
       }
 
       let posterDataUrls: string[] = []
@@ -276,8 +281,7 @@ export default function App() {
         )
         const failures = posterResults.filter((r): r is PromiseRejectedResult => r.status === 'rejected')
         if (failures.length === filmData.films.length) {
-          const reason = String(failures[0]?.reason ?? 'unknown')
-          throw new Error(`All poster images failed to load. (${reason})`)
+          throw allPostersFailedError(failures[0]?.reason)
         }
         posterDataUrls = posterResults.map(r =>
           r.status === 'fulfilled' ? r.value : '',
@@ -319,6 +323,7 @@ export default function App() {
 
       const usedTmdb = didUseTmdb(filmData.films, filmData.backdropUrl)
 
+      stage = 'render'
       const blob = await renderCard({
         films,
         username:            filmData.username,
@@ -390,6 +395,7 @@ export default function App() {
       setStatus('error')
       track('card_generate_failed', {
         card_type: resolvedCardType,
+        reason: failureReason(err, stage),
         // Scraper errors quote slugs and can embed request URLs; the privacy
         // policy promises neither is collected. Scrub before it leaves.
         message: sanitizeErrorMessage(message).slice(0, 200),
