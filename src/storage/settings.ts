@@ -1,5 +1,12 @@
 import type { ListCount, ReviewCount, Layout, StatsCategory, StatsSubCategory } from '../types'
 
+/**
+ * Which post-generate button the extension popup leaves out. One value rather
+ * than two booleans, so "both removed" — which would leave no way to save the
+ * card as a file — cannot be stored.
+ */
+export type HiddenAction = 'none' | 'download' | 'share'
+
 export interface UserSettings {
   listCount: ListCount
   reviewCount: ReviewCount
@@ -32,6 +39,8 @@ export interface UserSettings {
    * has no active-tab concept).
    */
   rememberUsername: boolean
+  /** Extension only. The web app ignores it. */
+  hiddenAction: HiddenAction
 }
 
 export const DEFAULT_SETTINGS: UserSettings = {
@@ -59,6 +68,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   showGenres: false,
   showOverview: false,
   rememberUsername: true,  // on by default — quiet, local-only convenience
+  hiddenAction: 'none',
 }
 
 const STORAGE_KEY = 'boxd-card-settings'

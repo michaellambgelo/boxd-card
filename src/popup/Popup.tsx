@@ -6,7 +6,7 @@ import { renderCard } from '../canvas/renderCard'
 import { generateAltText } from '../altText'
 import { CARD_TYPES, CARD_TYPE_CONFIGS, LAYOUTS, LAYOUT_CONFIGS, STATS_CATEGORIES, STATS_CATEGORY_CONFIGS, formatUrlHint, formatUrlHintSegments, isStatsCategoryAvailable } from '../types'
 import type { CardType, ListCount, ReviewCount, Layout, StatsCategory, StatsSubCategory } from '../types'
-import { loadSettings, saveSettings, loadRememberedUser, saveRememberedUser, clearRememberedUser, type RememberedUser } from '../storage/settings'
+import { loadSettings, saveSettings, loadRememberedUser, saveRememberedUser, clearRememberedUser, type HiddenAction, type RememberedUser } from '../storage/settings'
 import { didUseTmdb, mergeTmdbKeepCustomPoster, slugFromPosterUrl, type TmdbFilmData } from '../shared/tmdb'
 import { detectCardType, supportsCardType, parseLetterboxdUrl } from '../shared/letterboxdUrl'
 import { labelWithFilter, NO_FILTER } from '../shared/urlFilter'
@@ -79,14 +79,15 @@ export default function Popup() {
   const [showOverview, setShowOverview] = useState(false)
   const [rememberUsername, setRememberUsername] = useState(true)
   const [rememberedUser,   setRememberedUser]   = useState<RememberedUser | null>(null)
+  const [hiddenAction,     setHiddenAction]     = useState<HiddenAction>('none')
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null)
   const [cardUrl,       setCardUrl]       = useState<string | null>(null)
   const [cardBlob,      setCardBlob]      = useState<Blob | null>(null)
   const [copied,        setCopied]        = useState(false)
   const [altText,       setAltText]       = useState<string | null>(null)
   const [altTextCopied, setAltTextCopied] = useState(false)
-  // Failures from the post-generate actions (copy). Kept separate from `error`
-  // so a clipboard refusal doesn't tear down the rendered card.
+  // Failures from the post-generate actions (copy / share). Kept separate from
+  // `error` so a clipboard refusal doesn't tear down the rendered card.
   const [actionError,   setActionError]   = useState<string | null>(null)
   const [settingsLoaded, setSettingsLoaded] = useState(false)
   // What the feedback view opens with: a general note, or a report of the
@@ -144,6 +145,7 @@ export default function Popup() {
       setShowGenres(s.showGenres)
       setShowOverview(s.showOverview)
       setRememberUsername(s.rememberUsername)
+      setHiddenAction(s.hiddenAction)
       setSettingsLoaded(true)
     })
     // Load the cached Letterboxd identity so the nudge can deep-link to the
@@ -463,6 +465,44 @@ export default function Popup() {
     setTimeout(() => setCopied(false), 1500)
   }
 
+  // Hands the PNG to the OS share sheet. Mirrors handleShare in web/App.tsx,
+  // minus the Faro event — the extension never imports Faro.
+  async function handleShare() {
+    if (!cardBlob) return
+    setActionError(null)
+    const file = new File([cardBlob], 'boxd-card.png', { type: 'image/png' })
+    try {
+      // Must stay the first await: navigator.share needs the click's transient
+      // user activation, which an earlier await would let expire.
+      await navigator.share({ files: [file] })
+    } catch (err) {
+      // Dismissing the share sheet rejects with AbortError. That's the normal
+      // cancel path, not a failure — and an actionError would offer the user
+      // "Report this error" for something that wasn't one.
+      if ((err as Error)?.name !== 'AbortError') {
+        setActionError('Sharing is not available here. Try Download instead.')
+      }
+    }
+  }
+
+  // `'share' in navigator` is true on desktop Chrome even where file sharing is
+  // unsupported, so ask canShare about an actual file rather than the API alone.
+  const canShare = typeof navigator.share === 'function'
+    && (typeof navigator.canShare !== 'function'
+      || navigator.canShare({ files: [new File([], 'boxd-card.png', { type: 'image/png' })] }))
+
+  // Settings sync across devices, so 'download' can arrive on a machine that
+  // can't share. Download only goes away where Share is there to replace it.
+  const showDownload = !(hiddenAction === 'download' && canShare)
+  const showShare    = canShare && hiddenAction !== 'share'
+
+  // Two checkboxes over one value: ticking one clears the other.
+  function toggleHiddenAction(action: Exclude<HiddenAction, 'none'>, checked: boolean) {
+    const next: HiddenAction = checked ? action : 'none'
+    setHiddenAction(next)
+    saveSettings({ hiddenAction: next })
+  }
+
   async function handleCopyAltText() {
     if (!altText) return
     setActionError(null)
@@ -611,6 +651,22 @@ export default function Popup() {
               </label>
             )}
           </div>
+          {canShare && (
+            <div className={styles.field}>
+              <span className={styles.fieldLabel}>Card buttons</span>
+              <label className={styles.checkboxLabel}>
+                <input type="checkbox" checked={hiddenAction === 'download'} onChange={e => toggleHiddenAction('download', e.target.checked)} />
+                Remove Download button
+              </label>
+              <label className={styles.checkboxLabel}>
+                <input type="checkbox" checked={hiddenAction === 'share'} onChange={e => toggleHiddenAction('share', e.target.checked)} />
+                Remove Share button
+              </label>
+              <p className={styles.settingsHint}>
+                Only one can be removed at a time; ticking one clears the other.
+              </p>
+            </div>
+          )}
           <div className={styles.field}>
             <span className={styles.fieldLabel}>Data sources</span>
             <label className={styles.checkboxLabel}>
@@ -994,10 +1050,15 @@ export default function Popup() {
               />
             </a>
             <div className={styles.actionRow}>
-              <button className={styles.actionBtn} onClick={handleDownload}>Download</button>
+              {showDownload && (
+                <button className={styles.actionBtn} onClick={handleDownload}>Download</button>
+              )}
               <button className={`${styles.actionBtn}${copied ? ` ${styles.actionBtnCopied}` : ''}`} onClick={handleCopy}>
                 {copied ? 'Copied!' : 'Copy'}
               </button>
+              {showShare && (
+                <button className={styles.actionBtn} onClick={handleShare}>Share</button>
+              )}
               {altText && (
                 <button className={`${styles.actionBtn}${altTextCopied ? ` ${styles.actionBtnCopied}` : ''}`} onClick={handleCopyAltText}>
                   {altTextCopied ? 'Copied!' : 'Alt Text'}

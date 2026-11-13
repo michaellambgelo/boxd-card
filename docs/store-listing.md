@@ -25,8 +25,9 @@ Listing URL: <https://chromewebstore.google.com/detail/boxd-card/kcholfdhfcojahe
 >   (Letterboxd Pro accounts only, since the underlying stats pages require Pro)
 >
 > Open the extension on a supported Letterboxd page, pick a card type, click
-> Generate Card, and get a PNG you can download or copy straight to your
-> clipboard. Six layout presets are available:
+> Generate Card, and get a PNG you can download, copy straight to your
+> clipboard, or send to your system share sheet where Chrome supports it.
+> Six layout presets are available:
 >
 > - Landscape (1200px wide) — Twitter, Discord
 > - Square (1080 × 1080) — Instagram grid
