@@ -125,6 +125,10 @@ Certifications (all required to be true, and are true):
 
 ## Change log
 
+- **2026-11 (v0.12.0)**: Adds a Share button to the popup that sends the card
+  image to your system share sheet, where Chrome supports sharing files. A new
+  Card buttons setting lets you remove either the Download or the Share button,
+  one at a time. No new permissions.
 - **2026-11 (v0.11.0)**: Adds a feedback button next to the settings gear,
   plus a "Report this error" link when a card fails. Reports go to
   `api.boxd-card.com` only when the user presses Send, show exactly what will be
