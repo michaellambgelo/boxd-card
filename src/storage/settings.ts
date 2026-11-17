@@ -1,7 +1,7 @@
 import type { ListCount, ReviewCount, Layout, StatsCategory, StatsSubCategory } from '../types'
 
 /**
- * Which post-generate button the extension popup leaves out. One value rather
+ * Which post-generate button the popup and the web app leave out. One value rather
  * than two booleans, so "both removed" — which would leave no way to save the
  * card as a file — cannot be stored.
  */
@@ -39,7 +39,10 @@ export interface UserSettings {
    * has no active-tab concept).
    */
   rememberUsername: boolean
-  /** Extension only. The web app ignores it. */
+  /**
+   * Stored per surface (chrome.storage.sync vs localStorage), so the extension
+   * and the web app each keep their own choice.
+   */
   hiddenAction: HiddenAction
 }
 
