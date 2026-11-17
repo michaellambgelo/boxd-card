@@ -40,6 +40,14 @@ describe('UserSettings', () => {
     expect(s).toEqual(DEFAULT_SETTINGS)
   })
 
+  it('defaults hiddenAction to none and round-trips it', async () => {
+    expect(DEFAULT_SETTINGS.hiddenAction).toBe('none')
+    await saveSettings({ hiddenAction: 'download' })
+    expect((await loadSettings()).hiddenAction).toBe('download')
+    await saveSettings({ hiddenAction: 'share' })
+    expect((await loadSettings()).hiddenAction).toBe('share')
+  })
+
   it('round-trips rememberUsername via saveSettings + loadSettings', async () => {
     await saveSettings({ rememberUsername: false })
     expect((await loadSettings()).rememberUsername).toBe(false)

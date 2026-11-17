@@ -7,7 +7,7 @@
 
 A Chrome extension that generates shareable image cards from your Letterboxd profile — last watched films, favorites, diary entries, lists, or reviews.
 
-Open the extension on a supported Letterboxd page, pick a card type, click **Generate Card**, and get a PNG you can download or copy straight to your clipboard.
+Open the extension on a supported Letterboxd page, pick a card type, click **Generate Card**, and get a PNG you can download, copy straight to your clipboard, or send to your system share sheet where Chrome supports it.
 
 Custom posters (a Letterboxd Pro/Patron feature) are supported automatically — they're already rendered in the DOM by the time the extension reads them, so no API access is required.
 
@@ -44,7 +44,7 @@ Letterboxd page DOM
   Canvas Renderer      draws the card
         │
         ▼
-  Download PNG  /  Copy to clipboard
+  Download PNG  /  Copy to clipboard  /  Share sheet
 ```
 
 ## Card layouts

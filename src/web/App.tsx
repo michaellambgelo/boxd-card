@@ -3,7 +3,7 @@ import { renderCard } from '../canvas/renderCard'
 import { generateAltText } from '../altText'
 import { CARD_TYPE_CONFIGS, LAYOUTS, LAYOUT_CONFIGS, STATS_CATEGORIES, STATS_CATEGORY_CONFIGS } from '../types'
 import type { CardType, ListCount, ReviewCount, Layout, StatsCategory, StatsSubCategory } from '../types'
-import { loadSettings, saveSettings } from '../storage/settings'
+import { loadSettings, saveSettings, type HiddenAction } from '../storage/settings'
 import {
   scrapeLetterboxdPage,
   fetchImageDataUrl,
@@ -18,6 +18,8 @@ import tmdbLogoUrl from '../assets/TMDB-blue-short.svg?url'
 import { track, startAction } from './faro'
 import { getHandoffUrl } from './handoff'
 import { sanitizeErrorMessage } from './telemetryPrivacy'
+import { failureReason, emptyFilmsError, emptyStatsError, allPostersFailedError } from './generateError'
+import type { GenerateStage } from './generateError'
 import { canInstallChromeExtension, CHROME_WEB_STORE_URL } from './chromium'
 import styles from './App.module.css'
 
@@ -70,6 +72,7 @@ export default function App() {
   const [altTextEnabled,        setAltTextEnabled]        = useState(false)
   const [previewAltTextEnabled, setPreviewAltTextEnabled] = useState(false)
   const [useTmdb,               setUseTmdb]               = useState(true)
+  const [hiddenAction,          setHiddenAction]          = useState<HiddenAction>('none')
 
   const [cardUrl,  setCardUrl]  = useState<string | null>(null)
   const [cardBlob, setCardBlob] = useState<Blob | null>(null)
@@ -96,6 +99,7 @@ export default function App() {
       setShowBackdrop(s.showBackdrop)
       setLayout(s.layout)
       setAltTextEnabled(s.generateAltText)
+      setHiddenAction(s.hiddenAction)
       setPreviewAltTextEnabled(s.previewAltText)
       setUseTmdb(s.useTmdb)
       setSettingsLoaded(true)
@@ -239,6 +243,9 @@ export default function App() {
     setCardBlob(null)
     setAltText(null)
 
+    // Classifies errors that don't carry their own reason (see generateError.ts).
+    let stage: GenerateStage = 'fetch'
+
     try {
       const statsRenderMode = resolvedCardType === 'stats'
         ? STATS_CATEGORY_CONFIGS[statsCategory].renderMode
@@ -260,10 +267,10 @@ export default function App() {
       )
 
       if (needsFilms && !filmData.films.length) {
-        throw new Error('No films found on this page. Check the URL and try again.')
+        throw emptyFilmsError(resolvedCardType)
       }
       if (!needsFilms && !filmData.statsSummary?.length && !filmData.chartData && !filmData.breakdownData && !filmData.barChartData && !filmData.milestonesData) {
-        throw new Error('No stats data found on this page. Check the URL and try again.')
+        throw emptyStatsError()
       }
 
       let posterDataUrls: string[] = []
@@ -276,8 +283,7 @@ export default function App() {
         )
         const failures = posterResults.filter((r): r is PromiseRejectedResult => r.status === 'rejected')
         if (failures.length === filmData.films.length) {
-          const reason = String(failures[0]?.reason ?? 'unknown')
-          throw new Error(`All poster images failed to load. (${reason})`)
+          throw allPostersFailedError(failures[0]?.reason)
         }
         posterDataUrls = posterResults.map(r =>
           r.status === 'fulfilled' ? r.value : '',
@@ -319,6 +325,7 @@ export default function App() {
 
       const usedTmdb = didUseTmdb(filmData.films, filmData.backdropUrl)
 
+      stage = 'render'
       const blob = await renderCard({
         films,
         username:            filmData.username,
@@ -390,6 +397,7 @@ export default function App() {
       setStatus('error')
       track('card_generate_failed', {
         card_type: resolvedCardType,
+        reason: failureReason(err, stage),
         // Scraper errors quote slugs and can embed request URLs; the privacy
         // policy promises neither is collected. Scrub before it leaves.
         message: sanitizeErrorMessage(message).slice(0, 200),
@@ -463,6 +471,18 @@ export default function App() {
     && typeof navigator.share === 'function'
     && (typeof navigator.canShare !== 'function'
       || navigator.canShare({ files: [new File([], 'boxd-card.png', { type: 'image/png' })] }))
+
+  // Download only goes away where Share is there to replace it — a stored
+  // 'download' must not strand a browser that can't share files.
+  const showDownload = !(hiddenAction === 'download' && canShare)
+  const showShare    = canShare && hiddenAction !== 'share'
+
+  // Two checkboxes over one value: ticking one clears the other.
+  function toggleHiddenAction(action: Exclude<HiddenAction, 'none'>, checked: boolean) {
+    const next: HiddenAction = checked ? action : 'none'
+    setHiddenAction(next)
+    saveSettings({ hiddenAction: next })
+  }
 
   // Detection hint shown below the URL field
   function detectionHint(): string | null {
@@ -592,6 +612,22 @@ export default function App() {
                 </label>
               )}
             </div>
+            {canShare && (
+              <div className={styles.settingsSection}>
+                <span className={styles.fieldLabel}>Card buttons</span>
+                <label className={styles.checkboxLabel}>
+                  <input type="checkbox" checked={hiddenAction === 'download'} onChange={e => toggleHiddenAction('download', e.target.checked)} data-faro-user-action-name="settings-toggle-remove-download" />
+                  Remove Download button
+                </label>
+                <label className={styles.checkboxLabel}>
+                  <input type="checkbox" checked={hiddenAction === 'share'} onChange={e => toggleHiddenAction('share', e.target.checked)} data-faro-user-action-name="settings-toggle-remove-share" />
+                  Remove Share button
+                </label>
+                <p className={styles.settingsHint}>
+                  Only one can be removed at a time; ticking one clears the other.
+                </p>
+              </div>
+            )}
             <div className={styles.settingsSection}>
               <span className={styles.fieldLabel}>Data sources</span>
               <label className={styles.checkboxLabel}>
@@ -850,7 +886,9 @@ export default function App() {
               <img src={cardUrl} alt="Boxd Card preview" className={styles.preview} />
             </a>
             <div className={styles.actionRow}>
-              <button className={styles.actionBtn} onClick={handleDownload} data-faro-user-action-name="card-download">Download</button>
+              {showDownload && (
+                <button className={styles.actionBtn} onClick={handleDownload} data-faro-user-action-name="card-download">Download</button>
+              )}
               <button
                 className={`${styles.actionBtn}${copied ? ` ${styles.actionBtnCopied}` : ''}`}
                 onClick={handleCopy}
@@ -858,7 +896,7 @@ export default function App() {
               >
                 {copied ? 'Copied!' : 'Copy'}
               </button>
-              {canShare && (
+              {showShare && (
                 <button className={styles.actionBtn} onClick={handleShare} data-faro-user-action-name="card-share">Share</button>
               )}
               {altText && (
