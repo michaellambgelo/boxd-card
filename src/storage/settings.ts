@@ -35,8 +35,8 @@ export interface UserSettings {
    * Cache the logged-in Letterboxd username + avatar (extension only).
    * When the popup is opened on a non-Letterboxd tab, the cached username
    * personalizes the "navigate to ..." nudge into a clickable deep link.
-   * Web-app users see this setting but it's force-disabled (the web app
-   * has no active-tab concept).
+   * The web app doesn't read this flag: there, remembering is simply whether
+   * a RememberedUser is stored (the member typed a username, or forgot it).
    */
   rememberUsername: boolean
   /**
@@ -87,6 +87,13 @@ const REMEMBERED_USER_KEY = 'boxd-card-remembered-user'
 export interface RememberedUser {
   username: string
   avatarUrl?: string
+  /**
+   * Web app only: the avatar image itself, as a data: URL. The web app has no
+   * logged-in tab to re-read the picture from, so it keeps a copy rather than
+   * a URL it would have to proxy on every visit. Absent when the member has no
+   * uploaded avatar.
+   */
+  avatarDataUrl?: string
   at: number          // ms epoch of last refresh
 }
 
@@ -119,9 +126,9 @@ export async function saveSettings(partial: Partial<UserSettings>): Promise<void
 // --- Remembered Letterboxd user (extension-only cache) -------------------
 //
 // chrome.storage.local (not .sync) — per-device cache, refreshed each time
-// the popup detects a logged-in user on Letterboxd. Web-app builds fall
-// through to localStorage so unit tests work, but the web app intentionally
-// doesn't call save/load (the feature has no useful surface there).
+// the popup detects a logged-in user on Letterboxd. The web app falls through
+// to localStorage: there the member types their username once (see
+// web/member.ts) and it is refreshed when the saved copy goes stale.
 
 function hasChromeLocalStorage(): boolean {
   return typeof chrome !== 'undefined' && !!chrome?.storage?.local

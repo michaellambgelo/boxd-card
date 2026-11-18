@@ -3,7 +3,8 @@ import { renderCard } from '../canvas/renderCard'
 import { generateAltText } from '../altText'
 import { CARD_TYPE_CONFIGS, LAYOUTS, LAYOUT_CONFIGS, STATS_CATEGORIES, STATS_CATEGORY_CONFIGS } from '../types'
 import type { CardType, ListCount, ReviewCount, Layout, StatsCategory, StatsSubCategory } from '../types'
-import { loadSettings, saveSettings, type HiddenAction } from '../storage/settings'
+import { loadSettings, saveSettings, loadRememberedUser, saveRememberedUser, clearRememberedUser, type HiddenAction, type RememberedUser } from '../storage/settings'
+import { MEMBER_PAGES, MemberLookupError, isMemberStale, isSameMember, lookupMember, memberPageUrl, normalizeUsernameInput, refreshMember, type MemberPageId } from './member'
 import {
   scrapeLetterboxdPage,
   fetchImageDataUrl,
@@ -25,6 +26,30 @@ import styles from './App.module.css'
 
 type Status = 'idle' | 'loading' | 'ready' | 'error'
 type View = 'main' | 'settings'
+
+/**
+ * The member glyph: head and shoulders in a ring, drawn in the gear's stroke
+ * style. Plain when no username is remembered; brand gradient once one is, for
+ * a member with no Letterboxd picture of their own.
+ */
+function MemberIcon({ gradient }: { gradient: boolean }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={gradient ? 'url(#bc-member-grad)' : 'currentColor'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {gradient && (
+        <defs>
+          <linearGradient id="bc-member-grad" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+            <stop offset="0%"   stopColor="#EF8D22" />
+            <stop offset="50%"  stopColor="#0EDF52" />
+            <stop offset="100%" stopColor="#40BCF4" />
+          </linearGradient>
+        </defs>
+      )}
+      <circle cx="12" cy="12" r="10" />
+      <circle cx="12" cy="10" r="3" />
+      <path d="M6.2 18.2a6.5 6.5 0 0 1 11.6 0" />
+    </svg>
+  )
+}
 
 export default function App() {
   const [view,        setView]        = useState<View>('main')
@@ -74,6 +99,23 @@ export default function App() {
   const [useTmdb,               setUseTmdb]               = useState(true)
   const [hiddenAction,          setHiddenAction]          = useState<HiddenAction>('none')
 
+  // "Remember my Letterboxd username" — see member.ts. `member` is who the
+  // person says they are; the web app has no session to confirm it against.
+  const [member,        setMember]        = useState<RememberedUser | null>(null)
+  const [memberInput,   setMemberInput]   = useState('')
+  const [memberSaving,  setMemberSaving]  = useState(false)
+  const [memberError,   setMemberError]   = useState<string | null>(null)
+  const [memberMenuOpen, setMemberMenuOpen] = useState(false)
+  const memberInputRef = useRef<HTMLInputElement>(null)
+  const memberMenuRef  = useRef<HTMLDivElement>(null)
+  // Set when Settings is opened from the member button, so the username field
+  // takes focus instead of the page just changing under the pointer.
+  const focusMemberInputRef = useRef(false)
+  // Bumped whenever the person saves or forgets a username. The background
+  // refresh checks it before writing, so a slow refresh can't resurrect a
+  // member who was forgotten (or replaced) while it was in flight.
+  const memberGenRef = useRef(0)
+
   const [cardUrl,  setCardUrl]  = useState<string | null>(null)
   const [cardBlob, setCardBlob] = useState<Blob | null>(null)
   const [copied,   setCopied]   = useState(false)
@@ -105,6 +147,48 @@ export default function App() {
       setSettingsLoaded(true)
     })
   }, [])
+
+  // On mount: load the remembered member, and quietly refresh a stale one so
+  // a changed Letterboxd avatar catches up. refreshMember never loses the
+  // member — a failed refresh keeps what we have and re-stamps `at`.
+  useEffect(() => {
+    let cancelled = false
+    const gen = memberGenRef.current
+    const superseded = () => cancelled || gen !== memberGenRef.current
+    loadRememberedUser().then(async saved => {
+      if (superseded() || !saved) return
+      setMember(saved)
+      if (!isMemberStale(saved)) return
+      const next = await refreshMember(saved)
+      if (superseded()) return
+      await saveRememberedUser(next)
+      if (!superseded()) setMember(next)
+    })
+    return () => { cancelled = true }
+  }, [])
+
+  // Focus the username field when Settings was opened from the member button.
+  useEffect(() => {
+    if (view === 'settings' && focusMemberInputRef.current) {
+      focusMemberInputRef.current = false
+      memberInputRef.current?.focus()
+    }
+  }, [view])
+
+  // Close the member menu on an outside press or Escape.
+  useEffect(() => {
+    if (!memberMenuOpen) return
+    const onPointer = (e: PointerEvent) => {
+      if (!memberMenuRef.current?.contains(e.target as Node)) setMemberMenuOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMemberMenuOpen(false) }
+    document.addEventListener('pointerdown', onPointer)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('pointerdown', onPointer)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [memberMenuOpen])
 
   // Auto-generate from a `?url=` hand-off (the About page's Generate button
   // opens /?url=…). The param itself was read and stripped from the address
@@ -299,13 +383,17 @@ export default function App() {
         }
       }
 
-      const isOwnProfile = !!(
-        filmData.loggedInUsername &&
-        filmData.loggedInUsername.toLowerCase() === filmData.username.toLowerCase()
-      )
-      const avatarUrlToFetch = isOwnProfile ? filmData.loggedInAvatarUrl : filmData.authorAvatarUrl
-      let footerAvatarDataUrl: string | undefined
-      if (avatarUrlToFetch) {
+      // The proxy fetches anonymously, so `loggedInUsername` is never set here.
+      // The remembered member is the web app's only notion of "you": on their
+      // own pages the footer drops the share icon, exactly as the extension
+      // does for the logged-in member. It changes nothing on anyone else's.
+      const isRememberedMember = isSameMember(member?.username, filmData.username)
+      const isOwnProfile = isRememberedMember || isSameMember(filmData.loggedInUsername, filmData.username)
+      // On the member's own pages the saved avatar is used as-is, with no
+      // fetch. Everyone else's footer fetches the page owner's avatar as before.
+      const avatarUrlToFetch = (isOwnProfile && filmData.loggedInAvatarUrl) || filmData.authorAvatarUrl
+      let footerAvatarDataUrl: string | undefined = isRememberedMember ? member?.avatarDataUrl : undefined
+      if (avatarUrlToFetch && !footerAvatarDataUrl) {
         try {
           footerAvatarDataUrl = await fetchImageDataUrl(avatarUrlToFetch)
         } catch (err) {
@@ -405,6 +493,56 @@ export default function App() {
     } finally {
       action?.end()
     }
+  }
+
+  // ── Remembered member ───────────────────────────────────────────────────────
+
+  function handleMemberButton() {
+    if (member) {
+      setMemberMenuOpen(open => !open)
+      return
+    }
+    focusMemberInputRef.current = true
+    setView('settings')
+  }
+
+  // Fills the URL field with one of the member's pages and runs the same
+  // detection a paste does — setting the text alone leaves Generate disabled.
+  async function handleMemberPage(page: MemberPageId) {
+    if (!member) return
+    setMemberMenuOpen(false)
+    const url = memberPageUrl(member.username, page)
+    setUrlInput(url)
+    await detectUrl(url)
+  }
+
+  async function handleMemberSave(e: React.FormEvent) {
+    e.preventDefault()
+    const username = normalizeUsernameInput(memberInput)
+    if (!username) {
+      setMemberError('Enter your Letterboxd username, like "username" or letterboxd.com/username.')
+      return
+    }
+    setMemberError(null)
+    setMemberSaving(true)
+    try {
+      const next = await lookupMember(username)
+      memberGenRef.current++
+      await saveRememberedUser(next)
+      setMember(next)
+      setMemberInput('')
+    } catch (err) {
+      setMemberError(err instanceof MemberLookupError ? err.message : 'Could not save that username. Try again.')
+    } finally {
+      setMemberSaving(false)
+    }
+  }
+
+  async function handleMemberForget() {
+    memberGenRef.current++
+    await clearRememberedUser()
+    setMember(null)
+    setMemberError(null)
   }
 
   // ── Action handlers ─────────────────────────────────────────────────────────
@@ -562,9 +700,45 @@ export default function App() {
                           Keeps the mark defined wherever it lands. */}
                       <circle cx="12" cy="12" r="11" fill="none" stroke="#fff" strokeOpacity="0.9" strokeWidth="1.2" />
                     </svg>
-                    Add to Chrome
+                    <span className={styles.installLabel}>Add to Chrome</span>
                   </a>
                 )}
+                {/* Member button. Unset: opens Settings at the username field.
+                    Set: a menu of the member's own pages. The label never
+                    carries the username — Faro records accessible names. */}
+                <div className={styles.memberWrap} ref={memberMenuRef}>
+                  <button
+                    type="button"
+                    className={styles.memberBtn}
+                    onClick={handleMemberButton}
+                    aria-label={member ? 'Your Letterboxd pages' : 'Remember my Letterboxd username'}
+                    aria-haspopup={member ? 'menu' : undefined}
+                    aria-expanded={member ? memberMenuOpen : undefined}
+                    data-faro-user-action-name={member ? 'member-menu' : 'member-setup'}
+                  >
+                    {member?.avatarDataUrl ? (
+                      <img src={member.avatarDataUrl} alt="" className={styles.memberAvatar} />
+                    ) : (
+                      <MemberIcon gradient={!!member} />
+                    )}
+                  </button>
+                  {member && memberMenuOpen && (
+                    <div className={styles.memberMenu} role="menu" aria-label="Your Letterboxd pages">
+                      {MEMBER_PAGES.map(p => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          role="menuitem"
+                          className={styles.memberMenuItem}
+                          onClick={() => handleMemberPage(p.id)}
+                          data-faro-user-action-name={`member-page-${p.id}`}
+                        >
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <button className={styles.gearBtn} onClick={() => setView('settings')} aria-label="Settings" data-faro-user-action-name="open-settings">
                   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <circle cx="12" cy="12" r="3"/>
@@ -644,19 +818,54 @@ export default function App() {
               </p>
             </div>
             <div className={styles.field}>
-              <span className={styles.fieldLabel}>Quick navigation</span>
-              <label className={styles.checkboxLabel}>
-                <input type="checkbox" checked={false} disabled aria-disabled="true" />
-                Remember my Letterboxd username
-              </label>
+              <span className={styles.fieldLabel}>Your Letterboxd username</span>
+              {member ? (
+                <>
+                  <div className={styles.memberRow}>
+                    {member.avatarDataUrl
+                      ? <img src={member.avatarDataUrl} alt="" className={styles.memberAvatar} />
+                      : <MemberIcon gradient />}
+                    <span className={styles.memberName}>@{member.username}</span>
+                    <button type="button" className={styles.memberForget} onClick={handleMemberForget} data-faro-user-action-name="member-forget">
+                      Forget
+                    </button>
+                  </div>
+                  <p className={styles.settingsHint}>
+                    Use the member button in the header to fill in your profile, diary, or
+                    reviews. Cards made from your own pages leave out the share icon.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <form className={styles.memberForm} onSubmit={handleMemberSave}>
+                    <input
+                      ref={memberInputRef}
+                      className={styles.input}
+                      type="text"
+                      aria-label="Your Letterboxd username"
+                      placeholder="username"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      autoComplete="off"
+                      spellCheck={false}
+                      value={memberInput}
+                      onChange={e => { setMemberInput(e.target.value); setMemberError(null) }}
+                      disabled={memberSaving}
+                    />
+                    <button type="submit" className={styles.memberSave} disabled={memberSaving || !memberInput.trim()} data-faro-user-action-name="member-save">
+                      {memberSaving ? 'Checking…' : 'Remember'}
+                    </button>
+                  </form>
+                  {memberError && <p className={styles.error} role="alert">{memberError}</p>}
+                  <p className={styles.settingsHint}>
+                    Adds a shortcut in the header to your profile, diary, and reviews.
+                  </p>
+                </>
+              )}
               <p className={styles.settingsHint}>
-                Available only in the{' '}
-                <a href={CHROME_WEB_STORE_URL} target="_blank" rel="noopener">
-                  Chromium web extension
-                </a>
-                . The extension caches your Letterboxd username locally so the
-                popup's "Navigate to…" hint can deep-link straight to your
-                profile from any tab.
+                Your username and a copy of your Letterboxd picture are kept in this
+                browser only. We look your profile up once through our proxy to check it
+                exists, and again about once a week to keep the picture current.
               </p>
             </div>
           </div>
