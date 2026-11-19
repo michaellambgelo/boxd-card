@@ -6,6 +6,7 @@ import { createRoot, type Root } from 'react-dom/client'
 // and the member helpers stay real.
 vi.mock('../canvas/renderCard', () => ({
   renderCard: vi.fn(async () => new Blob(['png'], { type: 'image/png' })),
+  measureReviewFit: vi.fn(async () => null),
 }))
 vi.mock('./faro', () => ({
   track: vi.fn(),
@@ -28,7 +29,7 @@ vi.mock('./member', async importOriginal => {
 })
 
 import App from './App'
-import { renderCard } from '../canvas/renderCard'
+import { renderCard, measureReviewFit } from '../canvas/renderCard'
 import { track } from './faro'
 import { getHandoffUrl } from './handoff'
 import { fetchImageDataUrl, scrapeLetterboxdPage } from './webScraper'
@@ -456,5 +457,72 @@ describe('App card footer identity', () => {
     expect(options.showShareIcon).toBe(true)
     expect(options.footerAvatarDataUrl).not.toBe(AVATAR)
     expect(options.username).toBe('bob')
+  })
+})
+
+// ── Review fit notice ────────────────────────────────────────────────────────
+
+describe('App review fit notice', () => {
+  const LEFT_OUT = {
+    layout: 'banner' as const, requested: 4, shown: 2, clipped: false,
+    fittingLayouts: ['landscape' as const, 'story' as const], hideableFields: ['tags' as const],
+  }
+  const notice = () => container.querySelector('[role="status"]')
+
+  it('says nothing when every review is on the card', async () => {
+    await mountAndGenerate('https://letterboxd.com/ada/', filmData('ada'))
+    expect(notice()).toBeNull()
+  })
+
+  it('says how many reviews were left out and offers only changes, no "show fewer"', async () => {
+    vi.mocked(measureReviewFit).mockResolvedValueOnce(LEFT_OUT)
+    await mountAndGenerate('https://letterboxd.com/ada/', filmData('ada'))
+    expect(notice()?.textContent).toContain('Showing 2 of 4 reviews.')
+    expect(notice()?.textContent).toContain('The other 2 don\u2019t fit on Banner.')
+    const labels = Array.from(notice()!.querySelectorAll('button')).map(b => b.textContent?.trim())
+    expect(labels).toEqual(['Use Landscape', 'Use Story', 'Hide tags'])
+  })
+
+  it('"Use <layout>" saves the layout and regenerates with it', async () => {
+    vi.mocked(measureReviewFit).mockResolvedValueOnce(LEFT_OUT)
+    await mountAndGenerate('https://letterboxd.com/ada/', filmData('ada'))
+    await click(button('Use Story'))
+    await settle()
+    expect(vi.mocked(renderCard).mock.lastCall?.[0].layout).toBe('story')
+    expect((await loadSettings()).layout).toBe('story')
+    expect(notice()).toBeNull()
+  })
+
+  it('"Hide <field>" saves the setting and regenerates without the field', async () => {
+    vi.mocked(measureReviewFit).mockResolvedValueOnce(LEFT_OUT)
+    await mountAndGenerate('https://letterboxd.com/ada/', filmData('ada'))
+    const before = vi.mocked(renderCard).mock.calls.length
+    await click(button('Hide tags'))
+    await settle()
+    expect(vi.mocked(renderCard).mock.calls.length).toBe(before + 1)
+    expect((await loadSettings()).showTags).toBe(false)
+    expect(notice()).toBeNull()
+  })
+
+  it('on a review card, hiding a field reaches the renderer and alt text lists only the reviews drawn', async () => {
+    const review = (title: string) =>
+      ({ title, year: '2021', rating: '★★★★', date: '', posterUrl: 'https://a.ltrbxd.com/p.jpg', filmId: title, reviewText: `${title} review`, tags: ['rewatch'] })
+    await saveSettings({ reviewCount: 4, generateAltText: true, previewAltText: true })
+    vi.mocked(measureReviewFit).mockResolvedValueOnce(LEFT_OUT)
+    await mountAndGenerate('https://letterboxd.com/ada/reviews/', filmData('ada', {
+      films: ['Dune', 'Arrival', 'Sicario', 'Enemy'].map(review) as FilmDataResponse['films'],
+    }))
+    expect(mockRender.mock.lastCall?.[0]).toMatchObject({ cardType: 'review', reviewCount: 4, showTags: true })
+
+    // LEFT_OUT.shown is 2: the alt text must not describe the two reviews left out.
+    const alt = q<HTMLTextAreaElement>('textarea')!.value
+    expect(alt).toContain('Dune')
+    expect(alt).toContain('Arrival')
+    expect(alt).not.toContain('Sicario')
+    expect(alt).not.toContain('Enemy')
+
+    await click(button('Hide tags'))
+    await settle()
+    expect(mockRender.mock.lastCall?.[0]).toMatchObject({ cardType: 'review', showTags: false })
   })
 })

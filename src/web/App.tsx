@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
-import { renderCard } from '../canvas/renderCard'
+import { renderCard, measureReviewFit } from '../canvas/renderCard'
+import type { CardOptions, ReviewFit, ReviewField } from '../canvas/renderCard'
+import { reviewFitMessage, reviewFitHasFixes, REVIEW_FIELD_LABELS } from '../shared/reviewFit'
 import { generateAltText } from '../altText'
 import { CARD_TYPE_CONFIGS, LAYOUTS, LAYOUT_CONFIGS, STATS_CATEGORIES, STATS_CATEGORY_CONFIGS } from '../types'
 import type { CardType, ListCount, ReviewCount, Layout, StatsCategory, StatsSubCategory } from '../types'
@@ -121,6 +123,7 @@ export default function App() {
   const [copied,   setCopied]   = useState(false)
   const [altText,       setAltText]       = useState<string | null>(null)
   const [altTextCopied, setAltTextCopied] = useState(false)
+  const [reviewFit,     setReviewFit]     = useState<ReviewFit | null>(null)
   // Failures from the post-generate actions (copy / share). Kept separate from
   // `error` so a clipboard refusal doesn't tear down the rendered card.
   const [actionError,   setActionError]   = useState<string | null>(null)
@@ -299,7 +302,17 @@ export default function App() {
 
   // ── Generate ────────────────────────────────────────────────────────────────
 
-  async function handleGenerate(e?: React.FormEvent, explicitInput?: string) {
+  // The settings the fit notice can change. handleGenerate takes them as an
+  // argument (shadowing the state of the same name) so a notice button can
+  // regenerate with a new value before React has re-rendered with it.
+  function fitInputs() {
+    return { layout, showTags, showDate, showRating, showYear }
+  }
+
+  async function handleGenerate(
+    e?: React.FormEvent, explicitInput?: string,
+    { layout, showTags, showDate, showRating, showYear } = fitInputs(),
+  ) {
     e?.preventDefault()
 
     // Only trust the cached detection if the input hasn't changed since it was
@@ -326,6 +339,7 @@ export default function App() {
     setCardUrl(null)
     setCardBlob(null)
     setAltText(null)
+    setReviewFit(null)
 
     // Classifies errors that don't carry their own reason (see generateError.ts).
     let stage: GenerateStage = 'fetch'
@@ -414,7 +428,7 @@ export default function App() {
       const usedTmdb = didUseTmdb(filmData.films, filmData.backdropUrl)
 
       stage = 'render'
-      const blob = await renderCard({
+      const cardOptions: CardOptions = {
         films,
         username:            filmData.username,
         showTitle,
@@ -445,14 +459,18 @@ export default function App() {
         barChartData:        filmData.barChartData,
         milestonesData:      filmData.milestonesData,
         usedTmdb,
-      })
+      }
+      const blob = await renderCard(cardOptions)
+      // Fixed-height layouts drop reviews that do not fit; the PNG cannot say so.
+      const fit = await measureReviewFit(cardOptions)
+      setReviewFit(fit)
 
       setCardBlob(blob)
       setCardUrl(URL.createObjectURL(blob))
 
       if (altTextEnabled) {
         setAltText(generateAltText({
-          films: films.map(f => ({ title: f.title, year: f.year, rating: f.rating, date: f.date, reviewText: f.reviewText, tags: f.tags })),
+          films: films.slice(0, fit ? fit.shown : films.length).map(f => ({ title: f.title, year: f.year, rating: f.rating, date: f.date, reviewText: f.reviewText, tags: f.tags })),
           username: filmData.username,
           cardType: resolvedCardType,
           showTitle,
@@ -546,6 +564,29 @@ export default function App() {
   }
 
   // ── Action handlers ─────────────────────────────────────────────────────────
+
+  // ── Review fit notice ───────────────────────────────────────────────────────
+  // Each button changes one setting and regenerates. State set here is not visible
+  // until the next render, so the new value is handed to handleGenerate directly.
+
+  function handleFitLayout(l: Layout) {
+    setLayout(l)
+    saveSettings({ layout: l })
+    void handleGenerate(undefined, undefined, { ...fitInputs(), layout: l })
+  }
+
+  function handleFitHide(field: ReviewField) {
+    const setters: Partial<Record<ReviewField, (v: boolean) => void>> = { tags: setShowTags, date: setShowDate, rating: setShowRating, year: setShowYear }
+    const settingKey = {
+      tags: 'showTags', date: 'showDate', rating: 'showRating', year: 'showYear',
+      overview: 'showOverview', genres: 'showGenres', director: 'showDirector', runtime: 'showRuntime',
+    } as const
+    setters[field]?.(false)
+    saveSettings({ [settingKey[field]]: false })
+    void handleGenerate(undefined, undefined, { ...fitInputs(), [settingKey[field]]: false })
+  }
+
+  const fitMessage = reviewFitMessage(reviewFit)
 
   function handleDownload() {
     if (!cardUrl) return
@@ -1094,6 +1135,25 @@ export default function App() {
             <a href={cardUrl} target="_blank" rel="noreferrer">
               <img src={cardUrl} alt="Boxd Card preview" className={styles.preview} />
             </a>
+            {fitMessage && reviewFit && (
+              <div className={styles.fitNotice} role="status">
+                <p className={styles.fitNoticeText}><strong>{fitMessage.lead}</strong> {fitMessage.detail}</p>
+                {reviewFitHasFixes(reviewFit) && (
+                  <div className={styles.fitNoticeActions}>
+                    {reviewFit.fittingLayouts.map(l => (
+                      <button key={l} type="button" className={styles.fitNoticeBtn} onClick={() => handleFitLayout(l)} data-faro-user-action-name="review-fit-use-layout">
+                        Use {LAYOUT_CONFIGS[l].label}
+                      </button>
+                    ))}
+                    {reviewFit.hideableFields.map(f => (
+                      <button key={f} type="button" className={styles.fitNoticeBtn} onClick={() => handleFitHide(f)} data-faro-user-action-name="review-fit-hide-field">
+                        Hide {REVIEW_FIELD_LABELS[f]}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             <div className={styles.actionRow}>
               {showDownload && (
                 <button className={styles.actionBtn} onClick={handleDownload} data-faro-user-action-name="card-download">Download</button>
