@@ -125,6 +125,11 @@ Certifications (all required to be true, and are true):
 
 ## Change log
 
+- **2026-11 (v0.13.0)**: Review cards now say when reviews were left out
+  because they don't fit the chosen layout ("Showing 2 of 4 reviews"), with
+  one-click buttons to switch to a layout that fits them all or hide a field
+  to make room. Alt text now describes only the reviews on the card. No new
+  permissions.
 - **2026-11 (v0.12.0)**: Adds a Share button to the popup that sends the card
   image to your system share sheet, where Chrome supports sharing files. A new
   Card buttons setting lets you remove either the Download or the Share button,
