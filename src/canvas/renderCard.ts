@@ -74,6 +74,12 @@ export interface CardLayout {
   rows: number
   footerY: number
   textAreaH: number
+  /**
+   * Where per-film metadata goes. 'below' is the text block under each poster.
+   * 'overlay' is the dense fixed-frame mode: only the rating is drawn, on a
+   * strip at the foot of the poster, and textAreaH is just the gap between rows.
+   */
+  metaMode: 'below' | 'overlay'
 }
 
 const HEADER_H    = 90
@@ -121,24 +127,118 @@ const GRID_DATE_LINE_H = 25  // line height for 21px text
 const GRID_LINE_GAP    =  4  // gap between consecutive text lines
 const GRID_TEXT_PAD    = 10  // top padding above first text item
 
+/** Posters are 2:3. */
+const GRID_POSTER_ASPECT = 1.5
+const GRID_GAP_X = 20
+/** Gap between rows when nothing is drawn under the posters. */
+const GRID_OVERLAY_GAP_Y = 16
+/** Air between one row's text block and the next row's posters. */
+const GRID_BELOW_GAP_Y = 24
+/**
+ * Narrowest poster that still gets a text block underneath. Titles are set at
+ * 24px and truncate to the poster's width, so below this they stop being
+ * readable and the grid switches to rating-on-poster instead.
+ */
+export const GRID_MIN_TEXT_POSTER_W = 140
+/** How much a ragged last row costs, as a share of poster width per empty slot fraction. */
+const GRID_ORPHAN_PENALTY = 0.25
+
+/**
+ * Size a grid of 2:3 posters to a fixed box.
+ *
+ * Tries every column count and keeps the largest poster that fits in both axes,
+ * marked down when the last row is ragged: a balanced grid beats a slightly
+ * larger ragged one, while a much larger ragged one still wins.
+ *
+ * `cellExtraH` is the height each row spends on anything other than the poster
+ * (the text block below it); `gapY` is the space between rows.
+ */
+export function fitPosterGrid(
+  count: number, availW: number, availH: number,
+  cellExtraH: number, gapX: number, gapY: number,
+): { cols: number; rows: number; posterW: number; posterH: number } {
+  let best = { cols: 1, rows: Math.max(1, count), posterW: 0, score: -Infinity }
+  for (let cols = 1; cols <= count; cols++) {
+    const rows = Math.ceil(count / cols)
+    const byWidth = (availW - (cols - 1) * gapX) / cols
+    const byHeight = ((availH - (rows - 1) * gapY) / rows - cellExtraH) / GRID_POSTER_ASPECT
+    const posterW = Math.floor(Math.min(byWidth, byHeight))
+    if (posterW <= 0) continue
+    const orphaned = count % cols === 0 ? 0 : (cols - (count % cols)) / cols
+    const score = posterW * (1 - GRID_ORPHAN_PENALTY * orphaned)
+    if (score > best.score) best = { cols, rows, posterW, score }
+  }
+  return {
+    cols: best.cols, rows: best.rows,
+    posterW: best.posterW,
+    posterH: Math.floor(best.posterW * GRID_POSTER_ASPECT),
+  }
+}
+
 /**
  * Compute card layout geometry based on film count, optional title area height, and layout format.
- * Layout determines canvas dimensions and grid arrangement:
- *   landscape: 1200px wide, variable height (existing default)
- *   square:    1080×1080 fixed (≤4 films, 2×2), 1080px wide 3-col (5-20)
- *   banner:    1500×750 fixed (≤4 films, 1×4), 1500px wide 5-col (5-20)
- *   story:     1080×1920 fixed (≤4 films, 2×2 or 1-film showcase), 1080px wide 2-col (5-20)
+ *
+ *   landscape: 1200px wide, height grows with the rows (the only layout that does)
+ *   square / 4:5 / 3:4 / story / banner: always their stated size
+ *
+ * On the fixed layouts, up to 4 films use the hand-tuned arrangements below
+ * (2×2, one row, or the story showcase). 5–20 films are fitted to the frame by
+ * fitPosterGrid: first with the text block under each poster, and if that
+ * leaves posters narrower than GRID_MIN_TEXT_POSTER_W, with the rating drawn on
+ * the poster instead (`metaMode: 'overlay'`).
+ *
+ * `hasBelowText` is false when no per-film field is switched on. It matters
+ * because gridTextAreaHeight() never returns less than TEXT_AREA_H, which would
+ * otherwise reserve an empty band under every row.
  */
 export function computeLayout(
   filmCount: number,
   titleAreaH = 0,
   layout: Layout = 'landscape',
   textAreaHeight: number = TEXT_AREA_H,
+  hasBelowText = true,
 ): CardLayout {
   const pt = POSTER_TOP + titleAreaH
   // Local alias so the multi-film grid branches can pick up the per-render
   // metadata height without changing every formula site.
   const TAH = textAreaHeight
+
+  // ── Fixed-frame layouts, 5–20 films ──────────────────────────────────────
+  if (layout !== 'landscape' && filmCount > 4) {
+    const cardWidth = layoutCardWidth(layout)
+    const cardHeight = layoutCardHeight(layout)
+    const footerY = cardHeight - 64
+    const availW = cardWidth - 80
+    const availH = footerY - pt - 56
+
+    // textAreaH is the distance from the foot of one row's posters to the top
+    // of the next row's: the text block plus air below it, or just the row gap.
+    let metaMode: CardLayout['metaMode'] = 'below'
+    let rowGap = GRID_BELOW_GAP_Y
+    let extra = TAH
+    let fit = hasBelowText
+      ? fitPosterGrid(filmCount, availW, availH, extra, GRID_GAP_X, rowGap)
+      : { cols: 0, rows: 0, posterW: 0, posterH: 0 }
+    if (fit.posterW < GRID_MIN_TEXT_POSTER_W) {
+      metaMode = 'overlay'
+      rowGap = GRID_OVERLAY_GAP_Y
+      extra = 0
+      fit = fitPosterGrid(filmCount, availW, availH, extra, GRID_GAP_X, rowGap)
+    }
+    const textAreaH = extra + rowGap
+
+    // Centre the grid in the box.
+    const gridW = fit.cols * fit.posterW + (fit.cols - 1) * GRID_GAP_X
+    const gridH = fit.rows * (fit.posterH + extra) + (fit.rows - 1) * rowGap
+    return {
+      cardWidth, cardHeight,
+      posterW: fit.posterW, posterH: fit.posterH, posterGap: GRID_GAP_X,
+      posterLeft: Math.floor((cardWidth - gridW) / 2),
+      posterTop: pt + Math.max(0, Math.floor((availH - gridH) / 2)),
+      cols: fit.cols, rows: fit.rows,
+      footerY, textAreaH, metaMode,
+    }
+  }
 
   // ── Landscape (existing behavior) ────────────────────────────────────────
   if (layout === 'landscape') {
@@ -155,7 +255,7 @@ export function computeLayout(
         posterW, posterH, posterGap,
         posterLeft, posterTop: pt,
         cols: effectiveCols, rows: 1,
-        footerY, textAreaH: TAH,
+        footerY, textAreaH: TAH, metaMode: 'below',
       }
     }
 
@@ -169,18 +269,18 @@ export function computeLayout(
       posterW, posterH, posterGap: 20,
       posterLeft: 40, posterTop: pt,
       cols, rows, footerY,
-      textAreaH: TAH,
+      textAreaH: TAH, metaMode: 'below',
     }
   }
 
-  // ── Square / 4:5 / 3:4 (2×2 grid for ≤4, 3-col grid for 5-20) ──────────
+  // ── Square / 4:5 / 3:4 (≤4 films: 2×2 grid) ─────────────────────────────
   const portraitHeights: Partial<Record<Layout, number>> = {
     'square': 1080, '4:5': 1350, '3:4': 1440,
   }
   const fixedH = portraitHeights[layout]
   if (fixedH !== undefined) {
     const cardWidth = 1080
-    if (filmCount <= 4) {
+    {
       // 2×2 grid with text below each poster
       const cardHeight = fixedH
       const footerY = cardHeight - 64
@@ -197,29 +297,15 @@ export function computeLayout(
         cardWidth, cardHeight,
         posterW, posterH, posterGap,
         posterLeft, posterTop: pt,
-        cols, rows, footerY, textAreaH: TAH,
+        cols, rows, footerY, textAreaH: TAH, metaMode: 'below',
       }
-    }
-
-    const cols = 3
-    const posterW = 320
-    const posterH = 480
-    const rows = Math.ceil(filmCount / cols)
-    const footerY = pt + rows * (posterH + TAH) + 56
-    const posterLeft = Math.floor((cardWidth - (cols * posterW + (cols - 1) * 20)) / 2)
-    return {
-      cardWidth, cardHeight: footerY + 64,
-      posterW, posterH, posterGap: 20,
-      posterLeft, posterTop: pt,
-      cols, rows, footerY,
-      textAreaH: TAH,
     }
   }
 
-  // ── Banner (1500×750 fixed for ≤4, 5-col variable for 5-20) ─────────────
+  // ── Banner (≤4 films: one row) ──────────────────────────────────────────
   if (layout === 'banner') {
     const cardWidth = 1500
-    if (filmCount <= 4) {
+    {
       const cardHeight = 750
       const footerY = cardHeight - 64
       const textAreaH = 90
@@ -236,25 +322,12 @@ export function computeLayout(
         posterW, posterH, posterGap,
         posterLeft, posterTop: pt,
         cols: effectiveCols, rows: 1,
-        footerY, textAreaH,
+        footerY, textAreaH, metaMode: 'below',
       }
-    }
-
-    const cols = 5
-    const posterW = Math.floor((cardWidth - 80 - 4 * 20) / cols)
-    const posterH = Math.round(posterW * 3 / 2)
-    const rows = Math.ceil(filmCount / cols)
-    const footerY = pt + rows * (posterH + TAH) + 56
-    return {
-      cardWidth, cardHeight: footerY + 64,
-      posterW, posterH, posterGap: 20,
-      posterLeft: 40, posterTop: pt,
-      cols, rows, footerY,
-      textAreaH: TAH,
     }
   }
 
-  // ── Story (1080×1920 fixed for ≤4, 2-col variable for 5-20) ─────────────
+  // ── Story (≤4 films: showcase or 2×2) ───────────────────────────────────
   const cardWidth = 1080
   if (filmCount === 1) {
     // Single-film showcase: large poster filling most of the canvas
@@ -269,11 +342,11 @@ export function computeLayout(
       posterW, posterH, posterGap: 0,
       posterLeft, posterTop: pt,
       cols: 1, rows: 1,
-      footerY, textAreaH,
+      footerY, textAreaH, metaMode: 'below',
     }
   }
 
-  if (filmCount <= 4) {
+  {
     // 2×2 grid with large posters
     const cardHeight = 1920
     const footerY = cardHeight - 64
@@ -290,23 +363,8 @@ export function computeLayout(
       cardWidth, cardHeight,
       posterW, posterH, posterGap,
       posterLeft, posterTop: pt,
-      cols, rows, footerY, textAreaH,
+      cols, rows, footerY, textAreaH, metaMode: 'below',
     }
-  }
-
-  // 5-20 films: 2-col variable height
-  const cols = 2
-  const posterW = Math.floor((cardWidth - 80 - 20) / cols)
-  const posterH = Math.round(posterW * 3 / 2)
-  const textAreaH = TAH
-  const rows = Math.ceil(filmCount / cols)
-  const footerY = pt + rows * (posterH + textAreaH) + 56
-  const posterLeft = Math.floor((cardWidth - (cols * posterW + 20)) / 2)
-  return {
-    cardWidth, cardHeight: footerY + 64,
-    posterW, posterH, posterGap: 20,
-    posterLeft, posterTop: pt,
-    cols, rows, footerY, textAreaH,
   }
 }
 
@@ -575,6 +633,118 @@ async function drawBackground(
   } catch {
     // Solid fallback already in place.
   }
+}
+
+/** Per-film fields a poster-grid card can draw. */
+export type GridField = 'title' | 'year' | 'rating' | 'date'
+
+/** How many films a poster-grid card draws. */
+function gridFilmCount(options: CardOptions): number {
+  const { films, cardType, listCount } = options
+  return Math.min(
+    films.length,
+    (cardType === 'list' || cardType === 'recent-diary') ? (listCount ?? 4) : 4,
+  )
+}
+
+/**
+ * Which per-film fields are switched on *and* would be drawn under a poster.
+ * The per-film date exists only on recent-diary; other card types put today's
+ * date in the header.
+ */
+function gridBelowFields(options: CardOptions): GridField[] {
+  const fields: GridField[] = []
+  if (options.showTitle)  fields.push('title')
+  if (options.showYear)   fields.push('year')
+  if (options.showRating) fields.push('rating')
+  if (options.cardType === 'recent-diary' && options.showDate) fields.push('date')
+  return fields
+}
+
+/**
+ * Everything the poster-grid path needs to know before it creates the canvas:
+ * what sits above the grid, and the grid itself. One function so the renderer
+ * and measureGridFit() cannot disagree about which mode a card lands in.
+ */
+function gridGeometry(options: CardOptions, filmCount: number, layoutOverride?: Layout) {
+  const {
+    cardType, showListTitle, showListDescription, listTitle, listDescription,
+    showCardTypeLabel, cardTypeLabel, showTags, listTags,
+  } = options
+  const effectiveLayout = layoutOverride ?? options.layout ?? 'landscape'
+  const baseCardWidth = layoutCardWidth(effectiveLayout)
+  const showingListTitle = cardType === 'list' && !!showListTitle && !!listTitle
+  const showingListDesc  = cardType === 'list' && !!showListDescription && !!listDescription
+  const showingCardTypeLabel = cardType !== 'list' && !!showCardTypeLabel && !!cardTypeLabel
+  const showingListTags  = cardType === 'list' && !!showTags && !!listTags?.length
+
+  // Measure list-tag pill height before computing layout (needs a canvas context)
+  let listTagsAreaH = 0
+  if (showingListTags && listTags) {
+    const mCanvas = document.createElement('canvas')
+    const mCtx = mCanvas.getContext('2d')!
+    listTagsAreaH = LIST_PADDING + drawTagPills(mCtx, listTags, 0, 0, baseCardWidth - 80, false)
+  }
+
+  const titleAreaH = (showingListTitle || showingListDesc || showingCardTypeLabel || showingListTags)
+    ? LIST_PADDING
+      + (showingListTitle || showingCardTypeLabel ? LIST_TITLE_H : 0)
+      + (showingListDesc  ? LIST_DESC_H  : 0)
+      + listTagsAreaH
+      + LIST_BOTTOM
+    : 0
+
+  // Per-render metadata block height — accommodates whichever display options
+  // are actually on so the text never overflows into the next row's poster.
+  // Issue #36: with all 4 lines on (title + year + rating + per-film date)
+  // the legacy static TEXT_AREA_H=120 was ~35px short on Story 4-film 2×2.
+  const textAreaHeight = gridTextAreaHeight({
+    showTitle: options.showTitle,
+    showYear:  options.showYear,
+    showRating:options.showRating,
+    showDate:  options.showDate,
+    cardType,
+  })
+  const layout = computeLayout(
+    filmCount, titleAreaH, effectiveLayout, textAreaHeight,
+    gridBelowFields(options).length > 0,
+  )
+  return { layout, showingListTitle, showingListDesc, showingCardTypeLabel, showingListTags }
+}
+
+/**
+ * What a dense poster-grid card left off, and where it would all fit.
+ * Null when nothing the member switched on is missing from the card.
+ */
+export interface GridFit {
+  layout: Layout
+  /** Films on the card. */
+  filmCount: number
+  /** Fields that are switched on but not drawn, because the card is in overlay mode. */
+  hiddenFields: GridField[]
+  /** Layouts on which this card keeps the text under every poster. */
+  fittingLayouts: Layout[]
+}
+
+/**
+ * Fixed-size layouts cannot hold a text block under 20 posters, so the renderer
+ * falls back to the rating on the poster and drops title, year and date. The
+ * PNG cannot say so; this reports it, from the same geometry the renderer uses.
+ */
+export function measureGridFit(options: CardOptions): GridFit | null {
+  if (options.cardType === 'review') return null
+  const filmCount = gridFilmCount(options)
+  if (filmCount === 0) return null
+  const layout = options.layout ?? 'landscape'
+  if (gridGeometry(options, filmCount).layout.metaMode !== 'overlay') return null
+
+  // Overlay mode still draws the rating; everything else that was on is hidden.
+  const hiddenFields = gridBelowFields(options).filter((f) => f !== 'rating')
+  if (hiddenFields.length === 0) return null
+  const fittingLayouts = LAYOUTS.filter(
+    (l) => l !== layout && gridGeometry(options, filmCount, l).layout.metaMode === 'below',
+  )
+  return { layout, filmCount, hiddenFields, fittingLayouts }
 }
 
 /** Returns the base canvas width for a given layout. */
@@ -1423,9 +1593,9 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
   await ensureCardFontsLoaded()
 
   const {
-    films, username, showTitle, showYear, showRating, showDate, cardType, listCount,
-    showListTitle, showListDescription, listTitle, listDescription,
-    showCardTypeLabel, cardTypeLabel, reviewCount, showTags, listTags, backdropDataUrl,
+    films, username, showTitle, showYear, showRating, showDate, cardType,
+    listTitle, listDescription,
+    cardTypeLabel, reviewCount, showTags, listTags, backdropDataUrl,
     footerAvatarDataUrl, showShareIcon, usedTmdb,
     showDirector, showRuntime, showGenres, showOverview,
   } = options
@@ -1634,50 +1804,15 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
   }
 
   // ── Poster-grid cards (existing logic) ───────────────────────────────────
-  const effectiveLayout = options.layout ?? 'landscape'
-  const filmCount = Math.min(
-    films.length,
-    (cardType === 'list' || cardType === 'recent-diary') ? (listCount ?? 4) : 4,
-  )
+  const filmCount = gridFilmCount(options)
 
   if (filmCount === 0) {
     throw new Error('No films found to render.')
   }
 
-  const baseCardWidth = layoutCardWidth(effectiveLayout)
-  const showingListTitle = cardType === 'list' && !!showListTitle && !!listTitle
-  const showingListDesc  = cardType === 'list' && !!showListDescription && !!listDescription
-  const showingCardTypeLabel = cardType !== 'list' && !!showCardTypeLabel && !!cardTypeLabel
-  const showingListTags  = cardType === 'list' && !!showTags && !!listTags?.length
-
-  // Measure list-tag pill height before computing layout (needs a canvas context)
-  let listTagsAreaH = 0
-  if (showingListTags && listTags) {
-    const mCanvas = document.createElement('canvas')
-    const mCtx = mCanvas.getContext('2d')!
-    listTagsAreaH = LIST_PADDING + drawTagPills(mCtx, listTags, 0, 0, baseCardWidth - 80, false)
-  }
-
-  const titleAreaH = (showingListTitle || showingListDesc || showingCardTypeLabel || showingListTags)
-    ? LIST_PADDING
-      + (showingListTitle || showingCardTypeLabel ? LIST_TITLE_H : 0)
-      + (showingListDesc  ? LIST_DESC_H  : 0)
-      + listTagsAreaH
-      + LIST_BOTTOM
-    : 0
-
-  // Per-render metadata block height — accommodates whichever display options
-  // are actually on so the text never overflows into the next row's poster.
-  // Issue #36: with all 4 lines on (title + year + rating + per-film date)
-  // the legacy static TEXT_AREA_H=120 was ~35px short on Story 4-film 2×2.
-  const textAreaHeight = gridTextAreaHeight({
-    showTitle: options.showTitle,
-    showYear:  options.showYear,
-    showRating:options.showRating,
-    showDate:  options.showDate,
-    cardType,
-  })
-  const layout = computeLayout(filmCount, titleAreaH, effectiveLayout, textAreaHeight)
+  const {
+    layout, showingListTitle, showingListDesc, showingCardTypeLabel, showingListTags,
+  } = gridGeometry(options, filmCount)
 
   const canvas = document.createElement('canvas')
   canvas.width  = layout.cardWidth
@@ -1746,8 +1881,10 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
   // does: a row where nothing wraps keeps its metadata tucked under the title and
   // gains no gap it did not need.
   const drawCount = Math.min(films.length, filmCount)
+  const overlay = layout.metaMode === 'overlay'
+  const fittedGrid = (options.layout ?? 'landscape') !== 'landscape' && filmCount > 4
   const rowHasWrappedTitle: boolean[] = []
-  if (showTitle) {
+  if (showTitle && !overlay) {
     const measureCtx = document.createElement('canvas').getContext('2d')!
     measureCtx.font = cardFont(TYPE_SCALE.gridTitle, 'bold')
     for (let i = 0; i < drawCount; i++) {
@@ -1762,7 +1899,14 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
     const film = films[i]
     const col = i % layout.cols
     const row = Math.floor(i / layout.cols)
-    const x = layout.posterLeft + col * (layout.posterW + layout.posterGap)
+    // On a fitted fixed-frame grid a short last row is centred rather than left
+    // hanging at the left edge. Landscape and the <=4-film arrangements keep
+    // their own alignment.
+    const inThisRow = Math.min(layout.cols, drawCount - row * layout.cols)
+    const rowShift = fittedGrid
+      ? (layout.cols - inThisRow) * (layout.posterW + layout.posterGap) / 2
+      : 0
+    const x = Math.round(layout.posterLeft + rowShift + col * (layout.posterW + layout.posterGap))
     const y = layout.posterTop + row * (layout.posterH + layout.textAreaH)
 
     try {
@@ -1771,6 +1915,15 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
     } catch {
       ctx.fillStyle = '#333344'
       ctx.fillRect(x, y, layout.posterW, layout.posterH)
+    }
+
+    // Dense fixed-frame grids: no room for a text block, so the rating rides on
+    // the poster and the other fields are left off (measureGridFit reports it).
+    if (overlay) {
+      if (showRating && film.rating) {
+        drawRatingOverlay(ctx, film.rating, x, y, layout.posterW, layout.posterH)
+      }
+      continue
     }
 
     // Text sits below each poster, within that poster's column width.
@@ -1850,6 +2003,33 @@ export async function renderCard(options: CardOptions): Promise<Blob> {
       'image/png'
     )
   })
+}
+
+/**
+ * Star rating on a dark strip at the foot of a poster, for grids too dense to
+ * carry text underneath. The type scales with the poster so five and a half
+ * stars always fit its width.
+ */
+function drawRatingOverlay(
+  ctx: CanvasRenderingContext2D, rating: string,
+  x: number, y: number, posterW: number, posterH: number,
+) {
+  const fontPx = Math.max(16, Math.min(TYPE_SCALE.gridMeta, Math.round(posterW * 0.13)))
+  const pad = Math.round(fontPx * 0.45)
+  const stripH = Math.round(fontPx * 2.6)
+  const top = y + posterH - stripH
+  const fade = ctx.createLinearGradient(0, top, 0, y + posterH)
+  fade.addColorStop(0, 'rgba(0,0,0,0)')
+  fade.addColorStop(0.55, 'rgba(0,0,0,0.7)')
+  fade.addColorStop(1, 'rgba(0,0,0,0.88)')
+  ctx.fillStyle = fade
+  ctx.fillRect(x, top, posterW, stripH)
+
+  ctx.fillStyle = '#FFB020'
+  ctx.font = cardFont(fontPx)
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'bottom'
+  ctx.fillText(rating, x + pad, y + posterH - pad)
 }
 
 // Draws an iOS-style share icon: upward arrow + open-top box.

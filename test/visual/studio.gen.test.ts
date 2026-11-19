@@ -54,9 +54,10 @@ function matrix(): Cell[] {
         continue
       }
 
-      // The <=4 vs >4 grid branch is the one ListCount boundary that changes a
-      // layout decision, so cover both where the product offers a count.
-      const counts: (4 | 10)[] = (cardType === 'list' || cardType === 'recent-diary') ? [4, 10] : [4]
+      // Every ListCount changes a layout decision: <=4 uses the hand-tuned
+      // arrangements, and on fixed-size layouts 10 vs 20 is where the text
+      // block under each poster gives way to the rating on the poster.
+      const counts: (4 | 10 | 20)[] = (cardType === 'list' || cardType === 'recent-diary') ? [4, 10, 20] : [4]
       for (const listCount of counts) {
         const suffix = counts.length > 1 ? `-n${listCount}` : ''
         const name = `${cardType}${suffix}-${layout}`

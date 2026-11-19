@@ -388,14 +388,20 @@ Do **not** use the sibling `hasDefaultPoster` field for this — it stays `true`
 
 ## Card layout
 
-`computeLayout(filmCount, titleAreaH)` in `renderCard.ts`:
+`computeLayout(filmCount, titleAreaH, layout, textAreaHeight, hasBelowText)` in `renderCard.ts`. Full per-layout numbers are in `docs/card-layouts.md`.
 
-| filmCount | cols | posterW | posterH | base height |
-|-----------|------|---------|---------|-------------|
-| ≤ 4 | 4 | 200 | 300 | 560 |
-| 5–20 | 5 | 208 | 312 | dynamic |
+**Only Landscape grows.** It is 1200px wide: up to 4 films in one centred row of 200×300, 5–20 films in 5 columns of 208×312, height following the rows. 5-column math: `posterLeft=40`, `gap=20` → `5×208 + 4×20 = 1120 = 1200 − 2×40`.
 
-5-column math: `posterLeft=40`, `gap=20` → `5×208 + 4×20 = 1120 = 1200 − 2×40`.
+**Every other layout is always its stated size**, at every film count. Up to 4 films use hand-tuned arrangements (2×2, one row on Banner, the Story showcase). 5–20 films are fitted to the frame by `fitPosterGrid()`, in two steps:
+
+| step | `metaMode` | what is drawn | used when |
+|---|---|---|---|
+| 1 | `below` | text block under each poster | posters come out ≥ `GRID_MIN_TEXT_POSTER_W` (140px) |
+| 2 | `overlay` | rating on a strip at the foot of the poster; no title, year or date | otherwise |
+
+So a 20-film 4:5 card is 5×4 with ratings on the posters, and a 10-film one is 5×2 with text below. `measureGridFit(options)` reports the fields step 2 left off; popup and web app show it under the card with "Use <layout>" buttons, the same pattern as the review-fit notice below.
+
+This replaced fixed fallbacks (3 columns on Square/4:5/3:4, 2 on Story, 5 on Banner) whose height grew with the rows, so a 20-film "4:5" card came out 1080×4763. **Do not reintroduce a fixed column count on a fixed-size layout.**
 
 `titleAreaH` shifts `posterTop`, `footerY`, and `cardHeight` together to make room for text above the grid (list title/description, or the card-type label).
 

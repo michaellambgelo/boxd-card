@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { renderCard, loadImage, computeLayout, wrapText, drawTagPills, gridTextAreaHeight, milestoneGrid, IMAGE_LOAD_TIMEOUT_MS } from './renderCard'
+import type { Layout } from '../types'
+import { renderCard, loadImage, computeLayout, wrapText, drawTagPills, gridTextAreaHeight, milestoneGrid, fitPosterGrid, measureGridFit, GRID_MIN_TEXT_POSTER_W, IMAGE_LOAD_TIMEOUT_MS } from './renderCard'
 
 // Auto-loading Image: fires onload immediately so renderCard doesn't hang in tests
 class AutoImage {
@@ -166,14 +167,157 @@ describe('computeLayout', () => {
     expect(l.rows).toBe(2)
   })
 
-  it.each([
-    ['4:5' as const],
-    ['3:4' as const],
-  ])('%s layout: 10 films → 3-col dynamic height', (layout) => {
-    const l = computeLayout(10, 0, layout)
-    expect(l.cardWidth).toBe(1080)
-    expect(l.cols).toBe(3)
-    expect(l.rows).toBe(4)
+  // ── Fixed-frame layouts stay their stated size at every film count ────────
+  // The bug: 5–20 films fell through to a hardcoded 3-column grid whose height
+  // grew with the rows, so a 20-film "4:5" card came out 1080×4763.
+  const FIXED_FRAMES: Array<[Layout, number, number]> = [
+    ['square', 1080, 1080],
+    ['4:5' as const,    1080, 1350],
+    ['3:4' as const,    1080, 1440],
+    ['story',  1080, 1920],
+    ['banner', 1500, 750],
+  ]
+
+  describe.each(FIXED_FRAMES)('%s layout, 5–20 films', (layout, w, h) => {
+    const cases: Array<[number, number, number]> = []
+    for (let n = 5; n <= 20; n++) for (const titleAreaH of [0, 60, 120]) for (const tah of [120, 159]) {
+      cases.push([n, titleAreaH, tah])
+    }
+
+    it('is always the stated size and the grid never leaves its box', () => {
+      for (const [n, titleAreaH, tah] of cases) {
+        const l = computeLayout(n, titleAreaH, layout, tah)
+        const where = `${n} films, titleAreaH ${titleAreaH}, text ${tah}`
+        expect(l.cardWidth, where).toBe(w)
+        expect(l.cardHeight, where).toBe(h)
+        expect(l.footerY, where).toBe(h - 64)
+        expect(l.cols * l.rows, where).toBeGreaterThanOrEqual(n)
+        expect(l.posterW, where).toBeGreaterThan(0)
+        // Horizontal: inside the 40px margins.
+        const right = l.posterLeft + l.cols * l.posterW + (l.cols - 1) * l.posterGap
+        expect(l.posterLeft, where).toBeGreaterThanOrEqual(40)
+        expect(right, where).toBeLessThanOrEqual(w - 40)
+        // Vertical: below the title area, clear of the footer.
+        const lastRowBottom = l.posterTop + (l.rows - 1) * (l.posterH + l.textAreaH)
+          + l.posterH + (l.metaMode === 'below' ? tah : 0)
+        expect(l.posterTop, where).toBeGreaterThanOrEqual(110 + titleAreaH)
+        expect(lastRowBottom, where).toBeLessThanOrEqual(l.footerY - 56)
+      }
+    })
+
+    it('only keeps the text block when posters are wide enough to carry it', () => {
+      for (const [n, titleAreaH, tah] of cases) {
+        const l = computeLayout(n, titleAreaH, layout, tah)
+        if (l.metaMode === 'below') {
+          expect(l.posterW).toBeGreaterThanOrEqual(GRID_MIN_TEXT_POSTER_W)
+          // Row pitch covers the whole text block, with air before the next row.
+          expect(l.textAreaH).toBeGreaterThan(tah)
+        }
+      }
+    })
+  })
+
+  it('4:5, 20 films with the full text block → 5×4, rating on the poster', () => {
+    const l = computeLayout(20, 60, '4:5', 159)
+    expect([l.cols, l.rows]).toEqual([5, 4])
+    expect(l.metaMode).toBe('overlay')
+    expect(l.cardHeight).toBe(1350)
+    expect(l.posterW).toBeGreaterThan(160)
+  })
+
+  it('4:5, 10 films → 5×2 with the text block kept under each poster', () => {
+    const l = computeLayout(10, 60, '4:5', 159)
+    expect([l.cols, l.rows]).toEqual([5, 2])
+    expect(l.metaMode).toBe('below')
+  })
+
+  it('story, 20 films is tall enough to keep the text block', () => {
+    const l = computeLayout(20, 60, 'story', 159)
+    expect([l.cols, l.rows]).toEqual([5, 4])
+    expect(l.metaMode).toBe('below')
+  })
+
+  it('with no per-film field on, no empty band is reserved under the rows', () => {
+    const withText = computeLayout(10, 60, '4:5', 120)
+    const without  = computeLayout(10, 60, '4:5', 120, false)
+    expect(without.metaMode).toBe('overlay')
+    expect(without.posterW).toBeGreaterThan(withText.posterW)
+  })
+
+  it('landscape is untouched: 5 columns of 208×312, height grows', () => {
+    for (const n of [10, 20]) {
+      const l = computeLayout(n, 60, 'landscape', 159)
+      expect(l.cols).toBe(5)
+      expect([l.posterW, l.posterH]).toEqual([208, 312])
+      expect(l.metaMode).toBe('below')
+      expect(l.cardHeight).toBe(110 + 60 + Math.ceil(n / 5) * (312 + 159) + 56 + 64)
+    }
+  })
+
+  it('≤4 films keep their hand-tuned arrangements', () => {
+    expect(computeLayout(4, 0, '4:5').metaMode).toBe('below')
+    expect(computeLayout(4, 0, 'banner').rows).toBe(1)
+    expect(computeLayout(1, 0, 'story').posterW).toBe(900)
+  })
+
+  describe('fitPosterGrid', () => {
+    it('prefers a balanced grid to a slightly larger ragged one', () => {
+      // 10 films in the 4:5 box: 4×3 would be a few px larger but leaves 2 orphans.
+      const g = fitPosterGrid(10, 1000, 1060, 64, 20, 0)
+      expect([g.cols, g.rows]).toEqual([5, 2])
+    })
+
+    it('accepts a ragged grid when it is much larger', () => {
+      // 10 films in the story box: 4+4+2 fills the frame, 5×2 leaves half of it empty.
+      const g = fitPosterGrid(10, 1000, 1630, 159, 20, 0)
+      expect([g.cols, g.rows]).toEqual([4, 3])
+    })
+
+    it('never overflows the box in either axis', () => {
+      for (let n = 1; n <= 20; n++) for (const [aw, ah] of [[1000, 790], [1000, 1060], [1420, 460], [1000, 1630]] as Array<[number, number]>) {
+        for (const [extra, gapY] of [[159, 0], [0, 16]] as Array<[number, number]>) {
+          const g = fitPosterGrid(n, aw, ah, extra, 20, gapY)
+          expect(g.cols * g.posterW + (g.cols - 1) * 20).toBeLessThanOrEqual(aw)
+          expect(g.rows * (g.posterH + extra) + (g.rows - 1) * gapY).toBeLessThanOrEqual(ah)
+        }
+      }
+    })
+  })
+
+  describe('measureGridFit', () => {
+    const films = Array.from({ length: 20 }, (_, i) => ({
+      title: `Film ${i}`, year: '2020', rating: '★★★★', date: 'Nov 18, 2026', posterDataUrl: '',
+    }))
+    const base = {
+      films, username: 'u', cardType: 'recent-diary' as const, listCount: 20 as const,
+      showTitle: true, showYear: true, showRating: true, showDate: true,
+      showCardTypeLabel: true, cardTypeLabel: 'Recent Diary',
+    }
+
+    it('reports the fields a dense fixed-frame card left off', () => {
+      const fit = measureGridFit({ ...base, layout: '4:5' })
+      expect(fit).not.toBeNull()
+      expect(fit!.hiddenFields).toEqual(['title', 'year', 'date'])
+      expect(fit!.filmCount).toBe(20)
+      expect(fit!.fittingLayouts).toContain('landscape')
+      expect(fit!.fittingLayouts).not.toContain('square')
+    })
+
+    it('is null when the text block is on the card', () => {
+      expect(measureGridFit({ ...base, layout: 'landscape' })).toBeNull()
+      expect(measureGridFit({ ...base, layout: '4:5', listCount: 10 })).toBeNull()
+      expect(measureGridFit({ ...base, layout: '4:5', listCount: 4 })).toBeNull()
+    })
+
+    it('is null when only the rating was on — nothing is missing', () => {
+      expect(measureGridFit({
+        ...base, layout: '4:5', showTitle: false, showYear: false, showDate: false,
+      })).toBeNull()
+    })
+
+    it('is null for review cards', () => {
+      expect(measureGridFit({ ...base, cardType: 'review', layout: '4:5' })).toBeNull()
+    })
   })
 
   it('titleAreaH shifts posterTop, footerY, and cardHeight by the same amount', () => {
