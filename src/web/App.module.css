@@ -127,8 +127,145 @@
   transition: opacity 0.15s;
 }
 
+/* With the member button the header holds three controls. On a narrow desktop
+   window the install button keeps its mark and drops its words rather than
+   pushing the gear off-screen. (Phones never render it at all.) */
+@media (max-width: 440px) {
+  .installBtn { padding: 8px 10px; }
+  .installLabel {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .headerNav { gap: 8px; }
+}
+
 .installBtn:hover { opacity: 0.9; }
 .installBtn:active { opacity: 0.8; }
+
+/* ── Member button + menu ────────────────────────────────────── */
+.memberWrap {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+}
+
+/* Same 36px target as the gear so the two sit as a pair. */
+.memberBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--subtext);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.memberBtn:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+
+.memberAvatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+  flex-shrink: 0;
+}
+
+.memberMenu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 10;
+  min-width: 140px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.memberMenuItem {
+  padding: 9px 12px;
+  border: none;
+  border-radius: calc(var(--radius) - 2px);
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.memberMenuItem:hover,
+.memberMenuItem:focus-visible {
+  /* A tint of the text colour, not --input-bg: in the light theme that and
+     --surface are both white, which made the hover invisible. */
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+}
+
+/* Settings: the saved member, and the form that sets one. */
+.memberRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--subtext);
+}
+
+.memberName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.memberForm {
+  display: flex;
+  gap: 8px;
+}
+
+.memberForm .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.memberSave,
+.memberForget {
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.memberSave:hover:not(:disabled),
+.memberForget:hover {
+  background: color-mix(in srgb, var(--text) 10%, var(--surface));
+}
+
+.memberSave:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 
 /* ── Gear / back buttons ─────────────────────────────────────── */
 .gearBtn {
@@ -523,4 +660,45 @@
   .checkboxGrid {
     grid-template-columns: 1fr;
   }
+}
+
+/* ── Review fit notice ──────────────────────────────────────── */
+.fitNotice {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+}
+
+.fitNoticeText {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.fitNoticeText strong {
+  color: var(--warn);
+}
+
+.fitNoticeActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.fitNoticeBtn {
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.fitNoticeBtn:hover {
+  background: var(--input-bg);
 }

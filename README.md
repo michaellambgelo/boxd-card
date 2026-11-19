@@ -11,7 +11,7 @@ Open the extension on a supported Letterboxd page, pick a card type, click **Gen
 
 Custom posters (a Letterboxd Pro/Patron feature) are supported automatically — they're already rendered in the DOM by the time the extension reads them, so no API access is required.
 
-A web app with most features, backed by a Cloudflare Worker, is at [boxd-card.com](https://boxd-card.com) — no install needed, and the only option outside a Chromium browser. The extension is the fuller experience: stats cards and remembered usernames are extension-only, and Letterboxd sometimes firewalls the web app's proxied requests.
+A web app with most features, backed by a Cloudflare Worker, is at [boxd-card.com](https://boxd-card.com) — no install needed, and the only option outside a Chromium browser. The extension is the fuller experience: stats cards are extension-only, and Letterboxd sometimes firewalls the web app's proxied requests.
 
 ## Card types
 

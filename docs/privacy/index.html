@@ -97,6 +97,35 @@
     </li>
   </ul>
 
+  <h2>Remembering your Letterboxd username (web app)</h2>
+  <p>
+    The web app can remember your Letterboxd username so a button in its header can fill in your
+    profile, diary, or reviews page. This is optional and off until you type a username into
+    <em>Settings</em>.
+  </p>
+  <ul>
+    <li>
+      Your username and a copy of your Letterboxd profile picture are saved in your browser's local
+      storage, on this device only. We keep no account or database record of them, and they are
+      not included in analytics.
+    </li>
+    <li>
+      To check that the profile exists, the web app requests your public Letterboxd profile page
+      through our Cloudflare Worker when you save the username, and again about once a week to
+      keep the picture current. This is the same kind of request the web app makes to generate
+      any card, and it is handled the same way: the Worker's request logs can include the address
+      of the Letterboxd page that was requested.
+    </li>
+    <li>
+      The web app has no way to confirm the username is yours; it is only used to recognise your
+      own pages, where the card footer leaves out the share icon.
+    </li>
+    <li>
+      Pressing <em>Forget</em> in Settings, or clearing this site's data in your browser, removes
+      both the username and the picture.
+    </li>
+  </ul>
+
   <h2>Web analytics (web app and About page only)</h2>
   <p>
     To understand which features people use and where errors happen, the web app and the About

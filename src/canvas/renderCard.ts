@@ -1,4 +1,5 @@
 import type { CardType, ListCount, ReviewCount, Layout, StatsCategory } from '../types'
+import { LAYOUTS } from '../types'
 import type { StatEntry, ChartDataSet, BreakdownData, BarChartData, MilestonesData } from '../content/index'
 import logoUrl from '../assets/letterboxd-logo-h-neg-rgb.svg?url'
 import tmdbLogoUrl from '../assets/TMDB-blue-short.svg?url'
@@ -657,7 +658,7 @@ function measureReviewRows(
   measureCtx: CanvasRenderingContext2D,
   rvContentW: number,
   cfg: ReviewLayoutConfig,
-): { rows: ReviewRowMeasure[]; footerY: number; cardHeight: number } {
+): { rows: ReviewRowMeasure[]; footerY: number; cardHeight: number; clipped: boolean } {
   const rows: ReviewRowMeasure[] = []
   let currentY = HEADER_H + cfg.topPad
 
@@ -721,14 +722,96 @@ function measureReviewRows(
   // were asked for, but every one it shows is complete. Growing the card instead
   // would defeat the point of a fixed aspect ratio.
   let visibleRows = rows
+  let clipped = false
   if (cfg.fixedHeight != null) {
     const contentBottom = footerY - cfg.footerGap
     const fitting = rows.filter((r) => r.y + r.rowH <= contentBottom)
     // Never return nothing: one clipped row still beats an empty card.
+    clipped = fitting.length === 0 && rows.length > 0
     visibleRows = fitting.length > 0 ? fitting : rows.slice(0, 1)
   }
 
-  return { rows: visibleRows, footerY, cardHeight }
+  return { rows: visibleRows, footerY, cardHeight, clipped }
+}
+
+// ── Review fit report ────────────────────────────────────────────────────────
+
+/** A Review card field a member can switch off to make room. Title is not one. */
+export type ReviewField =
+  | 'tags' | 'overview' | 'genres' | 'director' | 'runtime' | 'date' | 'rating' | 'year'
+
+const REVIEW_FIELD_OPTION: Record<ReviewField, keyof CardOptions> = {
+  tags: 'showTags', overview: 'showOverview', genres: 'showGenres', director: 'showDirector',
+  runtime: 'showRuntime', date: 'showDate', rating: 'showRating', year: 'showYear',
+}
+
+/**
+ * What a Review card did with the reviews it was asked for.
+ *
+ * Fixed-height layouts drop reviews that do not fit (see measureReviewRows), and
+ * the PNG alone cannot say so. This is the report a surface needs to tell the
+ * member, and to offer only the changes that would actually fit everything.
+ */
+export interface ReviewFit {
+  layout: Layout
+  /** Reviews asked for (capped at what the page had). */
+  requested: number
+  /** Reviews drawn on the card. */
+  shown: number
+  /** True when not even one review fits: the single review drawn is cut off. */
+  clipped: boolean
+  /** Other layouts on which every requested review fits whole. */
+  fittingLayouts: Layout[]
+  /** Fields that, switched off alone, make every requested review fit this layout. */
+  hideableFields: ReviewField[]
+}
+
+function measureReviewOnLayout(
+  options: CardOptions, layout: Layout, measureCtx: CanvasRenderingContext2D,
+): { requested: number; shown: number; clipped: boolean } {
+  const cfg = reviewLayoutConfig(layout)
+  const cardWidth = layoutCardWidth(layout)
+  const rvContentW = cfg.stacked ? cardWidth - 2 * cfg.contentX : cardWidth - cfg.contentX - 40
+  const requested = Math.min(options.films.length, options.reviewCount ?? 1)
+  const { rows, clipped } = measureReviewRows(
+    options.films, requested, options.showTitle, options.showYear, options.showRating,
+    options.showDate, options.showTags ?? false, options.showDirector ?? false,
+    options.showRuntime ?? false, options.showGenres ?? false, options.showOverview ?? false,
+    measureCtx, rvContentW, cfg,
+  )
+  return { requested, shown: rows.length, clipped }
+}
+
+/**
+ * Measure (without drawing) how many of the requested reviews fit, and which
+ * single changes would fit them all. Returns null for non-Review cards.
+ *
+ * Uses measureReviewRows, the same pass renderCard draws from, so the report
+ * and the card cannot disagree.
+ */
+export async function measureReviewFit(options: CardOptions): Promise<ReviewFit | null> {
+  if (options.cardType !== 'review') return null
+  await ensureCardFontsLoaded()
+
+  const layout = options.layout ?? 'landscape'
+  const measureCtx = document.createElement('canvas').getContext('2d')!
+  const current = measureReviewOnLayout(options, layout, measureCtx)
+  const fit: ReviewFit = { layout, ...current, fittingLayouts: [], hideableFields: [] }
+  if (current.requested === 0) return fit
+
+  const fitsAll = (m: { requested: number; shown: number; clipped: boolean }) =>
+    m.shown === m.requested && !m.clipped
+  if (fitsAll(current)) return fit
+
+  fit.fittingLayouts = LAYOUTS.filter(
+    (l) => l !== layout && fitsAll(measureReviewOnLayout(options, l, measureCtx)),
+  )
+  fit.hideableFields = (Object.keys(REVIEW_FIELD_OPTION) as ReviewField[]).filter((field) => {
+    const key = REVIEW_FIELD_OPTION[field]
+    if (!options[key]) return false
+    return fitsAll(measureReviewOnLayout({ ...options, [key]: false }, layout, measureCtx))
+  })
+  return fit
 }
 
 const LIST_PADDING = 12
