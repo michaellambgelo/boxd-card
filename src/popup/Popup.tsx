@@ -2,7 +2,9 @@ import { useState, useEffect, useRef, type MouseEvent } from 'react'
 import type { FilmData, FilmDataResponse, GetFilmDataRequest } from '../content/index'
 import type { FetchImageResponse, FetchTmdbResponse } from '../background/service-worker'
 import { upscaleLetterboxdPoster } from '../shared/posters'
-import { renderCard } from '../canvas/renderCard'
+import { renderCard, measureReviewFit } from '../canvas/renderCard'
+import type { CardOptions, ReviewFit, ReviewField } from '../canvas/renderCard'
+import { reviewFitMessage, reviewFitHasFixes, REVIEW_FIELD_LABELS } from '../shared/reviewFit'
 import { generateAltText } from '../altText'
 import { CARD_TYPES, CARD_TYPE_CONFIGS, LAYOUTS, LAYOUT_CONFIGS, STATS_CATEGORIES, STATS_CATEGORY_CONFIGS, formatUrlHint, formatUrlHintSegments, isStatsCategoryAvailable } from '../types'
 import type { CardType, ListCount, ReviewCount, Layout, StatsCategory, StatsSubCategory } from '../types'
@@ -86,6 +88,7 @@ export default function Popup() {
   const [copied,        setCopied]        = useState(false)
   const [altText,       setAltText]       = useState<string | null>(null)
   const [altTextCopied, setAltTextCopied] = useState(false)
+  const [reviewFit,     setReviewFit]     = useState<ReviewFit | null>(null)
   // Failures from the post-generate actions (copy / share). Kept separate from
   // `error` so a clipboard refusal doesn't tear down the rendered card.
   const [actionError,   setActionError]   = useState<string | null>(null)
@@ -215,7 +218,18 @@ export default function Popup() {
     })
   }, [rememberUsername])
 
-  async function handleGenerate() {
+  // The settings the fit notice can change. runGenerate takes them as arguments
+  // (shadowing the state of the same name) so a notice button can regenerate
+  // with a new value before React has re-rendered with it.
+  function fitInputs() {
+    return { layout, showTags, showDate, showRating, showYear, showOverview, showGenres, showDirector, showRuntime }
+  }
+
+  function handleGenerate() {
+    return runGenerate(fitInputs())
+  }
+
+  async function runGenerate({ layout, showTags, showDate, showRating, showYear, showOverview, showGenres, showDirector, showRuntime }: ReturnType<typeof fitInputs>) {
     setStatus('loading')
     setError(null)
 
@@ -223,6 +237,7 @@ export default function Popup() {
     setCardUrl(null)
     setCardBlob(null)
     setAltText(null)
+    setReviewFit(null)
 
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
@@ -363,7 +378,7 @@ export default function Popup() {
         posterDataUrl: posterDataUrls[i],
       }))
 
-      const blob = await renderCard({
+      const cardOptions: CardOptions = {
         films,
         username: filmData.username,
         showTitle,
@@ -399,14 +414,18 @@ export default function Popup() {
         barChartData: filmData.barChartData,
         milestonesData: filmData.milestonesData,
         milestonePosterDataUrls,
-      })
+      }
+      const blob = await renderCard(cardOptions)
+      // Fixed-height layouts drop reviews that do not fit; the PNG cannot say so.
+      const fit = await measureReviewFit(cardOptions)
+      setReviewFit(fit)
 
       setCardBlob(blob)
       setCardUrl(URL.createObjectURL(blob))
 
       if (altTextEnabled) {
         setAltText(generateAltText({
-          films: films.map(f => ({
+          films: films.slice(0, fit ? fit.shown : films.length).map(f => ({
             title: f.title, year: f.year, rating: f.rating, date: f.date,
             reviewText: f.reviewText, tags: f.tags,
             director: f.director, runtime: f.runtime, genres: f.genres, overview: f.overview,
@@ -438,6 +457,29 @@ export default function Popup() {
       setStatus('error')
     }
   }
+
+  // ── Review fit notice ───────────────────────────────────────────────────────
+  // Each button changes one setting and regenerates. State set here is not visible
+  // until the next render, so the new value is handed to runGenerate directly.
+
+  function handleFitLayout(l: Layout) {
+    setLayout(l)
+    saveSettings({ layout: l })
+    void runGenerate({ ...fitInputs(), layout: l })
+  }
+
+  function handleFitHide(field: ReviewField) {
+    const setters: Partial<Record<ReviewField, (v: boolean) => void>> = { tags: setShowTags, date: setShowDate, rating: setShowRating, year: setShowYear, overview: setShowOverview, genres: setShowGenres, director: setShowDirector, runtime: setShowRuntime }
+    const settingKey = {
+      tags: 'showTags', date: 'showDate', rating: 'showRating', year: 'showYear',
+      overview: 'showOverview', genres: 'showGenres', director: 'showDirector', runtime: 'showRuntime',
+    } as const
+    setters[field]?.(false)
+    saveSettings({ [settingKey[field]]: false })
+    void runGenerate({ ...fitInputs(), [settingKey[field]]: false })
+  }
+
+  const fitMessage = reviewFitMessage(reviewFit)
 
   function handleDownload() {
     if (!cardUrl) return
@@ -1049,6 +1091,25 @@ export default function Popup() {
                 className={styles.preview}
               />
             </a>
+            {fitMessage && reviewFit && (
+              <div className={styles.fitNotice} role="status">
+                <p className={styles.fitNoticeText}><strong>{fitMessage.lead}</strong> {fitMessage.detail}</p>
+                {reviewFitHasFixes(reviewFit) && (
+                  <div className={styles.fitNoticeActions}>
+                    {reviewFit.fittingLayouts.map(l => (
+                      <button key={l} type="button" className={styles.fitNoticeBtn} onClick={() => handleFitLayout(l)}>
+                        Use {LAYOUT_CONFIGS[l].label}
+                      </button>
+                    ))}
+                    {reviewFit.hideableFields.map(f => (
+                      <button key={f} type="button" className={styles.fitNoticeBtn} onClick={() => handleFitHide(f)}>
+                        Hide {REVIEW_FIELD_LABELS[f]}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             <div className={styles.actionRow}>
               {showDownload && (
                 <button className={styles.actionBtn} onClick={handleDownload}>Download</button>

@@ -448,3 +448,44 @@
 .feedbackLink {
   align-self: flex-start;
 }
+
+/* ── Review fit notice ──────────────────────────────────────── */
+.fitNotice {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+}
+
+.fitNoticeText {
+  margin: 0;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.fitNoticeText strong {
+  color: var(--warn);
+}
+
+.fitNoticeActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.fitNoticeBtn {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.fitNoticeBtn:hover {
+  background: var(--input-bg);
+}

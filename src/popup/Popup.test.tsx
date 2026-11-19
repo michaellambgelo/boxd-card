@@ -5,10 +5,11 @@ import { createRoot, type Root } from 'react-dom/client'
 // The renderer has its own suite; here it only has to hand back a PNG blob.
 vi.mock('../canvas/renderCard', () => ({
   renderCard: vi.fn(async () => new Blob(['png'], { type: 'image/png' })),
+  measureReviewFit: vi.fn(async () => null),
 }))
 
 import Popup from './Popup'
-import { renderCard } from '../canvas/renderCard'
+import { renderCard, measureReviewFit } from '../canvas/renderCard'
 import { DEFAULT_SETTINGS, loadSettings, saveSettings } from '../storage/settings'
 import type { FilmDataResponse } from '../content/index'
 
@@ -246,5 +247,54 @@ describe('Popup Card buttons setting', () => {
     await openSettings()
     expect(checkbox('Remove Share button')?.checked).toBe(true)
     expect(checkbox('Remove Download button')?.checked).toBe(false)
+  })
+})
+
+// ── Review fit notice ────────────────────────────────────────────────────────
+
+describe('Popup review fit notice', () => {
+  const LEFT_OUT = {
+    layout: 'banner' as const, requested: 4, shown: 2, clipped: false,
+    fittingLayouts: ['landscape' as const, 'story' as const], hideableFields: ['tags' as const],
+  }
+  const notice = () => container.querySelector('[role="status"]')
+
+  it('says nothing when every review is on the card', async () => {
+    await mount()
+    await generate()
+    expect(notice()).toBeNull()
+  })
+
+  it('says how many reviews were left out and offers only changes, no "show fewer"', async () => {
+    vi.mocked(measureReviewFit).mockResolvedValueOnce(LEFT_OUT)
+    await mount()
+    await generate()
+    expect(notice()?.textContent).toContain('Showing 2 of 4 reviews.')
+    expect(notice()?.textContent).toContain('The other 2 don\u2019t fit on Banner.')
+    const labels = Array.from(notice()!.querySelectorAll('button')).map(b => b.textContent?.trim())
+    expect(labels).toEqual(['Use Landscape', 'Use Story', 'Hide tags'])
+  })
+
+  it('"Use <layout>" saves the layout and regenerates with it', async () => {
+    vi.mocked(measureReviewFit).mockResolvedValueOnce(LEFT_OUT)
+    await mount()
+    await generate()
+    await click(button('Use Story'))
+    await settle()
+    expect(vi.mocked(renderCard).mock.lastCall?.[0].layout).toBe('story')
+    expect((await loadSettings()).layout).toBe('story')
+    expect(notice()).toBeNull()
+  })
+
+  it('"Hide <field>" saves the setting and regenerates without the field', async () => {
+    vi.mocked(measureReviewFit).mockResolvedValueOnce(LEFT_OUT)
+    await mount()
+    await generate()
+    const before = vi.mocked(renderCard).mock.calls.length
+    await click(button('Hide tags'))
+    await settle()
+    expect(vi.mocked(renderCard).mock.calls.length).toBe(before + 1)
+    expect((await loadSettings()).showTags).toBe(false)
+    expect(notice()).toBeNull()
   })
 })
