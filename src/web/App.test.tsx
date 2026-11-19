@@ -7,6 +7,7 @@ import { createRoot, type Root } from 'react-dom/client'
 vi.mock('../canvas/renderCard', () => ({
   renderCard: vi.fn(async () => new Blob(['png'], { type: 'image/png' })),
   measureReviewFit: vi.fn(async () => null),
+  measureGridFit: vi.fn(() => null),
 }))
 vi.mock('./faro', () => ({
   track: vi.fn(),
@@ -29,7 +30,7 @@ vi.mock('./member', async importOriginal => {
 })
 
 import App from './App'
-import { renderCard, measureReviewFit } from '../canvas/renderCard'
+import { renderCard, measureReviewFit, measureGridFit } from '../canvas/renderCard'
 import { track } from './faro'
 import { getHandoffUrl } from './handoff'
 import { fetchImageDataUrl, scrapeLetterboxdPage } from './webScraper'
@@ -461,6 +462,39 @@ describe('App card footer identity', () => {
 })
 
 // ── Review fit notice ────────────────────────────────────────────────────────
+
+describe('App grid fit notice', () => {
+  const TEXT_OFF = {
+    layout: '4:5' as const, filmCount: 20,
+    hiddenFields: ['title' as const, 'year' as const, 'date' as const],
+    fittingLayouts: ['landscape' as const, 'story' as const],
+  }
+  const notice = () => container.querySelector('[role="status"]')
+
+  it('says nothing when the text is on the card', async () => {
+    await mountAndGenerate('https://letterboxd.com/ada/', filmData('ada'))
+    expect(notice()).toBeNull()
+  })
+
+  it('says which fields a dense card left off and offers the layouts that keep them', async () => {
+    vi.mocked(measureGridFit).mockReturnValueOnce(TEXT_OFF)
+    await mountAndGenerate('https://letterboxd.com/ada/', filmData('ada'))
+    expect(notice()?.textContent).toContain('Titles, years and dates are left off.')
+    expect(notice()?.textContent).toContain('20 films only fit on 4:5 as posters.')
+    const labels = Array.from(notice()!.querySelectorAll('button')).map(b => b.textContent?.trim())
+    expect(labels).toEqual(['Use Landscape', 'Use Story'])
+  })
+
+  it('"Use <layout>" saves the layout and regenerates with it', async () => {
+    vi.mocked(measureGridFit).mockReturnValueOnce(TEXT_OFF)
+    await mountAndGenerate('https://letterboxd.com/ada/', filmData('ada'))
+    await click(button('Use Story'))
+    await settle()
+    expect(vi.mocked(renderCard).mock.lastCall?.[0].layout).toBe('story')
+    expect((await loadSettings()).layout).toBe('story')
+    expect(notice()).toBeNull()
+  })
+})
 
 describe('App review fit notice', () => {
   const LEFT_OUT = {

@@ -44,6 +44,21 @@ export const GOLDENS: Golden[] = [
     options: cardOptionsFor('recent-diary', 'landscape', { listCount: 20 }),
   },
   {
+    name: 'grid-10-films-4x5',
+    pins: 'computeLayout fixed-frame fit, text block kept under each poster',
+    options: cardOptionsFor('recent-diary', '4:5', { listCount: 10 }),
+  },
+  {
+    name: 'grid-20-films-4x5',
+    pins: 'computeLayout fixed-frame fit, overlay mode + drawRatingOverlay',
+    options: cardOptionsFor('recent-diary', '4:5', { listCount: 20 }),
+  },
+  {
+    name: 'grid-10-films-story',
+    pins: 'ragged 4+4+2 grid with the last row centred',
+    options: cardOptionsFor('recent-diary', 'story', { listCount: 10 }),
+  },
+  {
     name: 'review-side-by-side',
     pins: 'measureReviewRows + cfg.titleFs/metaFs/reviewFs (dynamic height)',
     options: { ...cardOptionsFor('review', 'landscape'), reviewCount: 2 },

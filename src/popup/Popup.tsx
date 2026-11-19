@@ -2,9 +2,10 @@ import { useState, useEffect, useRef, type MouseEvent } from 'react'
 import type { FilmData, FilmDataResponse, GetFilmDataRequest } from '../content/index'
 import type { FetchImageResponse, FetchTmdbResponse } from '../background/service-worker'
 import { upscaleLetterboxdPoster } from '../shared/posters'
-import { renderCard, measureReviewFit } from '../canvas/renderCard'
-import type { CardOptions, ReviewFit, ReviewField } from '../canvas/renderCard'
+import { renderCard, measureReviewFit, measureGridFit } from '../canvas/renderCard'
+import type { CardOptions, ReviewFit, ReviewField, GridFit } from '../canvas/renderCard'
 import { reviewFitMessage, reviewFitHasFixes, REVIEW_FIELD_LABELS } from '../shared/reviewFit'
+import { gridFitMessage } from '../shared/gridFit'
 import { generateAltText } from '../altText'
 import { CARD_TYPES, CARD_TYPE_CONFIGS, LAYOUTS, LAYOUT_CONFIGS, STATS_CATEGORIES, STATS_CATEGORY_CONFIGS, formatUrlHint, formatUrlHintSegments, isStatsCategoryAvailable } from '../types'
 import type { CardType, ListCount, ReviewCount, Layout, StatsCategory, StatsSubCategory } from '../types'
@@ -89,6 +90,7 @@ export default function Popup() {
   const [altText,       setAltText]       = useState<string | null>(null)
   const [altTextCopied, setAltTextCopied] = useState(false)
   const [reviewFit,     setReviewFit]     = useState<ReviewFit | null>(null)
+  const [gridFit,       setGridFit]       = useState<GridFit | null>(null)
   // Failures from the post-generate actions (copy / share). Kept separate from
   // `error` so a clipboard refusal doesn't tear down the rendered card.
   const [actionError,   setActionError]   = useState<string | null>(null)
@@ -238,6 +240,7 @@ export default function Popup() {
     setCardBlob(null)
     setAltText(null)
     setReviewFit(null)
+    setGridFit(null)
 
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
@@ -419,6 +422,8 @@ export default function Popup() {
       // Fixed-height layouts drop reviews that do not fit; the PNG cannot say so.
       const fit = await measureReviewFit(cardOptions)
       setReviewFit(fit)
+      // Dense fixed-size grids drop the text under each poster; same problem.
+      setGridFit(measureGridFit(cardOptions))
 
       setCardBlob(blob)
       setCardUrl(URL.createObjectURL(blob))
@@ -480,6 +485,7 @@ export default function Popup() {
   }
 
   const fitMessage = reviewFitMessage(reviewFit)
+  const gridFitMsg = gridFitMessage(gridFit)
 
   function handleDownload() {
     if (!cardUrl) return
@@ -1104,6 +1110,20 @@ export default function Popup() {
                     {reviewFit.hideableFields.map(f => (
                       <button key={f} type="button" className={styles.fitNoticeBtn} onClick={() => handleFitHide(f)}>
                         Hide {REVIEW_FIELD_LABELS[f]}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            {gridFitMsg && gridFit && (
+              <div className={styles.fitNotice} role="status">
+                <p className={styles.fitNoticeText}><strong>{gridFitMsg.lead}</strong> {gridFitMsg.detail}</p>
+                {gridFit.fittingLayouts.length > 0 && (
+                  <div className={styles.fitNoticeActions}>
+                    {gridFit.fittingLayouts.map(l => (
+                      <button key={l} type="button" className={styles.fitNoticeBtn} onClick={() => handleFitLayout(l)}>
+                        Use {LAYOUT_CONFIGS[l].label}
                       </button>
                     ))}
                   </div>
