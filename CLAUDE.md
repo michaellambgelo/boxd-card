@@ -413,6 +413,14 @@ Do **not** use the sibling `hasDefaultPoster` field for this — it stays `true`
 
 **Every poster draw is wrapped in try/catch** with a grey placeholder rect, so one failed image degrades the card instead of failing it. `loadImage` has a 10s timeout for the same reason — an image that never settles used to wedge the UI in "Generating…" forever.
 
+### Review cards say when reviews were left out
+
+Fixed-height layouts (everything but Landscape) drop review rows that do not fit; `measureReviewRows` never draws a partial row unless it is the only one. The PNG cannot say so, so `measureReviewFit(options)` in `canvas/renderCard.ts` reports `{ requested, shown, clipped, fittingLayouts, hideableFields }` from the same measuring pass the renderer draws from. Popup and web app call it right after `renderCard` and show a notice above the action row (`shared/reviewFit.ts` holds the wording).
+
+- Buttons are changes only: "Use <layout>" where every requested review fits, "Hide <field>" where switching that one field off fits them all. There is deliberately no "show fewer" button, because the card on screen already is that option.
+- A button saves the setting and regenerates. `handleGenerate` takes the changed value as an argument (popup: `runGenerate`), because state set in the click handler is not visible until the next render. Regenerating from a `useEffect` trips `react-hooks/set-state-in-effect`.
+- Alt text is built from `films.slice(0, fit.shown)`, so it never describes a review that is not on the card.
+
 ## Remembered member (web app)
 
 `src/web/member.ts` + the member button in the header (between Add to Chrome and the gear). The web app has no Letterboxd session, so the member types a username once in Settings; `lookupMember()` fetches the profile through the proxy, requires `data-owner` to match (which rejects `/films/` and other non-profile paths), and stores `{username, avatarDataUrl?, at}` through the same `RememberedUser` helpers the extension uses — `localStorage` on the web.
